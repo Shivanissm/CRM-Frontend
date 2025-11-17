@@ -35,6 +35,8 @@ function RequireGuest({ children }: { children: JSX.Element }) {
     return <Navigate to="/persons" replace />;
   }
   return children;
+}
+
 function RoleAwareHome() {
   const storedUser = getStoredUser();
   const dashboardRoute = resolveRoleDashboardRoute(storedUser?.role);

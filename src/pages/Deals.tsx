@@ -80,6 +80,10 @@ const Deals = () => {
   const [selectedDealIds, setSelectedDealIds] = useState<Set<number>>(new Set());
   const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
   const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
+  const [categoryOptions, setCategoryOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [categoryLoading, setCategoryLoading] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [categoriesFetched, setCategoriesFetched] = useState(false);
 
   const loadDeals = useCallback(async (preserveDealId?: number | null) => {
     setLoading(true);
@@ -281,22 +285,11 @@ const Deals = () => {
     return [tbsPipeline, ...pipelines];
   }, [pipelines]);
 
-  // Static category options
-  const categoryOptions = useMemo(() => {
-    return [
-      { id: 1, name: 'Photography' },
-      { id: 2, name: 'Makeup' },
-      { id: 3, name: 'Planning & Decor' },
-    ];
-  }, []);
-
   const categoryLabelById = useMemo(() => {
     const map = new Map<string, string>();
-    (categoryOptions.length > 0 ? categoryOptions : fallbackCategoryOptions).forEach((option) =>
-      map.set(option.id, option.label),
-    );
+    categoryOptions.forEach((option) => map.set(option.id, option.label));
     return map;
-  }, [categoryOptions, fallbackCategoryOptions]);
+  }, [categoryOptions]);
 
   const filteredDeals = useMemo(() => {
     return deals.filter((deal) => {
@@ -433,6 +426,17 @@ const Deals = () => {
       // or show an error - for now, we'll allow it to be null
     }
 
+    const trimmedCategory = formData.categoryId?.trim();
+    let resolvedCategory: number | string | undefined;
+    if (trimmedCategory && trimmedCategory.length > 0) {
+      const numericVal = Number(trimmedCategory);
+      if (!Number.isNaN(numericVal) && trimmedCategory === String(numericVal)) {
+        resolvedCategory = numericVal;
+      } else {
+        resolvedCategory = trimmedCategory;
+      }
+    }
+
     const payload = {
       name: formData.name.trim(),
       status: formData.status,
@@ -558,7 +562,7 @@ const Deals = () => {
     if (selectedDealIds.size === 0) return;
     setBulkDeleteError(null);
     setSelectedDealIds(new Set());
-  }, [filterStatus, filterOrganization, filterCategory, filterPerson]);
+  }, [filterStatus, filterOrganization, filterCategory, filterManager]);
 
   const handleDeleteDeal = async (deal: Deal) => {
     const label = deal.name?.trim().length ? `“${deal.name.trim()}”` : `Deal #${deal.id}`;
@@ -741,21 +745,16 @@ const Deals = () => {
                 setFilterCategory(null);
                 return;
               }
-              setFilterCategory(value);
+              const numValue = Number(value);
+              setFilterCategory(Number.isNaN(numValue) ? null : numValue);
             }}
           >
             <option value="">All Categories</option>
-            {categoryOptions.length === 0
-              ? fallbackCategoryOptions.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.label}
-                  </option>
-                ))
-              : categoryOptions.map((cat) => (
+            {categoryOptions.map((cat) => (
               <option key={cat.id} value={cat.id}>
                 {cat.label}
               </option>
-                ))}
+            ))}
           </select>
           <select
             className="filter-select"

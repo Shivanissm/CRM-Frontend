@@ -94,5 +94,9 @@ export const dealsApi = {
     const response = await api.patch(`/${id}`, payload);
     return unwrap<Deal>(response.data);
   },
+
+  remove: async (id: number): Promise<void> => {
+    await api.delete(`/${id}`);
+  },
 };
 

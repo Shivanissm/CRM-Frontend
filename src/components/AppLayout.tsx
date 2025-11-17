@@ -10,7 +10,7 @@ interface NavItem {
   icon?: string;
 }
 
-const navItems: NavItem[] = [
+const baseNavItems: NavItem[] = [
   { label: 'Persons', to: '/persons' , icon: '👥' },
   { label: 'Deals', to: '/deals', icon: '💼' },
   { label: 'Pipelines', to: '/pipelines', icon: '🛤️' },
