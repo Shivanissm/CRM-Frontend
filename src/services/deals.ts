@@ -1,6 +1,7 @@
 import axios from 'axios';
 import {
   type Deal,
+  type DealCategory,
   type DealCreateRequest,
   type DealStageUpdateRequest,
   type DealStatus,
@@ -54,6 +55,11 @@ export const dealsApi = {
     return unwrap<Deal[]>(response.data);
   },
 
+  listCategories: async (): Promise<DealCategory[]> => {
+    const response = await api.get('/categories');
+    return unwrap<DealCategory[]>(response.data);
+  },
+
   listByStatus: async (status: DealStatus): Promise<Deal[]> => {
     const endpoint = statusEndpointMap[status];
     const response = await api.get(endpoint);
@@ -78,6 +84,10 @@ export const dealsApi = {
   updateStatus: async (id: number, request: DealStatusUpdateRequest): Promise<Deal> => {
     const response = await api.patch(`/${id}/status`, request);
     return unwrap<Deal>(response.data);
+  },
+
+  remove: async (id: number): Promise<void> => {
+    await api.delete(`/${id}`);
   },
 };
 

@@ -7,7 +7,6 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach Authorization header for protected endpoints
 api.interceptors.request.use((config) => {
   const token = getStoredToken();
   if (token) {
@@ -27,7 +26,7 @@ api.interceptors.response.use(
   },
 );
 
-export type ActivityCategory = string;
+export type ActivityCategoryValue = string;
 export type ActivityStatus = string;
 export type ActivityPriority = string;
 export type ActivityCallType = string;
@@ -35,7 +34,7 @@ export type ActivityCallType = string;
 export interface Activity {
   id: number;
   subject: string;
-  category?: ActivityCategory | null;
+  category?: ActivityCategoryValue | null;
   priority?: ActivityPriority | null;
   status?: ActivityStatus | null;
   assignedUser?: string | null;
@@ -73,7 +72,7 @@ export interface ActivityFilters {
   dateFrom?: string;
   dateTo?: string;
   assignedUser?: string;
-  category?: ActivityCategory;
+  category?: ActivityCategoryValue;
   status?: ActivityStatus;
   callType?: ActivityCallType;
   done?: boolean;
@@ -89,6 +88,17 @@ export const activitiesApi = {
   delete: (id: number) => api.delete(`/${id}`).then(() => {}),
   markDone: (id: number, value: boolean) =>
     api.post<Activity>(`/${id}/done`, undefined, { params: { value } }).then(r => r.data),
+  listCategories: async () => {
+    const response = await api.get('/categories');
+    const payload = response.data;
+    if (payload && Array.isArray(payload.data)) {
+      return payload.data as Array<{ code: string; label: string }>;
+    }
+    if (Array.isArray(payload)) {
+      return payload as Array<{ code: string; label: string }>;
+    }
+    return [];
+  },
 };
 
 

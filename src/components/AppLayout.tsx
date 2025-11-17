@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { clearAuthSession, getStoredUser } from '../utils/authToken';
 import './AppLayout.css';
+import { resolveRoleDashboardRoute } from '../utils/roleRoutes';
 
 interface NavItem {
   label: string;
@@ -8,7 +10,7 @@ interface NavItem {
   icon?: string;
 }
 
-const navItems: NavItem[] = [
+const baseNavItems: NavItem[] = [
   { label: 'Persons', to: '/' , icon: '👥' },
   { label: 'Deals', to: '/deals', icon: '💼' },
   { label: 'Pipelines', to: '/pipelines', icon: '🛤️' },
@@ -21,6 +23,15 @@ const navItems: NavItem[] = [
 export default function AppLayout() {
   const navigate = useNavigate();
   const user = getStoredUser();
+  const dashboardRoute = resolveRoleDashboardRoute(user?.role);
+
+  const navItems = useMemo(() => {
+    if (!dashboardRoute) return baseNavItems;
+    return [
+      { label: 'Dashboard', to: dashboardRoute, icon: '📊' },
+      ...baseNavItems,
+    ];
+  }, [dashboardRoute]);
 
   const handleLogout = () => {
     clearAuthSession();

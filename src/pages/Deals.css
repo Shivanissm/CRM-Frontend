@@ -209,6 +209,7 @@
   width: 100%;
   min-width: 0;
   padding: 0 32px 24px 32px;
+  position: relative;
 }
 
 .deals-grid {
@@ -416,6 +417,45 @@
   margin-bottom: 12px;
 }
 
+.deal-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deal-card-delete {
+  border: none;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 16px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.deal-card-delete:hover:not(:disabled) {
+  background: #fca5a5;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(185, 28, 28, 0.25);
+}
+
+.deal-card-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.deal-select-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
 .deal-name {
   font-size: 18px;
   font-weight: 700;
@@ -486,6 +526,47 @@
   align-items: center;
   padding: 20px;
   border-bottom: 1px solid #e5e7eb;
+  gap: 12px;
+}
+
+.deal-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.deal-detail-delete {
+  border: none;
+  background: #ef4444;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.deal-detail-delete:hover:not(:disabled) {
+  background: #dc2626;
+  box-shadow: 0 8px 18px rgba(239, 68, 68, 0.25);
+}
+
+.deal-detail-delete:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.deal-detail-error {
+  color: #b91c1c;
+  background: #fee2e2;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .deal-detail-title {
@@ -513,6 +594,145 @@
 .deal-detail-close:hover {
   background: #f3f4f6;
   color: #111827;
+}
+
+.deals-table-delete {
+  border: none;
+  background: transparent;
+  color: #ef4444;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.deals-table-delete:hover:not(:disabled) {
+  color: #dc2626;
+  text-decoration: underline;
+}
+
+.deals-table-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.deals-delete-selected-btn {
+  padding: 10px 20px;
+  background: #ef4444;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.deals-delete-selected-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.deals-delete-selected-btn:hover:not(:disabled) {
+  background: #dc2626;
+  box-shadow: 0 10px 24px rgba(239, 68, 68, 0.25);
+}
+
+.deals-select-all-btn {
+  padding: 8px 16px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.deals-select-all-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.25);
+}
+
+.deals-select-all-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.deals-clear-selection-btn {
+  padding: 8px 14px;
+  background: #e5e7eb;
+  color: #111827;
+  border: none;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.deals-clear-selection-btn:hover:not(:disabled) {
+  background: #d1d5db;
+}
+
+.deals-clear-selection-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.deals-inline-error {
+  margin: 0 32px 12px 32px;
+  background: #fee2e2;
+  color: #b91c1c;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.deals-selection-count {
+  font-size: 13px;
+  font-weight: 500;
+  color: #4b5563;
+}
+
+.deals-sheet-select-all,
+.deals-sheet-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.deals-loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.75);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 20;
+  border-radius: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.deals-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid rgba(37, 99, 235, 0.2);
+  border-top-color: #2563eb;
+  animation: dealsSpin 0.8s linear infinite;
+}
+
+@keyframes dealsSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .deal-detail-content {

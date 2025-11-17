@@ -4,6 +4,7 @@ import { authApi } from '../services/auth';
 import { getStoredToken, storeAuthSession } from '../utils/authToken';
 import type { LoginResponse } from '../types/auth';
 import './Login.css';
+import { resolveRoleDashboardRoute } from '../utils/roleRoutes';
 
 type LocationState = {
   from?: {
@@ -61,7 +62,11 @@ export default function Login() {
       });
 
       const state = location.state as LocationState | null;
-      const redirectTo = state?.from?.pathname && state.from.pathname !== '/login' ? state.from.pathname : '/';
+      const defaultDashboard = resolveRoleDashboardRoute(data.role) ?? '/';
+      const requestedPath = state?.from?.pathname;
+      const redirectTo =
+        requestedPath && requestedPath !== '/login' ? requestedPath : defaultDashboard;
+
       navigate(redirectTo, { replace: true });
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Unable to login. Please check your credentials.';

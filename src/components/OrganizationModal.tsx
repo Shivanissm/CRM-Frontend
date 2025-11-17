@@ -1,5 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import type { Organization, OrganizationOwner, OrganizationRequest } from '../types/organization';
+import type {
+  Organization,
+  OrganizationOwner,
+  OrganizationRequest,
+  OrganizationCategory,
+} from '../types/organization';
 import './OrganizationModal.css';
 
 interface OrganizationModalProps {
@@ -9,6 +14,7 @@ interface OrganizationModalProps {
   onClose: () => void;
   onSubmit: (payload: OrganizationRequest) => Promise<void>;
   owners: OrganizationOwner[];
+  categories: OrganizationCategory[];
 }
 
 export default function OrganizationModal({
@@ -18,18 +24,22 @@ export default function OrganizationModal({
   onClose,
   onSubmit,
   owners,
+  categories,
 }: OrganizationModalProps) {
   const [name, setName] = useState('');
+  const [category, setCategory] = useState('');
   const [ownerId, setOwnerId] = useState<string>('');
   const [address, setAddress] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const ownerOptions = useMemo(() => owners ?? [], [owners]);
+  const categoryOptions = useMemo(() => categories ?? [], [categories]);
 
   useEffect(() => {
     if (!isOpen) {
       setName('');
+      setCategory('');
       setOwnerId('');
       setAddress('');
       setSaving(false);
@@ -38,10 +48,12 @@ export default function OrganizationModal({
     }
     if (mode === 'edit' && organization) {
       setName(organization.name ?? '');
+      setCategory(organization.category ?? '');
       setOwnerId(organization.owner?.id ? String(organization.owner.id) : '');
       setAddress(organization.address ?? '');
     } else {
       setName('');
+      setCategory('');
       setOwnerId('');
       setAddress('');
     }
@@ -66,6 +78,11 @@ export default function OrganizationModal({
       setError('Address must be 500 characters or fewer.');
       return;
     }
+    if (!category) {
+      setError('Category is required.');
+      return;
+    }
+
     const ownerIdValue = ownerId ? Number(ownerId) : undefined;
     if (ownerIdValue !== undefined && (Number.isNaN(ownerIdValue) || ownerIdValue <= 0)) {
       setError('Owner must be a valid user.');
@@ -77,6 +94,7 @@ export default function OrganizationModal({
     try {
       const payload: OrganizationRequest = {
         name: trimmed,
+        category,
         ownerId: ownerIdValue,
         address: trimmedAddress || undefined,
       };
@@ -114,6 +132,35 @@ export default function OrganizationModal({
               maxLength={255}
               required
             />
+          </label>
+
+          <label className="organization-modal-label">
+            Category
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              className="organization-modal-input"
+              required
+              disabled={categoryOptions.length === 0}
+            >
+              <option value="">Select category</option>
+              {categoryOptions.length === 0 ? (
+                <option value="" disabled>
+                  No categories available
+                </option>
+              ) : (
+                categoryOptions.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label ?? option.code}
+                  </option>
+                ))
+              )}
+            </select>
+            {categoryOptions.length === 0 && (
+              <span className="organization-modal-hint">
+                Categories are loading. Close and reopen once data is available.
+              </span>
+            )}
           </label>
 
           <label className="organization-modal-label">

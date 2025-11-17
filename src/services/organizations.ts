@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Organization, OrganizationOwner, OrganizationRequest } from '../types/organization';
+import type { Organization, OrganizationOwner, OrganizationRequest, OrganizationCategory } from '../types/organization';
 import { getStoredToken, logoutAndRedirect } from '../utils/authToken';
 import { withApiBase } from '../config/api';
 
@@ -39,6 +39,11 @@ export const organizationsApi = {
   list: async (): Promise<Organization[]> => {
     const response = await api.get('');
     return unwrap<Organization[]>(response.data);
+  },
+
+  listCategories: async (): Promise<OrganizationCategory[]> => {
+    const response = await api.get('/categories');
+    return unwrap<OrganizationCategory[]>(response.data);
   },
 
   listOwners: async (): Promise<OrganizationOwner[]> => {
