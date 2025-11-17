@@ -11,12 +11,15 @@ export interface ActivityFormValues {
   startTime?: string;
   endTime?: string;
   priority?: string;
+  category?: string;
+  type?: string;
   assignedUser?: string;
   notes?: string;
   personName?: string;
   organization?: string;
   personId?: number;
   dealId?: number;
+  dueDate?: string;
   dateTime?: string;
 }
 
@@ -24,10 +27,12 @@ export default function ActivityModal({
   isOpen,
   onClose,
   onSave,
+  initialOrganization,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onSave: (values: ActivityFormValues) => Promise<void> | void;
+  initialOrganization?: string;
 }) {
   const [values, setValues] = useState<ActivityFormValues>({ subject: '' });
   const [categories, setCategories] = useState<Array<{ id: string; label: string }>>([]);
@@ -71,74 +76,67 @@ export default function ActivityModal({
   };
 
   useEffect(() => {
-    if (!isOpen) return;
-
-    setValues({ subject: '' });
-    void loadCategories();
-
-    if (!usersLoading && users.length === 0) {
-      setUsersLoading(true);
-      setUsersError(null);
-      usersApi
-        .list()
-        .then((response) => {
-          const normalized = (response ?? []).map((user) => ({
-            id: user.id,
-            label:
-              user.firstName && user.lastName
-                ? `${user.firstName} ${user.lastName}`
-                : user.email ?? String(user.id),
-          }));
-          setUsers(normalized);
-        })
-        .catch((err: any) => {
-          const message = err?.response?.data?.message || err?.message || 'Failed to load users.';
-          setUsersError(message);
-        })
-        .finally(() => {
-          setUsersLoading(false);
-        });
+    if (isOpen) {
+      setValues({ subject: '', organization: initialOrganization || '' });
     }
-
-    if (!organizationsLoading && organizations.length === 0) {
-      setOrganizationsLoading(true);
-      setOrganizationsError(null);
-      organizationsApi
-        .list()
-        .then((response) => {
-          const normalized = (response ?? []).map((organization) => ({
-            id: organization.id,
-            label: organization.name?.trim().length ? organization.name.trim() : `Organization #${organization.id}`,
-          }));
-          setOrganizations(normalized);
-        })
-        .catch((err: any) => {
-          const message = err?.response?.data?.message || err?.message || 'Failed to load organizations.';
-          setOrganizationsError(message);
-        })
-        .finally(() => {
-          setOrganizationsLoading(false);
-        });
-    }
-  }, [isOpen, usersLoading, users.length, organizationsLoading, organizations.length]);
+  }, [isOpen, initialOrganization]);
 
   if (!isOpen) return null;
 
+  const mapActivityTypeToCategory = (activityType?: string): string | undefined => {
+    if (!activityType) return undefined;
+    switch (activityType.toUpperCase()) {
+      case 'CALL':
+        return 'CALL';
+      case 'MEETING':
+      case 'MEETING_SCHEDULER':
+        return 'MEETING_SCHEDULER';
+      case 'FOLLOW_UP':
+      case 'SEND_QUOTES':
+      case 'TASK':
+      case 'OTHER':
+      case 'ACTIVITY':
+      default:
+        return 'ACTIVITY';
+    }
+  };
+
+  const toIsoDate = (dateStr?: string): string | undefined => {
+    if (!dateStr) return undefined;
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split('/');
+      if (parts.length === 3) {
+        return `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+    }
+    return dateStr;
+  };
+
   const formatDateForBackend = (dateStr?: string): string | undefined => {
     if (!dateStr) return undefined;
-    // Convert yyyy-MM-dd to dd/MM/yyyy
-    const parts = dateStr.split('-');
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    // Convert yyyy-MM-dd to dd/MM/yyyy for backend
+    if (dateStr.includes('-')) {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
     }
     return dateStr;
   };
 
   const handleSave = async () => {
+    const isoDate = toIsoDate(values.date);
+    const activityType = values.type || values.category;
+    const parentCategory = mapActivityTypeToCategory(activityType);
     const formattedValues = {
       ...values,
       date: formatDateForBackend(values.date),
-      dateTime: values.date ? `${values.date}T${values.startTime || '00:00'}:00` : new Date().toISOString(),
+      dueDate: formatDateForBackend(values.date),
+      dateTime: isoDate ? `${isoDate}T${values.startTime || '00:00'}:00` : undefined,
+      // Convert priority to uppercase to match backend enum values
+      priority: values.priority ? values.priority.toUpperCase() : undefined,
+      type: activityType,
+      category: parentCategory,
     };
     await onSave(formattedValues);
     setValues({ subject: '' }); // Reset after save
@@ -162,62 +160,37 @@ export default function ActivityModal({
           </div>
 
           <div className="am-row">
-          <select
-            className="am-input"
-            value={values.category || ''}
-            onChange={(e) => update('category', e.target.value)}
-            disabled={categoryLoading}
-            onFocus={() => {
-              if (categories.length === 0 && !categoryLoading) {
-                void loadCategories();
-              }
-            }}
-          >
-            <option value="">Activity type</option>
-            {categoryLoading ? (
-              <option value="" disabled>
-                Loading categories…
-              </option>
-            ) : categories.length === 0 ? (
-              <option value="" disabled>
-                {categoryError ?? 'No categories available'}
-              </option>
-            ) : (
-              categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.label}
-                </option>
-              ))
-            )}
-          </select>
-            <select className="am-input" value={values.priority || ''} onChange={(e) => update('priority', e.target.value)}>
-              <option value="">Priority</option>
-              <option value="Low">Low</option>
-              <option value="Medium">Medium</option>
-              <option value="High">High</option>
-            </select>
             <select
               className="am-input"
-              value={values.assignedUser || ''}
-              onChange={(e) => update('assignedUser', e.target.value)}
-              disabled={usersLoading}
+              value={values.type || values.category || ''}
+              onChange={(e) => {
+                const { value } = e.target;
+                const parentCategory = mapActivityTypeToCategory(value) || undefined;
+                setValues(prev => ({
+                  ...prev,
+                  type: value || undefined,
+                  category: parentCategory,
+                }));
+              }}
             >
+              <option value="">Activity type</option>
+              <option value="FOLLOW_UP">Follow Up</option>
+              <option value="SEND_QUOTES">Send Quotes</option>
+              <option value="MEETING">Meeting</option>
+              <option value="CALL">Call</option>
+              <option value="TASK">Task</option>
+              <option value="OTHER">Other</option>
+              <option value="ACTIVITY">Activity</option>
+              <option value="MEETING_SCHEDULER">Meeting Scheduler</option>
+            </select>
+            <select className="am-input" value={values.priority || ''} onChange={(e) => update('priority', e.target.value)}>
+              <option value="">Priority</option>
+              <option value="LOW">Low</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
+            </select>
+            <select className="am-input" value={values.assignedUser || ''} onChange={(e) => update('assignedUser', e.target.value)}>
               <option value="">Assigned user</option>
-              {usersLoading ? (
-                <option value="" disabled>
-                  Loading users…
-                </option>
-              ) : users.length === 0 ? (
-                <option value="" disabled>
-                  {usersError ?? 'No users available'}
-                </option>
-              ) : (
-                users.map((user) => (
-                  <option key={user.id} value={String(user.id)}>
-                    {user.label}
-                  </option>
-                ))
-              )}
             </select>
           </div>
 

@@ -17,7 +17,9 @@ export const getStoredToken = (): string | null => {
   for (const storage of storages) {
     try {
       const token = storage?.getItem(TOKEN_KEY) || storage?.getItem('token');
-      if (token) return token;
+      if (token && token.trim()) {
+        return token.trim();
+      }
     } catch (error) {
       console.warn('Unable to read auth token from storage', error);
     }

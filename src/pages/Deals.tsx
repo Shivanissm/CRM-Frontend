@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback, type ChangeEvent, type FormEvent } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import './Deals.css';
 import { dealsApi } from '../services/deals';
 import type { Deal, DealStatus } from '../types/deal';
@@ -8,7 +9,7 @@ import type { Organization } from '../types/organization';
 import { pipelinesApi } from '../services/pipelines';
 import type { Pipeline, Stage } from '../types/pipeline';
 import { personsApi } from '../services/api';
-import type { Person } from '../types/person';
+import type { Person, PersonOwner } from '../types/person';
 
 type DealFilterStatus = 'all' | DealStatus;
 
@@ -16,7 +17,8 @@ interface DealFormState {
   name: string;
   value: string;
   status: DealStatus;
-  personId: string;
+  personName: string; // Changed from personId to personName for input field
+  personId: string; // Keep for internal use when person is found
   pipelineId: string;
   stageId: string;
   organizationId: string;
@@ -31,6 +33,7 @@ const initialFormState: DealFormState = {
   name: '',
   value: '',
   status: 'IN_PROGRESS',
+  personName: '',
   personId: '',
   pipelineId: '',
   stageId: '',
@@ -49,20 +52,19 @@ const statusColors: Record<DealStatus, string> = {
 };
 
 const Deals = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [persons, setPersons] = useState<Person[]>([]);
-  const [categoryOptions, setCategoryOptions] = useState<Array<{ id: string; label: string }>>([]);
-  const [categoryLoading, setCategoryLoading] = useState(false);
-  const [categoryError, setCategoryError] = useState<string | null>(null);
-  const [categoriesFetched, setCategoriesFetched] = useState(false);
+  const [managers, setManagers] = useState<PersonOwner[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<DealFilterStatus>('all');
   const [filterOrganization, setFilterOrganization] = useState<number | null>(null);
-  const [filterCategory, setFilterCategory] = useState<string | null>(null);
-  const [filterPerson, setFilterPerson] = useState<number | null>(null);
+  const [filterCategory, setFilterCategory] = useState<number | null>(null);
+  const [filterManager, setFilterManager] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
@@ -79,15 +81,11 @@ const Deals = () => {
   const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
   const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
 
-  const loadDeals = useCallback(async (status: DealFilterStatus, preserveDealId?: number | null) => {
+  const loadDeals = useCallback(async (preserveDealId?: number | null) => {
     setLoading(true);
     try {
-      let data: Deal[];
-      if (status === 'all') {
-        data = await dealsApi.list();
-      } else {
-        data = await dealsApi.listByStatus(status);
-      }
+      // Always load all deals for kanban board view
+      const data = await dealsApi.list();
       setDeals(data);
       setSelectedDealIds((prev) => {
         if (prev.size === 0) return prev;
@@ -120,9 +118,25 @@ const Deals = () => {
     }
   }, []);
 
+  // Initial load
   useEffect(() => {
-    loadDeals(filterStatus, selectedDeal?.id ?? null);
-  }, [filterStatus, selectedDeal?.id, loadDeals]);
+    loadDeals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-open modal if coming from Person page
+  useEffect(() => {
+    const personNameFromState = (location.state as any)?.personName;
+    const shouldOpenModal = (location.state as any)?.openModal;
+    
+    if (shouldOpenModal && personNameFromState) {
+      const initialData = { ...initialFormState, personName: personNameFromState };
+      setFormData(initialData);
+      setIsModalOpen(true);
+      // Clear the state after using it
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const fetchCategories = async (force = false) => {
     if (categoryLoading) return;
@@ -177,6 +191,13 @@ const Deals = () => {
       } catch (err) {
         console.error('Failed to load persons', err);
       }
+
+      try {
+        const managersData = await personsApi.listOwners();
+        setManagers(managersData);
+      } catch (err) {
+        console.error('Failed to load managers', err);
+      }
     };
 
     fetchReferenceData();
@@ -227,7 +248,16 @@ const Deals = () => {
   const organizationsById = useMemo(() => {
     const map = new Map<number, Organization>();
     organizations.forEach((org) => map.set(org.id, org));
+    // Add TBS as a static organization option
+    // Using a high ID (999999) to avoid conflicts with real organization IDs
+    map.set(999999, { id: 999999, name: 'TBS' } as Organization);
     return map;
+  }, [organizations]);
+
+  // Combined organizations list including TBS
+  const allOrganizations = useMemo(() => {
+    const tbsOrg: Organization = { id: 999999, name: 'TBS' } as Organization;
+    return [tbsOrg, ...organizations];
   }, [organizations]);
 
   const personsById = useMemo(() => {
@@ -239,22 +269,26 @@ const Deals = () => {
   const pipelinesById = useMemo(() => {
     const map = new Map<number, Pipeline>();
     pipelines.forEach((pipeline) => map.set(pipeline.id, pipeline));
+    // Add TBS as a static pipeline option
+    // Using a high ID (999999) to avoid conflicts with real pipeline IDs
+    map.set(999999, { id: 999999, name: 'TBS', stages: [] } as Pipeline);
     return map;
   }, [pipelines]);
 
-  const fallbackCategoryOptions = useMemo(() => {
-    const options: { id: string; label: string }[] = [];
-    const fallback = new Map<string, string>();
-    deals.forEach((deal) => {
-      if (deal.categoryId == null) return;
-      const key = String(deal.categoryId);
-      if (!fallback.has(key)) {
-        fallback.set(key, `Category ${key}`);
-      }
-    });
-    fallback.forEach((label, id) => options.push({ id, label }));
-    return options;
-  }, [deals]);
+  // Combined pipelines list including TBS
+  const allPipelines = useMemo(() => {
+    const tbsPipeline: Pipeline = { id: 999999, name: 'TBS', stages: [] } as Pipeline;
+    return [tbsPipeline, ...pipelines];
+  }, [pipelines]);
+
+  // Static category options
+  const categoryOptions = useMemo(() => {
+    return [
+      { id: 1, name: 'Photography' },
+      { id: 2, name: 'Makeup' },
+      { id: 3, name: 'Planning & Decor' },
+    ];
+  }, []);
 
   const categoryLabelById = useMemo(() => {
     const map = new Map<string, string>();
@@ -266,35 +300,98 @@ const Deals = () => {
 
   const filteredDeals = useMemo(() => {
     return deals.filter((deal) => {
-      const organizationMatch =
-        filterOrganization === null || deal.organizationId === filterOrganization;
-      const categoryMatch =
-        filterCategory === null ||
-        (deal.categoryId != null && String(deal.categoryId) === filterCategory);
-      const personMatch = filterPerson === null || deal.personId === filterPerson;
+      const organizationMatch = filterOrganization === null || deal.organizationId === filterOrganization;
+      const categoryMatch = filterCategory === null || deal.categoryId === filterCategory;
+      
+      // Filter by manager: check if the deal's person has the selected manager (ownerId)
+      const managerMatch = filterManager === null || (() => {
+        if (!deal.personId) return false;
+        const person = persons.find(p => p.id === deal.personId);
+        return person?.ownerId === filterManager;
+      })();
+      
       const query = searchQuery.trim().toLowerCase();
       const searchMatch =
         query.length === 0 ||
         (deal.name && deal.name.toLowerCase().includes(query)) ||
         (deal.venue && deal.venue.toLowerCase().includes(query));
-      return organizationMatch && categoryMatch && personMatch && searchMatch;
+      return organizationMatch && categoryMatch && managerMatch && searchMatch;
     });
-  }, [deals, filterOrganization, filterCategory, filterPerson, searchQuery]);
+  }, [deals, filterOrganization, filterCategory, filterManager, searchQuery, persons]);
+
+  // Group deals by status for kanban view
+  const dealsByStatus = useMemo(() => {
+    const grouped: Record<string, Deal[]> = {
+      all: filteredDeals,
+      IN_PROGRESS: filteredDeals.filter((deal) => deal.status === 'IN_PROGRESS'),
+      WON: filteredDeals.filter((deal) => deal.status === 'WON'),
+      LOST: filteredDeals.filter((deal) => deal.status === 'LOST'),
+    };
+    return grouped;
+  }, [filteredDeals]);
+
+  // Calculate totals for each status column
+  const statusTotals = useMemo(() => {
+    return {
+      all: {
+        total: dealsByStatus.all.reduce((sum, deal) => sum + (deal.value || 0), 0),
+        count: dealsByStatus.all.length,
+      },
+      IN_PROGRESS: {
+        total: dealsByStatus.IN_PROGRESS.reduce((sum, deal) => sum + (deal.value || 0), 0),
+        count: dealsByStatus.IN_PROGRESS.length,
+      },
+      WON: {
+        total: dealsByStatus.WON.reduce((sum, deal) => sum + (deal.value || 0), 0),
+        count: dealsByStatus.WON.length,
+      },
+      LOST: {
+        total: dealsByStatus.LOST.reduce((sum, deal) => sum + (deal.value || 0), 0),
+        count: dealsByStatus.LOST.length,
+      },
+    };
+  }, [dealsByStatus]);
+
+  // Get all stages from all pipelines (8 stages total)
+  const allStages = useMemo(() => {
+    const stagesMap = new Map<number, Stage>();
+    pipelines.forEach((pipeline) => {
+      pipeline.stages?.forEach((stage) => {
+        if (!stagesMap.has(stage.id)) {
+          stagesMap.set(stage.id, stage);
+        }
+      });
+    });
+    // Sort stages by order if available, otherwise by name
+    return Array.from(stagesMap.values()).sort((a, b) => {
+      if (a.order !== undefined && b.order !== undefined) {
+        return a.order - b.order;
+      }
+      return (a.name || '').localeCompare(b.name || '');
+    });
+  }, [pipelines]);
 
   const stageOptionsForForm = useMemo(() => {
-    if (!formData.pipelineId) {
-      return [];
-    }
-    const pipeline = pipelinesById.get(Number(formData.pipelineId));
-    return pipeline?.stages ?? [];
-  }, [pipelinesById, formData.pipelineId]);
+    // Return all stages instead of just stages from selected pipeline
+    return allStages;
+  }, [allStages]);
 
   const handleOpenModal = () => {
-    setFormData(initialFormState);
+    // Check if person name was passed from Person page
+    const personNameFromState = (location.state as any)?.personName;
+    const initialData = personNameFromState 
+      ? { ...initialFormState, personName: personNameFromState }
+      : initialFormState;
+    
+    setFormData(initialData);
     setModalError(null);
     setDetailError(null);
     setIsModalOpen(true);
-    void fetchCategories();
+    
+    // Clear the state after using it
+    if (personNameFromState) {
+      window.history.replaceState({}, document.title);
+    }
   };
 
   const handleCloseModal = () => {
@@ -308,13 +405,7 @@ const Deals = () => {
   const handleInputChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = event.target;
     setFormData((prev) => {
-      if (name === 'pipelineId') {
-        return {
-          ...prev,
-          pipelineId: value,
-          stageId: '',
-        };
-      }
+      // Don't clear stageId when pipeline changes since stages are now independent
       return {
         ...prev,
         [name]: value,
@@ -329,21 +420,24 @@ const Deals = () => {
       return;
     }
 
-    const trimmedCategory = formData.categoryId?.trim();
-    let resolvedCategory: number | string | undefined;
-    if (trimmedCategory && trimmedCategory.length > 0) {
-      const numericVal = Number(trimmedCategory);
-      if (!Number.isNaN(numericVal) && trimmedCategory === String(numericVal)) {
-        resolvedCategory = numericVal;
-      } else {
-        resolvedCategory = trimmedCategory;
+    // Try to find person by name if personName is provided
+    let personId: number | undefined = undefined;
+    if (formData.personName.trim()) {
+      const foundPerson = persons.find(
+        (p) => p.name.toLowerCase().trim() === formData.personName.toLowerCase().trim()
+      );
+      if (foundPerson) {
+        personId = foundPerson.id;
       }
+      // If person not found, we can still create the deal without personId
+      // or show an error - for now, we'll allow it to be null
     }
+
     const payload = {
       name: formData.name.trim(),
       status: formData.status,
       value: formData.value ? Number(formData.value) : undefined,
-      personId: formData.personId ? Number(formData.personId) : undefined,
+      personId: personId,
       pipelineId: formData.pipelineId ? Number(formData.pipelineId) : undefined,
       stageId: formData.stageId ? Number(formData.stageId) : undefined,
       organizationId: formData.organizationId ? Number(formData.organizationId) : undefined,
@@ -358,7 +452,7 @@ const Deals = () => {
     setModalError(null);
     try {
       const createdDeal = await dealsApi.create(payload);
-      await loadDeals(filterStatus, createdDeal.id);
+      await loadDeals(createdDeal.id);
       setIsModalOpen(false);
       setFormData(initialFormState);
       setSelectedDeal(createdDeal);
@@ -632,7 +726,7 @@ const Deals = () => {
             onChange={(event) => setFilterOrganization(event.target.value === '' ? null : Number(event.target.value))}
           >
             <option value="">All Organizations</option>
-            {organizations.map((org) => (
+            {allOrganizations.map((org) => (
               <option key={org.id} value={org.id}>
                 {org.name}
               </option>
@@ -665,13 +759,13 @@ const Deals = () => {
           </select>
           <select
             className="filter-select"
-            value={filterPerson ?? ''}
-            onChange={(event) => setFilterPerson(event.target.value === '' ? null : Number(event.target.value))}
+            value={filterManager ?? ''}
+            onChange={(event) => setFilterManager(event.target.value === '' ? null : Number(event.target.value))}
           >
-            <option value="">All Clients</option>
-            {persons.map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.name}
+            <option value="">All Manager</option>
+            {managers.map((manager) => (
+              <option key={manager.id} value={manager.id}>
+                {manager.displayName || manager.email}
               </option>
             ))}
           </select>
@@ -688,85 +782,146 @@ const Deals = () => {
           </div>
         )}
         {viewMode === 'grid' ? (
-          <div className="deals-grid">
-            {filteredDeals.length === 0 ? (
-              <div className="deals-empty">No deals found</div>
-            ) : (
-              filteredDeals.map((deal) => {
-                const isSelected = selectedDealIds.has(deal.id);
-                return (
-                <div
-                  key={deal.id}
-                  className={`deal-card ${selectedDeal?.id === deal.id ? 'selected' : ''}`}
-                    onClick={() => {
-                      setSelectedDeal(deal);
-                      setDetailError(null);
-                    }}
-                >
-                  <div className="deal-card-header">
-                    <div className="deal-name">{deal.name || `Deal #${deal.id}`}</div>
-                      <div className="deal-card-actions">
-                        <input
-                          type="checkbox"
-                          className="deal-select-checkbox"
-                          checked={isSelected}
-                          onChange={(event) => {
-                            event.stopPropagation();
-                            toggleDealSelection(deal.id, event.target.checked);
-                          }}
-                          onClick={(event) => event.stopPropagation()}
-                          aria-label="Select deal"
-                        />
-                        <button
-                          className="deal-card-delete"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void handleDeleteDeal(deal);
-                          }}
-                          disabled={deleteLoadingId === deal.id || bulkDeleteLoading}
-                          aria-label="Delete deal"
-                        >
-                          {deleteLoadingId === deal.id ? '…' : '×'}
-                        </button>
-                    <div
-                      className="deal-status-badge"
-                      style={{ backgroundColor: statusColors[deal.status] || '#6b7280' }}
-                    >
-                      {deal.status}
-                        </div>
-                    </div>
-                  </div>
-
-                  <div className="deal-value">{formatCurrency(deal.value)}</div>
-
-                  <div className="deal-details">
-                    {deal.venue && (
-                      <div className="deal-detail-item">
-                        <span className="deal-detail-label">Venue:</span>
-                        <span className="deal-detail-value">{deal.venue}</span>
-                      </div>
-                    )}
-                    {deal.eventDate && (
-                      <div className="deal-detail-item">
-                        <span className="deal-detail-label">Event Date:</span>
-                        <span className="deal-detail-value">{formatDate(deal.eventDate)}</span>
-                      </div>
-                    )}
-                    {deal.createdAt && (
-                      <div className="deal-detail-item">
-                        <span className="deal-detail-label">Created:</span>
-                        <span className="deal-detail-value">{formatDate(deal.createdAt)}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {deal.commissionAmount != null && (
-                    <div className="deal-commission">Commission: {formatCurrency(deal.commissionAmount)}</div>
-                  )}
+          <div className="deals-kanban-board">
+            {/* All Column */}
+            <div className={`kanban-column ${filterStatus === 'all' ? 'highlighted' : ''}`}>
+              <div className="kanban-column-header">
+                <h3 className="kanban-column-title">All</h3>
+                <div className="kanban-column-summary">
+                  {formatCurrency(statusTotals.all.total)} - {statusTotals.all.count} deals
                 </div>
-                );
-              })
-            )}
+              </div>
+              <div className="kanban-column-content">
+                {dealsByStatus.all.length === 0 ? (
+                  <div className="kanban-empty">No deals</div>
+                ) : (
+                  dealsByStatus.all.map((deal) => {
+                    const personName = deal.personId
+                      ? personsById.get(deal.personId)?.name ?? `Person ${deal.personId}`
+                      : null;
+                    return (
+                      <div
+                        key={deal.id}
+                        className={`kanban-card ${selectedDeal?.id === deal.id ? 'selected' : ''}`}
+                        onClick={() => navigate(`/deals/${deal.id}`)}
+                      >
+                        <div className="kanban-card-name">{deal.name || `Deal #${deal.id}`}</div>
+                        {personName && <div className="kanban-card-rsp">RSP: {personName}</div>}
+                        {deal.createdAt && (
+                          <div className="kanban-card-date">{formatDate(deal.createdAt)}</div>
+                        )}
+                        <div className="kanban-card-value">{formatCurrency(deal.value)}</div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* In Progress Column */}
+            <div className={`kanban-column ${filterStatus === 'IN_PROGRESS' ? 'highlighted' : ''}`}>
+              <div className="kanban-column-header">
+                <h3 className="kanban-column-title">In Progress</h3>
+                <div className="kanban-column-summary">
+                  {formatCurrency(statusTotals.IN_PROGRESS.total)} - {statusTotals.IN_PROGRESS.count} deals
+                </div>
+              </div>
+              <div className="kanban-column-content">
+                {dealsByStatus.IN_PROGRESS.length === 0 ? (
+                  <div className="kanban-empty">No deals</div>
+                ) : (
+                  dealsByStatus.IN_PROGRESS.map((deal) => {
+                    const personName = deal.personId
+                      ? personsById.get(deal.personId)?.name ?? `Person ${deal.personId}`
+                      : null;
+                    return (
+                      <div
+                        key={deal.id}
+                        className={`kanban-card ${selectedDeal?.id === deal.id ? 'selected' : ''}`}
+                        onClick={() => navigate(`/deals/${deal.id}`)}
+                      >
+                        <div className="kanban-card-name">{deal.name || `Deal #${deal.id}`}</div>
+                        {personName && <div className="kanban-card-rsp">RSP: {personName}</div>}
+                        {deal.createdAt && (
+                          <div className="kanban-card-date">{formatDate(deal.createdAt)}</div>
+                        )}
+                        <div className="kanban-card-value">{formatCurrency(deal.value)}</div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Won Column */}
+            <div className={`kanban-column ${filterStatus === 'WON' ? 'highlighted' : ''}`}>
+              <div className="kanban-column-header">
+                <h3 className="kanban-column-title">Won</h3>
+                <div className="kanban-column-summary">
+                  {formatCurrency(statusTotals.WON.total)} - {statusTotals.WON.count} deals
+                </div>
+              </div>
+              <div className="kanban-column-content">
+                {dealsByStatus.WON.length === 0 ? (
+                  <div className="kanban-empty">No deals</div>
+                ) : (
+                  dealsByStatus.WON.map((deal) => {
+                    const personName = deal.personId
+                      ? personsById.get(deal.personId)?.name ?? `Person ${deal.personId}`
+                      : null;
+                    return (
+                      <div
+                        key={deal.id}
+                        className={`kanban-card ${selectedDeal?.id === deal.id ? 'selected' : ''}`}
+                        onClick={() => navigate(`/deals/${deal.id}`)}
+                      >
+                        <div className="kanban-card-name">{deal.name || `Deal #${deal.id}`}</div>
+                        {personName && <div className="kanban-card-rsp">RSP: {personName}</div>}
+                        {deal.createdAt && (
+                          <div className="kanban-card-date">{formatDate(deal.createdAt)}</div>
+                        )}
+                        <div className="kanban-card-value">{formatCurrency(deal.value)}</div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Lost Column */}
+            <div className={`kanban-column ${filterStatus === 'LOST' ? 'highlighted' : ''}`}>
+              <div className="kanban-column-header">
+                <h3 className="kanban-column-title">Lost</h3>
+                <div className="kanban-column-summary">
+                  {formatCurrency(statusTotals.LOST.total)} - {statusTotals.LOST.count} deals
+                </div>
+              </div>
+              <div className="kanban-column-content">
+                {dealsByStatus.LOST.length === 0 ? (
+                  <div className="kanban-empty">No deals</div>
+                ) : (
+                  dealsByStatus.LOST.map((deal) => {
+                    const personName = deal.personId
+                      ? personsById.get(deal.personId)?.name ?? `Person ${deal.personId}`
+                      : null;
+                    return (
+                      <div
+                        key={deal.id}
+                        className={`kanban-card ${selectedDeal?.id === deal.id ? 'selected' : ''}`}
+                        onClick={() => navigate(`/deals/${deal.id}`)}
+                      >
+                        <div className="kanban-card-name">{deal.name || `Deal #${deal.id}`}</div>
+                        {personName && <div className="kanban-card-rsp">RSP: {personName}</div>}
+                        {deal.createdAt && (
+                          <div className="kanban-card-date">{formatDate(deal.createdAt)}</div>
+                        )}
+                        <div className="kanban-card-value">{formatCurrency(deal.value)}</div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="sheet-view">
@@ -1069,20 +1224,15 @@ const Deals = () => {
               <div className="form-row">
                 <div className="form-group">
                   <label className="form-label">Client (Person)</label>
-                  <select
-                    name="personId"
+                  <input
+                    type="text"
+                    name="personName"
                     className="form-input"
-                    value={formData.personId}
+                    value={formData.personName}
                     onChange={handleInputChange}
                     disabled={isSubmitting}
-                  >
-                    <option value="">Select Client</option>
-                    {persons.map((person) => (
-                      <option key={person.id} value={person.id}>
-                        {person.name}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Enter client name"
+                  />
                 </div>
 
                 <div className="form-group">
@@ -1095,7 +1245,7 @@ const Deals = () => {
                     disabled={isSubmitting}
                   >
                     <option value="">Select Organization</option>
-                    {organizations.map((org) => (
+                    {allOrganizations.map((org) => (
                       <option key={org.id} value={org.id}>
                         {org.name}
                       </option>
@@ -1115,7 +1265,7 @@ const Deals = () => {
                     disabled={isSubmitting}
                   >
                     <option value="">Select Pipeline</option>
-                    {pipelines.map((pipeline) => (
+                    {allPipelines.map((pipeline) => (
                       <option key={pipeline.id} value={pipeline.id}>
                         {pipeline.name}
                       </option>
@@ -1130,7 +1280,7 @@ const Deals = () => {
                     className="form-input"
                     value={formData.stageId}
                     onChange={handleInputChange}
-                    disabled={isSubmitting || !formData.pipelineId}
+                    disabled={isSubmitting}
                   >
                     <option value="">Select Stage</option>
                     {stageOptionsForForm.map((stage) => (

@@ -219,6 +219,123 @@
   gap: 16px;
 }
 
+/* Kanban Board Styles */
+.deals-kanban-board {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 16px;
+  width: 100%;
+  min-height: 600px;
+}
+
+.kanban-column {
+  flex: 1;
+  min-width: 280px;
+  max-width: 320px;
+  background: #f9fafb;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  height: fit-content;
+  max-height: calc(100vh - 300px);
+  transition: all 0.2s;
+}
+
+.kanban-column.highlighted {
+  background: #eff6ff;
+  border: 2px solid #3b82f6;
+}
+
+.kanban-column-header {
+  padding: 16px;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  border-radius: 8px 8px 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.kanban-column-title {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.kanban-column-summary {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.kanban-column-content {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kanban-empty {
+  text-align: center;
+  padding: 24px;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.kanban-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.kanban-card:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+  border-color: #9ca3af;
+}
+
+.kanban-card.selected {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.kanban-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.kanban-card-rsp {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.kanban-card-date {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-bottom: 8px;
+}
+
+.kanban-card-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f3f4f6;
+}
+
 /* Modal Styles */
 .modal-overlay {
   position: fixed;
@@ -1137,6 +1254,15 @@
 
   .deals-grid {
     grid-template-columns: 1fr;
+  }
+
+  .deals-kanban-board {
+    flex-direction: column;
+  }
+
+  .kanban-column {
+    min-width: 100%;
+    max-width: 100%;
   }
 
   .deals-sheet-table {

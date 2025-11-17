@@ -17,6 +17,7 @@ export interface Deal {
   updatedAt?: string | null;
   venue?: string | null;
   phoneNumber?: string | null;
+  email?: string | null;
   finalThankYouSent?: boolean | null;
   eventDateAsked?: boolean | null;
   contactNumberAsked?: boolean | null;
@@ -38,6 +39,7 @@ export interface DealCreateRequest {
   commissionAmount?: number | null;
   venue?: string | null;
   phoneNumber?: string | null;
+  email?: string | null;
   finalThankYouSent?: boolean | null;
   eventDateAsked?: boolean | null;
   contactNumberAsked?: boolean | null;

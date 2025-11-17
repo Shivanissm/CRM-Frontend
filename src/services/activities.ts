@@ -34,7 +34,8 @@ export type ActivityCallType = string;
 export interface Activity {
   id: number;
   subject: string;
-  category?: ActivityCategoryValue | null;
+  category?: ActivityCategory | null;
+  type?: string | null;
   priority?: ActivityPriority | null;
   status?: ActivityStatus | null;
   assignedUser?: string | null;

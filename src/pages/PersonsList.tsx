@@ -555,6 +555,45 @@ export default function PersonsList() {
     }
   };
 
+  // Styling for Label pill - same colors as summary labels in PersonDetail
+  const getLabelStyle = (label?: string | null): React.CSSProperties => {
+    const l = (label || '').toUpperCase();
+    // base pill styles (same as source)
+    const base: React.CSSProperties = {
+      display: 'inline-block',
+      padding: '2px 8px',
+      borderRadius: 12,
+      fontSize: 12,
+      fontWeight: 600,
+      border: '1px solid transparent',
+    };
+    
+    // Color mapping matching PersonDetail.tsx getLabelColor function
+    const colorMap: Record<string, { bg: string; text: string; border: string }> = {
+      'CUSTOMER': { bg: '#e8f5e9', text: '#4CAF50', border: '#c8e6c9' },      // Mint green
+      'HOT_LEAD': { bg: '#ffebee', text: '#F44336', border: '#ffcdd2' },      // Red
+      'WARM_LEAD': { bg: '#fffde7', text: '#FFC107', border: '#fff9c4' },     // Yellow
+      'COLD_LEAD': { bg: '#e3f2fd', text: '#2196F3', border: '#bbdefb' },     // Blue
+      'NO_RESPONSE': { bg: '#f3e5f5', text: '#9C27B0', border: '#e1bee7' },   // Purple
+      'PLANNER': { bg: '#fff3e0', text: '#FF9800', border: '#ffe0b2' },       // Orange
+      'WEDDING': { bg: '#f5f5f5', text: '#9E9E9E', border: '#e0e0e0' },       // Light gray
+      'PRE_WEDDING': { bg: '#fce4ec', text: '#E91E63', border: '#f8bbd0' },    // Pink
+      'BRIDAL_MAKEUP': { bg: '#fce4ec', text: '#E91E63', border: '#f8bbd0' }, // Pink (similar to pre-wedding)
+      'PARTY_MAKEUP': { bg: '#fff3e0', text: '#FF9800', border: '#ffe0b2' },   // Orange
+      'ENGAGEMENT': { bg: '#e1f5fe', text: '#00BCD4', border: '#b2ebf2' },     // Cyan
+      'RECEPTION': { bg: '#f3e5f5', text: '#9C27B0', border: '#e1bee7' },      // Purple
+      'OTHER': { bg: '#f5f5f5', text: '#757575', border: '#e0e0e0' },          // Gray
+    };
+
+    const mapped = colorMap[l];
+    if (mapped) {
+      return { ...base, background: mapped.bg, color: mapped.text, borderColor: mapped.border };
+    }
+    
+    // Default style for unknown labels
+    return { ...base, background: '#f1f3f5', color: '#495057', borderColor: '#e9ecef' };
+  };
+
   const getSortField = (): string | null => {
     if (!filters.sort) return null;
     return filters.sort.split(',')[0];
@@ -956,7 +995,16 @@ export default function PersonsList() {
                             case 'category': return person.category || '-';
                             case 'organization': return person.organization || '-';
                             case 'manager': return person.manager || '-';
-                            case 'label': return person.label || '-';
+                            case 'label': {
+                              const val = person.label || '';
+                              if (!val) return '-';
+                              // Try to find the display label from filterMeta
+                              const labelOption = filterMeta?.labelOptions?.find(opt => opt.code === val);
+                              const displayText = labelOption?.label || val.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                              return (
+                                <span style={getLabelStyle(val)}>{displayText}</span>
+                              );
+                            }
                             case 'leadDate': {
                               const leadDate = person.leadDate || person.createdDate;
                               if (!leadDate) {

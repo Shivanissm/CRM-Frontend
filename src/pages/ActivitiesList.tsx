@@ -94,15 +94,67 @@ export default function ActivitiesList() {
     const [dd, mm, yyyy] = parts.map(Number);
     return new Date(yyyy, mm - 1, dd);
   };
+
+  const toBackendDateString = (dateStr?: string): string | undefined => {
+    if (!dateStr) return undefined;
+    if (dateStr.includes('-')) {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+    }
+    return dateStr;
+  };
+
+  const mapActivityTypeToCategory = (activityType?: string): string => {
+    if (!activityType) return getCategoryEnum(category);
+    switch (activityType.toUpperCase()) {
+      case 'CALL':
+        return 'CALL';
+      case 'MEETING':
+      case 'MEETING_SCHEDULER':
+        return 'MEETING_SCHEDULER';
+      case 'FOLLOW_UP':
+      case 'SEND_QUOTES':
+      case 'TASK':
+      case 'OTHER':
+      case 'ACTIVITY':
+      default:
+        return 'ACTIVITY';
+    }
+  };
+
+  const formatActivityTypeLabel = (value?: string | null): string => {
+    if (!value) return '-';
+    return value
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  };
   
+  // Convert category to backend enum format
+  const getCategoryEnum = (cat: string): string => {
+    switch (cat) {
+      case 'Activity':
+        return 'ACTIVITY';
+      case 'Call':
+        return 'CALL';
+      case 'Meeting scheduler':
+        return 'MEETING_SCHEDULER';
+      default:
+        return cat.toUpperCase().replace(/\s+/g, '_');
+    }
+  };
+
   const getDefaultColumnOrder = () => {
     if (category === 'Activity') {
-      return ['Done', 'Subject', 'Deal', 'Instagram ID', 'Phone', 'Organization', 'Due date', 'Assigned user', 'Priority', 'Notes'];
+      return ['Done', 'Subject', 'Type', 'Deal', 'Instagram ID', 'Phone', 'Organization', 'Due date', 'Assigned user', 'Priority', 'Notes'];
     }
     if (category === 'Call') {
-      return ['Done', 'Subject', 'Deal', 'Instagram ID', 'Phone', 'Organization', 'Call type', 'Schedule date', 'Schedule time', 'Assigned user', 'Schedule by', 'Priority', 'Notes'];
+      return ['Done', 'Subject', 'Type', 'Deal', 'Instagram ID', 'Phone', 'Organization', 'Call type', 'Schedule date', 'Schedule time', 'Assigned user', 'Schedule by', 'Priority', 'Notes'];
     }
-    return ['Done', 'Subject', 'Deal', 'Instagram ID', 'Phone', 'Organization', 'Schedule date', 'Schedule time', 'Assigned user', 'Schedule by', 'Priority', 'Notes'];
+    return ['Done', 'Subject', 'Type', 'Deal', 'Instagram ID', 'Phone', 'Organization', 'Schedule date', 'Schedule time', 'Assigned user', 'Schedule by', 'Priority', 'Notes'];
   };
 
   
@@ -145,10 +197,24 @@ export default function ActivitiesList() {
 
   const loadActivities = (customFilters?: ActivityFilters) => {
     setLoading(true);
-    const filtersToUse = customFilters || filters;
-    activitiesApi
-      .list({ ...filtersToUse, category })
-      .then(setData)
+      const filtersToUse = customFilters || filters;
+      // Only apply page category if category is not already specified in filters
+      // If category is explicitly undefined/null, don't apply any category filter
+      const finalFilters = filtersToUse.hasOwnProperty('category') && filtersToUse.category === undefined
+        ? filtersToUse
+        : filtersToUse.category 
+          ? filtersToUse 
+          : { ...filtersToUse, category: getCategoryEnum(category) };
+      const normalizedFilters: ActivityFilters = { ...finalFilters };
+      if (normalizedFilters.dateFrom) {
+        normalizedFilters.dateFrom = toBackendDateString(normalizedFilters.dateFrom);
+      }
+      if (normalizedFilters.dateTo) {
+        normalizedFilters.dateTo = toBackendDateString(normalizedFilters.dateTo);
+      }
+      activitiesApi
+        .list(normalizedFilters)
+        .then(setData)
       .catch((e) => setError(e?.message ?? 'Failed to load'))
       .finally(() => setLoading(false));
   };
@@ -157,23 +223,23 @@ export default function ActivitiesList() {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const todayFormatted = formatDateYYYYMMDD(today);
+      const todayFormatted = formatDateDDMMYYYY(today);
       
       const yesterday = new Date(today);
       yesterday.setDate(today.getDate() - 1);
-      const yesterdayFormatted = formatDateYYYYMMDD(yesterday);
+      const yesterdayFormatted = formatDateDDMMYYYY(yesterday);
 
       // First box (TODAY/Tomorrow/etc): Show activities for the selected tab's date range
-      // If currentFilters has date range, use it; otherwise default to actual today
-      const firstBoxFilters: ActivityFilters = {
-        category,
-        size: 1,
-        page: 0,
+        // If currentFilters has date range, use it; otherwise default to actual today
+        const firstBoxFilters: ActivityFilters = {
+          category: getCategoryEnum(category),
+          size: 1,
+          page: 0,
       };
       
       if (currentFilters?.dateFrom && currentFilters?.dateTo) {
-        firstBoxFilters.dateFrom = currentFilters.dateFrom;
-        firstBoxFilters.dateTo = currentFilters.dateTo;
+        firstBoxFilters.dateFrom = toBackendDateString(currentFilters.dateFrom);
+        firstBoxFilters.dateTo = toBackendDateString(currentFilters.dateTo);
       } else {
         // Default to actual today if no date filters
         firstBoxFilters.dateFrom = todayFormatted;
@@ -185,42 +251,42 @@ export default function ActivitiesList() {
 
       // OVERDUE: Always show actual overdue activities count (regardless of selected tab)
       const overdueResult = await activitiesApi.list({ 
-        dateTo: yesterdayFormatted, 
-        done: false, 
-        category,
-        size: 1 
+          dateTo: yesterdayFormatted, 
+          done: false, 
+          category: getCategoryEnum(category),
+          size: 1
       });
       setOverdueCount(overdueResult.totalElements);
 
-      // COMPLETED: Show completed activities for the selected tab's date range
-      const completedFilters: ActivityFilters = {
-        category,
-        done: true,
-        size: 1,
+        // COMPLETED: Show completed activities for the selected tab's date range
+        const completedFilters: ActivityFilters = {
+          category: getCategoryEnum(category),
+          done: true,
+          size: 1,
         page: 0,
       };
       
       // If currentFilters has date range, use it; otherwise show all completed
       if (currentFilters?.dateFrom && currentFilters?.dateTo) {
-        completedFilters.dateFrom = currentFilters.dateFrom;
-        completedFilters.dateTo = currentFilters.dateTo;
+        completedFilters.dateFrom = toBackendDateString(currentFilters.dateFrom);
+        completedFilters.dateTo = toBackendDateString(currentFilters.dateTo);
       }
       
       const completedResult = await activitiesApi.list(completedFilters);
       setCompletedCount(completedResult.totalElements);
 
-      // PENDING: Show pending activities for the selected tab's date range
-      const pendingFilters: ActivityFilters = {
-        category,
-        done: false,
-        size: 1,
+        // PENDING: Show pending activities for the selected tab's date range
+        const pendingFilters: ActivityFilters = {
+          category: getCategoryEnum(category),
+          done: false,
+          size: 1,
         page: 0,
       };
       
       // If currentFilters has date range, use it; otherwise show all pending
       if (currentFilters?.dateFrom && currentFilters?.dateTo) {
-        pendingFilters.dateFrom = currentFilters.dateFrom;
-        pendingFilters.dateTo = currentFilters.dateTo;
+        pendingFilters.dateFrom = toBackendDateString(currentFilters.dateFrom);
+        pendingFilters.dateTo = toBackendDateString(currentFilters.dateTo);
       }
       
       const pendingResult = await activitiesApi.list(pendingFilters);
@@ -260,27 +326,27 @@ export default function ActivitiesList() {
     let newFilters: ActivityFilters = { page: 0, size: 25 };
 
     if (tab === 'Today') {
-      const todayStr = formatDateYYYYMMDD(today);
+      const todayStr = formatDateDDMMYYYY(today);
       newFilters.dateFrom = todayStr;
       newFilters.dateTo = todayStr;
     } else if (tab === 'Tomorrow') {
-      const tomorrowStr = formatDateYYYYMMDD(tomorrow);
+      const tomorrowStr = formatDateDDMMYYYY(tomorrow);
       newFilters.dateFrom = tomorrowStr;
       newFilters.dateTo = tomorrowStr;
     } else if (tab === 'Overdue') {
       const yesterday = new Date(today);
       yesterday.setDate(today.getDate() - 1);
-      const yesterdayStr = formatDateYYYYMMDD(yesterday);
+      const yesterdayStr = formatDateDDMMYYYY(yesterday);
       newFilters.dateTo = yesterdayStr;
       newFilters.done = false;
     } else if (tab === 'This week') {
-      const weekStartStr = formatDateYYYYMMDD(weekStart);
-      const weekEndStr = formatDateYYYYMMDD(weekEnd);
+      const weekStartStr = formatDateDDMMYYYY(weekStart);
+      const weekEndStr = formatDateDDMMYYYY(weekEnd);
       newFilters.dateFrom = weekStartStr;
       newFilters.dateTo = weekEndStr;
     } else if (tab === 'Next week') {
-      const nextWeekStartStr = formatDateYYYYMMDD(nextWeekStart);
-      const nextWeekEndStr = formatDateYYYYMMDD(nextWeekEnd);
+      const nextWeekStartStr = formatDateDDMMYYYY(nextWeekStart);
+      const nextWeekEndStr = formatDateDDMMYYYY(nextWeekEnd);
       newFilters.dateFrom = nextWeekStartStr;
       newFilters.dateTo = nextWeekEndStr;
     } else if (tab === 'All') {
@@ -310,22 +376,22 @@ export default function ActivitiesList() {
       let newFilters: ActivityFilters = { ...filters };
       
       if (filter.name.includes('today')) {
-        newFilters.dateFrom = today.toISOString().split('T')[0];
-        newFilters.dateTo = today.toISOString().split('T')[0];
+        newFilters.dateFrom = formatDateDDMMYYYY(today);
+        newFilters.dateTo = formatDateDDMMYYYY(today);
       } else if (filter.name.includes('yesterday')) {
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
-        newFilters.dateFrom = yesterday.toISOString().split('T')[0];
-        newFilters.dateTo = yesterday.toISOString().split('T')[0];
+        newFilters.dateFrom = formatDateDDMMYYYY(yesterday);
+        newFilters.dateTo = formatDateDDMMYYYY(yesterday);
       } else if (filter.name.includes('this week')) {
-        newFilters.dateFrom = weekStart.toISOString().split('T')[0];
-        newFilters.dateTo = tomorrow.toISOString().split('T')[0];
+        newFilters.dateFrom = formatDateDDMMYYYY(weekStart);
+        newFilters.dateTo = formatDateDDMMYYYY(tomorrow);
       } else if (filter.name.includes('this month')) {
-        newFilters.dateFrom = monthStart.toISOString().split('T')[0];
-        newFilters.dateTo = tomorrow.toISOString().split('T')[0];
+        newFilters.dateFrom = formatDateDDMMYYYY(monthStart);
+        newFilters.dateTo = formatDateDDMMYYYY(tomorrow);
       } else if (filter.name.includes('last month')) {
-        newFilters.dateFrom = lastMonthStart.toISOString().split('T')[0];
-        newFilters.dateTo = lastMonthEnd.toISOString().split('T')[0];
+        newFilters.dateFrom = formatDateDDMMYYYY(lastMonthStart);
+        newFilters.dateTo = formatDateDDMMYYYY(lastMonthEnd);
       }
 
       setFilters(newFilters);
@@ -356,8 +422,8 @@ export default function ActivitiesList() {
         newFilters.assignedUser = condition.value;
       } else if (condition.field === 'organization') {
         // Organization filtering is handled by backend, skip here
-      } else if (condition.field === 'category') {
-        newFilters.category = condition.value;
+        } else if (condition.field === 'category') {
+          newFilters.category = getCategoryEnum(condition.value);
       } else if (condition.field === 'status') {
         newFilters.status = condition.value;
       } else if (condition.field === 'callType') {
@@ -365,9 +431,9 @@ export default function ActivitiesList() {
       } else if (condition.field === 'done') {
         newFilters.done = condition.value === 'true';
       } else if (condition.field === 'dateFrom') {
-        newFilters.dateFrom = condition.value;
+        newFilters.dateFrom = toBackendDateString(condition.value) ?? undefined;
       } else if (condition.field === 'dateTo') {
-        newFilters.dateTo = condition.value;
+        newFilters.dateTo = toBackendDateString(condition.value) ?? undefined;
       }
     });
 
@@ -387,6 +453,7 @@ export default function ActivitiesList() {
       'Checkbox': 'checkbox',
       'Done': 'done',
       'Subject': 'subject',
+      'Type': 'category',
       'Deal': 'deal',
       'Instagram ID': 'instagramId',
       'Phone': 'phone',
@@ -654,6 +721,17 @@ export default function ActivitiesList() {
             style={{ textDecoration: a.done ? 'line-through' : 'none' }}
           >
             {a.subject}
+          </span>
+        );
+      case 'category':
+        // Prefer type field if present, fallback to category
+        const typeDisplay = formatActivityTypeLabel(a.type || a.category);
+        return (
+          <span 
+            className={statusClass(a)}
+            style={{ textDecoration: a.done ? 'line-through' : 'none' }}
+          >
+            {typeDisplay}
           </span>
         );
       case 'deal':
@@ -1077,25 +1155,46 @@ export default function ActivitiesList() {
             return;
           }
           try {
-            // If no date is provided, default to today's date in dd/MM/yyyy format
+            // If no date is provided, default to today's date in dd/MM/yyyy format (backend format)
             let activityDate = v.date;
             if (!activityDate) {
-              const today = new Date();
-              const dd = String(today.getDate()).padStart(2, '0');
-              const mm = String(today.getMonth() + 1).padStart(2, '0');
-              const yyyy = today.getFullYear();
-              activityDate = `${dd}/${mm}/${yyyy}`;
+              activityDate = formatDateDDMMYYYY(new Date());
+            } else if (activityDate.includes('-')) {
+              // Convert yyyy-MM-dd to dd/MM/yyyy if needed
+              const parts = activityDate.split('-');
+              if (parts.length === 3) {
+                activityDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+              }
             }
-            
+
+            const isoDateForDateTime = (() => {
+              if (!v.date) return undefined;
+              if (v.date.includes('-')) return v.date;
+              if (v.date.includes('/')) {
+                const parts = v.date.split('/');
+                if (parts.length === 3) {
+                  return `${parts[2]}-${parts[1]}-${parts[0]}`;
+                }
+              }
+              return undefined;
+            })();
+
+            const selectedType = v.type || v.category || (category === 'Activity' ? 'ACTIVITY' : getCategoryEnum(category));
+            const parentCategory = mapActivityTypeToCategory(selectedType);
+
             const activityData: Partial<Activity> = {
               subject: v.subject.trim(),
               date: activityDate,
+              dueDate: activityDate, // Set dueDate for filtering
               startTime: v.startTime || undefined,
-              priority: v.priority || undefined,
+              priority: v.priority ? v.priority.toUpperCase() : undefined,
               assignedUser: v.assignedUser || undefined,
               notes: v.notes || undefined,
               organization: v.organization || undefined,
-              category: category,
+              // Use derived category and type
+              category: parentCategory,
+              type: selectedType || undefined,
+              dateTime: isoDateForDateTime ? `${isoDateForDateTime}T${v.startTime || '00:00'}:00` : undefined,
             };
             
             // Only include personId if it's provided and > 0
@@ -1106,13 +1205,18 @@ export default function ActivitiesList() {
             // Only include dealId if it's provided and > 0 (if backend supports it)
             // Note: dealId is not in Activity type, so we'll skip it if not needed
             
-            await activitiesApi.create(activityData);
+            const createdActivity = await activitiesApi.create(activityData);
             // Reset to "All" tab to ensure new activity is visible
             setTab('All');
-            // Clear any date filters that might hide the new activity
-            const newFilters = { page: 0, size: 25, category };
+            // Clear category filter to show the newly created activity
+            // The activity might have a different category than the page filter
+            const newFilters: ActivityFilters = { 
+              page: 0, 
+              size: 25,
+              category: undefined // Explicitly set to undefined to show all activities
+            };
             setFilters(newFilters);
-            // Load activities with the new filters immediately
+            // Load activities without category filter to show the new activity
             loadActivities(newFilters);
             loadCounts(newFilters);
             setIsAddOpen(false);
@@ -1255,10 +1359,12 @@ export default function ActivitiesList() {
               <button
                 onClick={() => {
                   if (dateRange.start && dateRange.end) {
+                    const backendStart = toBackendDateString(dateRange.start);
+                    const backendEnd = toBackendDateString(dateRange.end);
                     setFilters(prev => ({
                       ...prev,
-                      dateFrom: dateRange.start,
-                      dateTo: dateRange.end,
+                      dateFrom: backendStart,
+                      dateTo: backendEnd,
                       page: 0,
                     }));
                     setTab('Select period');
@@ -1495,11 +1601,11 @@ export default function ActivitiesList() {
                 <button
                   onClick={() => {
                     if (selectedSingleDate) {
-                      // selectedSingleDate is already in yyyy-MM-dd format
+                      const backendDate = toBackendDateString(selectedSingleDate);
                       setFilters(prev => ({
                         ...prev,
-                        dateFrom: selectedSingleDate,
-                        dateTo: selectedSingleDate,
+                        dateFrom: backendDate,
+                        dateTo: backendDate,
                         page: 0,
                       }));
                       setTab('Select Date');
