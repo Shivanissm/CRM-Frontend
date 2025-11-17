@@ -1205,7 +1205,7 @@ export default function ActivitiesList() {
             // Only include dealId if it's provided and > 0 (if backend supports it)
             // Note: dealId is not in Activity type, so we'll skip it if not needed
             
-            const createdActivity = await activitiesApi.create(activityData);
+            await activitiesApi.create(activityData);
             // Reset to "All" tab to ensure new activity is visible
             setTab('All');
             // Clear category filter to show the newly created activity

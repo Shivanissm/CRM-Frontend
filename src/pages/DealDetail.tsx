@@ -9,7 +9,7 @@ import { clearAuthSession } from '../utils/authToken';
 import type { Deal, DealCreateRequest } from '../types/deal';
 import type { Person } from '../types/person';
 import type { Organization } from '../types/organization';
-import type { Pipeline, Stage } from '../types/pipeline';
+import type { Pipeline } from '../types/pipeline';
 import ActivityModal, { type ActivityFormValues } from '../components/ActivityModal';
 import './DealDetail.css';
 
@@ -31,7 +31,7 @@ export default function DealDetail() {
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
-  const [focusedActivities, setFocusedActivities] = useState<Set<number>>(new Set());
+  const [_focusedActivities, _setFocusedActivities] = useState<Set<number>>(new Set());
   const [expandAllFocus, setExpandAllFocus] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
 
@@ -41,11 +41,11 @@ export default function DealDetail() {
   const [eventInfoExpanded, setEventInfoExpanded] = useState(true);
   const [additionalInfoExpanded, setAdditionalInfoExpanded] = useState(true);
   const [overviewExpanded, setOverviewExpanded] = useState(true);
-  const [focusExpanded, setFocusExpanded] = useState(true);
+  const [_focusExpanded, _setFocusExpanded] = useState(true);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [eventDatePickerOpen, setEventDatePickerOpen] = useState(false);
-  const [eventDateCalendarMonth, setEventDateCalendarMonth] = useState(new Date());
+  const [_eventDateCalendarMonth, _setEventDateCalendarMonth] = useState(new Date());
 
   // Form state
   const [formData, setFormData] = useState<{
@@ -181,7 +181,7 @@ export default function DealDetail() {
         organizationId: dealData.organizationId || null, // Use deal's organizationId, not person's
         pipelineId: dealData.pipelineId || null,
         stageId: dealData.stageId || null,
-        categoryId: dealData.categoryId || null,
+        categoryId: typeof dealData.categoryId === 'number' ? dealData.categoryId : (typeof dealData.categoryId === 'string' ? Number(dealData.categoryId) || null : null),
         eventType: dealData.eventType || '',
         venue: dealData.venue || '',
         phoneNumber: dealData.phoneNumber || personPhone || '',
@@ -226,13 +226,6 @@ export default function DealDetail() {
       hour: '2-digit',
       minute: '2-digit'
     });
-  };
-
-  const formatDateDDMMYYYY = (date: Date): string => {
-    const d = String(date.getDate()).padStart(2, '0');
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const y = date.getFullYear();
-    return `${d}/${m}/${y}`;
   };
 
   const formatCurrency = (value: number | null | undefined): string => {
@@ -348,16 +341,6 @@ export default function DealDetail() {
     return date < today;
   };
 
-  // Check if activity is in the future
-  const isFuture = (dateStr: string | null | undefined): boolean => {
-    const date = parseActivityDate(dateStr);
-    if (!date) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    date.setHours(0, 0, 0, 0);
-    return date > today;
-  };
-
   // Get activity color class based on date
   const getActivityColorClass = (activity: Activity): string => {
     const dateStr = activity.date || activity.dueDate;
@@ -425,19 +408,6 @@ export default function DealDetail() {
       document.removeEventListener('click', handleClickOutside);
     };
   }, [openMenuId]);
-
-  // Toggle focus on activity (for manual focus toggle, not done status)
-  const toggleFocus = (activityId: number) => {
-    setFocusedActivities((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(activityId)) {
-        newSet.delete(activityId);
-      } else {
-        newSet.add(activityId);
-      }
-      return newSet;
-    });
-  };
 
   // Get activities for Focus section (only activities that are NOT done)
   const getFocusActivities = (): Activity[] => {
@@ -546,7 +516,7 @@ export default function DealDetail() {
         organizationId: deal.organizationId || null,
         pipelineId: deal.pipelineId || null,
         stageId: deal.stageId || null,
-        categoryId: deal.categoryId || null,
+        categoryId: typeof deal.categoryId === 'number' ? deal.categoryId : (typeof deal.categoryId === 'string' ? Number(deal.categoryId) || null : null),
         eventType: deal.eventType || '',
         venue: deal.venue || '',
         phoneNumber: deal.phoneNumber || '',
@@ -580,19 +550,6 @@ export default function DealDetail() {
     if (!formData.stageId || !selectedPipeline) return null;
     return selectedPipeline.stages?.find((s) => s.id === formData.stageId) || null;
   }, [formData.stageId, selectedPipeline]);
-
-  const categoryOptions = useMemo(() => {
-    return [
-      { id: 1, name: 'Photography' },
-      { id: 2, name: 'Makeup' },
-      { id: 3, name: 'Planning & Decor' },
-    ];
-  }, []);
-
-  const selectedCategory = useMemo(() => {
-    if (!formData.categoryId) return null;
-    return categoryOptions.find((cat) => cat.id === formData.categoryId) || null;
-  }, [formData.categoryId, categoryOptions]);
 
   const statusColors: Record<string, string> = {
     WON: '#10b981',

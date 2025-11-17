@@ -45,11 +45,12 @@ const initialFormState: DealFormState = {
   eventDate: '',
 };
 
-const statusColors: Record<DealStatus, string> = {
-  WON: '#10b981',
-  LOST: '#ef4444',
-  IN_PROGRESS: '#8b5cf6',
-};
+// Unused - kept for potential future use
+// const statusColors: Record<DealStatus, string> = {
+//   WON: '#10b981',
+//   LOST: '#ef4444',
+//   IN_PROGRESS: '#8b5cf6',
+// };
 
 const Deals = () => {
   const location = useLocation();

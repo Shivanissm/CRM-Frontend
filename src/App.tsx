@@ -10,14 +10,13 @@ import Organizations from './pages/Organizations';
 import Users from './pages/Users';
 import Login from './pages/Login';
 import AppLayout from './components/AppLayout';
-import { getStoredToken, getStoredUser } from './utils/authToken';
+import { getStoredToken } from './utils/authToken';
 import './App.css';
 import AcceptInvitation from './pages/AcceptInvitation';
 import ResetPassword from './pages/ResetPassword';
 import SalesDashboard from './pages/SalesDashboard';
 import CategoryManagerDashboard from './pages/CategoryManagerDashboard';
 import PreSalesDashboard from './pages/PreSalesDashboard';
-import { resolveRoleDashboardRoute } from './utils/roleRoutes';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const location = useLocation();
@@ -29,22 +28,23 @@ function RequireAuth({ children }: { children: JSX.Element }) {
   return children;
 }
 
-function RequireGuest({ children }: { children: JSX.Element }) {
-  const token = getStoredToken();
-  if (token) {
-    return <Navigate to="/persons" replace />;
-  }
-  return children;
-}
+// Unused components - kept for potential future use
+// function RequireGuest({ children }: { children: JSX.Element }) {
+//   const token = getStoredToken();
+//   if (token) {
+//     return <Navigate to="/persons" replace />;
+//   }
+//   return children;
+// }
 
-function RoleAwareHome() {
-  const storedUser = getStoredUser();
-  const dashboardRoute = resolveRoleDashboardRoute(storedUser?.role);
-  if (dashboardRoute && dashboardRoute !== '/') {
-    return <Navigate to={dashboardRoute} replace />;
-  }
-  return <PersonsList />;
-}
+// function RoleAwareHome() {
+//   const storedUser = getStoredUser();
+//   const dashboardRoute = resolveRoleDashboardRoute(storedUser?.role);
+//   if (dashboardRoute && dashboardRoute !== '/') {
+//     return <Navigate to={dashboardRoute} replace />;
+//   }
+//   return <PersonsList />;
+// }
 
 function App() {
   return (

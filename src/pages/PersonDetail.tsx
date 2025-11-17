@@ -20,9 +20,9 @@ export default function PersonDetail() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('Activity');
-  const [filterMeta, setFilterMeta] = useState<FilterMeta | null>(null);
+  const [_filterMeta, setFilterMeta] = useState<FilterMeta | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [owners, setOwners] = useState<PersonOwner[]>([]);
+  const [_owners, setOwners] = useState<PersonOwner[]>([]);
   const [labels, setLabels] = useState<PersonLabelOption[]>([]);
   const [sources, setSources] = useState<PersonSourceOption[]>([]);
 
@@ -31,7 +31,7 @@ export default function PersonDetail() {
   const [weddingDetailsExpanded, setWeddingDetailsExpanded] = useState(true);
   const [organizationExpanded, setOrganizationExpanded] = useState(true);
   const [dealsExpanded, setDealsExpanded] = useState(false);
-  const [focusExpanded, setFocusExpanded] = useState(true);
+  const [_focusExpanded, _setFocusExpanded] = useState(true);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const [weddingDetailsMenuOpen, setWeddingDetailsMenuOpen] = useState(false);
   const [showOnlyFilledFields, setShowOnlyFilledFields] = useState(false);
@@ -158,24 +158,6 @@ export default function PersonDetail() {
     return dateStr;
   };
 
-  const formatDateForDisplay = (dateStr?: string): string => {
-    if (!dateStr) return '';
-    try {
-      let date: Date;
-      if (dateStr.includes('/')) {
-        const [d, m, y] = dateStr.split('/');
-        date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
-      } else if (dateStr.includes('-')) {
-        date = new Date(dateStr);
-      } else {
-        return dateStr;
-      }
-      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    } catch {
-      return dateStr;
-    }
-  };
-
   const formatDateDDMMYYYY = (date: Date): string => {
     const dd = String(date.getDate()).padStart(2, '0');
     const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -193,8 +175,9 @@ export default function PersonDetail() {
   // Load all deals for this person
   const loadPersonDeals = async (personId: number) => {
     try {
-      const response = await dealsApi.list({ personId, page: 0, size: 100 });
-      setDeals(response.content || []);
+      const allDeals = await dealsApi.list();
+      const personDeals = allDeals.filter(deal => deal.personId === personId);
+      setDeals(personDeals);
     } catch (error) {
       console.error('Failed to load person deals:', error);
     }
@@ -261,16 +244,6 @@ export default function PersonDetail() {
     today.setHours(0, 0, 0, 0);
     date.setHours(0, 0, 0, 0);
     return date < today;
-  };
-
-  // Check if activity is in the future
-  const isFuture = (dateStr: string | null | undefined): boolean => {
-    const date = parseActivityDate(dateStr);
-    if (!date) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    date.setHours(0, 0, 0, 0);
-    return date > today;
   };
 
   // Get activity color class based on date
@@ -353,13 +326,12 @@ export default function PersonDetail() {
     try {
       const activityData: any = {
         subject: values.subject || '',
-        description: values.description || '',
         category: values.category || 'ACTIVITY',
         type: values.type || null,
         priority: values.priority ? values.priority.toUpperCase() : null,
         personId: id ? Number(id) : null,
         dealId: values.dealId || null,
-        organizationId: values.organizationId || null,
+        organization: values.organization || null,
         assignedUserId: values.assignedUser ? Number(values.assignedUser) : null,
         date: values.date || null,
         dueDate: values.date || null,
@@ -487,7 +459,7 @@ export default function PersonDetail() {
     return <div className="person-detail-error">Person not found</div>;
   }
 
-  const { person, dealsCount } = summary;
+  const { person: _person } = summary;
   const selectedOrganization = organizations.find(org => org.id === formData.organizationId);
 
   const labelColors = [
@@ -1760,9 +1732,7 @@ export default function PersonDetail() {
         isOpen={isActivityModalOpen}
         onClose={() => setIsActivityModalOpen(false)}
         onSave={handleCreateActivity}
-        initialDealId={deals.length > 0 ? deals[0].id : undefined}
-        initialPersonId={id ? Number(id) : undefined}
-        initialOrganizationId={summary?.person?.organizationId || undefined}
+        initialOrganization={summary?.person?.organization || undefined}
       />
     </div>
   );
