@@ -1,30 +1,36 @@
 .pipelines-page {
-  padding: 28px;
-  max-width: 1200px;
+  padding: 32px;
+  max-width: 1400px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 28px;
+  background: #f8faf9;
+  min-height: 100vh;
 }
 
 .pipelines-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 20px;
+  gap: 24px;
+  background: transparent;
+  padding: 0;
 }
 
 .pipelines-header h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 700;
-  color: #1f3a2d;
+  color: #0f2027;
+  letter-spacing: -0.5px;
 }
 
 .pipelines-header p {
-  margin: 4px 0 0;
-  color: #4a5d50;
-  font-size: 14px;
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 15px;
+  line-height: 1.5;
 }
 
 .pipelines-header-actions {
@@ -35,22 +41,24 @@
 
 .pipelines-add,
 .pipelines-refresh {
-  padding: 8px 16px;
-  border-radius: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
   font-size: 14px;
   font-weight: 600;
-  border: 1px solid #cdebd8;
-  background: #ffffff;
-  color: #245c37;
+  border: none;
+  background: linear-gradient(135deg, #245c37 0%, #2d7a47 100%);
+  color: #ffffff;
   cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(36, 92, 55, 0.2);
+  letter-spacing: 0.3px;
 }
 
 .pipelines-add:hover,
 .pipelines-refresh:hover:not(:disabled) {
-  background: #f6fff9;
-  color: #1f6f3e;
-  box-shadow: 0 2px 6px rgba(36, 92, 55, 0.12);
+  background: linear-gradient(135deg, #2d7a47 0%, #1f6f3e 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(36, 92, 55, 0.3);
 }
 
 .pipelines-refresh:disabled {
@@ -74,10 +82,248 @@
   color: #4a5d50;
 }
 
-.pipelines-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+.pipelines-filters {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 0;
+  background: transparent;
+}
+
+.pipeline-filter-select {
+  padding: 10px 16px;
+  border: 2px solid #e2e8f0;
+  background: #ffffff;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1e293b;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 180px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+.pipeline-filter-select:hover {
+  border-color: #245c37;
+  background: #f8faf9;
+  box-shadow: 0 2px 4px rgba(36, 92, 55, 0.1);
+}
+
+.pipeline-filter-select:focus {
+  outline: none;
+  border-color: #245c37;
+  box-shadow: 0 0 0 4px rgba(36, 92, 55, 0.15);
+  background: #ffffff;
+}
+
+.pipelines-kanban {
+  display: flex;
+  flex-direction: column;
   gap: 20px;
+}
+
+.pipeline-kanban-header {
+  background: linear-gradient(135deg, #ffffff 0%, #f8faf9 100%);
+  border-radius: 16px;
+  border: 1px solid rgba(205, 235, 216, 0.4);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04);
+  padding: 24px 28px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.pipeline-kanban-board {
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  padding: 8px 4px 16px 4px;
+  min-height: 500px;
+  scrollbar-width: thin;
+  scrollbar-color: #cdebd8 #f8faf9;
+}
+
+.pipeline-kanban-board::-webkit-scrollbar {
+  height: 8px;
+}
+
+.pipeline-kanban-board::-webkit-scrollbar-track {
+  background: #f8faf9;
+  border-radius: 4px;
+}
+
+.pipeline-kanban-board::-webkit-scrollbar-thumb {
+  background: #cdebd8;
+  border-radius: 4px;
+}
+
+.pipeline-kanban-board::-webkit-scrollbar-thumb:hover {
+  background: #a8d4b8;
+}
+
+.pipeline-kanban-column {
+  flex: 0 0 300px;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pipeline-kanban-column:hover {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.1), 0 2px 6px rgba(15, 23, 42, 0.06);
+  transform: translateY(-2px);
+}
+
+.pipeline-kanban-column.inactive {
+  opacity: 0.6;
+  background: #f1f3f5;
+}
+
+.pipeline-kanban-column.drag-over {
+  background: linear-gradient(135deg, #e8f5e9 0%, #d4edda 100%);
+  border-color: #245c37;
+  border-width: 2px;
+  box-shadow: 0 0 0 4px rgba(36, 92, 55, 0.25), 0 8px 24px rgba(36, 92, 55, 0.15);
+  transform: scale(1.02);
+}
+
+.pipeline-kanban-column.inactive.drag-over {
+  background: #f1f3f5;
+  border-color: #9ca3af;
+  box-shadow: 0 0 0 3px rgba(156, 163, 175, 0.2);
+}
+
+.pipeline-kanban-column-header {
+  padding: 18px 20px;
+  background: linear-gradient(135deg, #f8faf9 0%, #ffffff 100%);
+  border-bottom: 2px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pipeline-kanban-column-content {
+  flex: 1;
+  padding: 16px;
+  min-height: 250px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #fafbfc;
+  scrollbar-width: thin;
+  scrollbar-color: #cdebd8 #f8faf9;
+}
+
+.pipeline-kanban-column-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pipeline-kanban-column-content::-webkit-scrollbar-track {
+  background: #f8faf9;
+}
+
+.pipeline-kanban-column-content::-webkit-scrollbar-thumb {
+  background: #cdebd8;
+  border-radius: 3px;
+}
+
+.pipeline-kanban-column-content::-webkit-scrollbar-thumb:hover {
+  background: #a8d4b8;
+}
+
+.pipeline-deal-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #245c37;
+  border-radius: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  position: relative;
+  overflow: hidden;
+}
+
+.pipeline-deal-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: linear-gradient(180deg, #245c37 0%, #2d7a47 100%);
+  transition: width 0.3s ease;
+}
+
+.pipeline-deal-card:hover {
+  box-shadow: 0 4px 12px rgba(36, 92, 55, 0.15), 0 2px 4px rgba(15, 23, 42, 0.08);
+  transform: translateY(-2px);
+  border-color: #245c37;
+  background: #f8faf9;
+}
+
+.pipeline-deal-card:hover::before {
+  width: 4px;
+}
+
+.pipeline-deal-card.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.pipeline-deal-card[draggable="true"] {
+  cursor: grab;
+}
+
+.pipeline-deal-card[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.pipeline-deal-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f2027;
+  margin-bottom: 8px;
+  line-height: 1.5;
+  letter-spacing: -0.2px;
+}
+
+.pipeline-deal-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #245c37;
+  margin-bottom: 6px;
+}
+
+.pipeline-deal-org {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #e2e8f0;
+  font-weight: 500;
+}
+
+.pipeline-deal-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+  font-style: italic;
+  background: #f8faf9;
+  border-radius: 8px;
 }
 
 .pipeline-card {
@@ -114,10 +360,11 @@
 .pipeline-card-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 6px;
-  font-size: 12px;
-  color: #54665c;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
 }
 
 .pipeline-badge {
@@ -140,13 +387,15 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
+  margin-top: 10px;
+  padding: 6px 14px;
+  border-radius: 20px;
   font-size: 12px;
-  font-weight: 600;
-  background: rgba(40, 167, 69, 0.12);
-  color: #218838;
+  font-weight: 700;
+  background: linear-gradient(135deg, rgba(36, 92, 55, 0.1) 0%, rgba(45, 122, 71, 0.15) 100%);
+  color: #245c37;
+  border: 1px solid rgba(36, 92, 55, 0.2);
+  letter-spacing: 0.3px;
 }
 
 .pipeline-card-actions {
@@ -157,21 +406,24 @@
 }
 
 .pipeline-action {
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 1px solid #cdebd8;
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
   background: #ffffff;
-  color: #245c37;
+  color: #475569;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: 0.2px;
 }
 
 .pipeline-action:hover {
-  background: #f6fff9;
-  color: #1f6f3e;
-  box-shadow: 0 2px 6px rgba(36, 92, 55, 0.12);
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.1);
+  transform: translateY(-1px);
 }
 
 .pipeline-action.danger {
@@ -221,9 +473,11 @@
 }
 
 .pipeline-stage-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1f3a2d;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f2027;
+  letter-spacing: -0.3px;
+  margin-bottom: 4px;
 }
 
 .pipeline-stage-order {
@@ -250,20 +504,28 @@
   justify-content: flex-start;
 }
 
+.pipeline-kanban-column-header .pipeline-stage-actions {
+  margin-top: 8px;
+}
+
 .stage-action-button {
-  padding: 6px 10px;
+  padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid #cdebd8;
+  border: 1px solid #e2e8f0;
   background: #ffffff;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #475569;
+  letter-spacing: 0.2px;
 }
 
 .stage-action-button:hover:not(:disabled) {
-  background: #f6fff9;
-  box-shadow: 0 2px 6px rgba(36, 92, 55, 0.12);
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
 }
 
 .stage-action-button:disabled {
@@ -318,6 +580,34 @@
   .pipeline-stage-actions {
     flex-wrap: wrap;
     justify-content: flex-end;
+  }
+
+  .pipelines-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pipeline-filter-select {
+    width: 100%;
+    min-width: unset;
+  }
+
+  .pipeline-kanban-board {
+    gap: 12px;
+  }
+
+  .pipeline-kanban-column {
+    flex: 0 0 240px;
+  }
+
+  .pipeline-kanban-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pipeline-card-actions {
+    width: 100%;
+    flex-wrap: wrap;
   }
 }
 
