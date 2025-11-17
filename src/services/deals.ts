@@ -1,6 +1,7 @@
 import axios from 'axios';
 import {
   type Deal,
+  type DealCategory,
   type DealCreateRequest,
   type DealStageUpdateRequest,
   type DealStatus,
@@ -52,6 +53,11 @@ export const dealsApi = {
   list: async (): Promise<Deal[]> => {
     const response = await api.get('');
     return unwrap<Deal[]>(response.data);
+  },
+
+  listCategories: async (): Promise<DealCategory[]> => {
+    const response = await api.get('/categories');
+    return unwrap<DealCategory[]>(response.data);
   },
 
   listByStatus: async (status: DealStatus): Promise<Deal[]> => {

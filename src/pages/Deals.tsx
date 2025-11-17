@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import './Deals.css';
 import { dealsApi } from '../services/deals';
 import type { Deal, DealStatus } from '../types/deal';
+import type { OrganizationCategory } from '../types/organization';
 import { organizationsApi } from '../services/organizations';
 import type { Organization } from '../types/organization';
 import { pipelinesApi } from '../services/pipelines';
@@ -26,7 +27,6 @@ interface DealFormState {
   venue: string;
   phoneNumber: string;
   eventDate: string;
-  commissionAmount: string;
 }
 
 const initialFormState: DealFormState = {
@@ -43,7 +43,6 @@ const initialFormState: DealFormState = {
   venue: '',
   phoneNumber: '',
   eventDate: '',
-  commissionAmount: '',
 };
 
 const statusColors: Record<DealStatus, string> = {
@@ -76,6 +75,11 @@ const Deals = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [modalError, setModalError] = useState<string | null>(null);
   const [actionInFlight, setActionInFlight] = useState<{ dealId: number; type: 'status' | 'stage' } | null>(null);
+  const [deleteLoadingId, setDeleteLoadingId] = useState<number | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [selectedDealIds, setSelectedDealIds] = useState<Set<number>>(new Set());
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+  const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null);
 
   const loadDeals = useCallback(async (preserveDealId?: number | null) => {
     setLoading(true);
@@ -83,6 +87,16 @@ const Deals = () => {
       // Always load all deals for kanban board view
       const data = await dealsApi.list();
       setDeals(data);
+      setSelectedDealIds((prev) => {
+        if (prev.size === 0) return prev;
+        const next = new Set<number>();
+        data.forEach((deal) => {
+          if (prev.has(deal.id)) {
+            next.add(deal.id);
+          }
+        });
+        return next;
+      });
       if (preserveDealId) {
         const match = data.find((deal) => deal.id === preserveDealId) ?? null;
         setSelectedDeal(match);
@@ -124,6 +138,40 @@ const Deals = () => {
     }
   }, [location.state]);
 
+  const fetchCategories = async (force = false) => {
+    if (categoryLoading) return;
+    if (!force && categoriesFetched) return;
+    setCategoryLoading(true);
+    setCategoryError(null);
+    try {
+      const categories = await organizationsApi.listCategories();
+      const normalized: Array<{ id: string; label: string }> = [];
+      categories.forEach((category: OrganizationCategory) => {
+        const code = String(category.code ?? '').trim();
+        if (code.length === 0) {
+          return;
+        }
+        const label = category.label ?? code;
+        if (!normalized.some((option) => option.id === code)) {
+          normalized.push({ id: code, label });
+        }
+      });
+
+      if (normalized.length > 0) {
+        setCategoryOptions(normalized);
+        setCategoriesFetched(true);
+      } else if (force) {
+        setCategoryOptions([]);
+        setCategoriesFetched(false);
+      }
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'Failed to load categories.';
+      setCategoryError(message);
+    } finally {
+      setCategoryLoading(false);
+    }
+  };
+
   useEffect(() => {
     const fetchReferenceData = async () => {
       try {
@@ -153,6 +201,8 @@ const Deals = () => {
     };
 
     fetchReferenceData();
+    void fetchCategories(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -239,6 +289,14 @@ const Deals = () => {
       { id: 3, name: 'Planning & Decor' },
     ];
   }, []);
+
+  const categoryLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    (categoryOptions.length > 0 ? categoryOptions : fallbackCategoryOptions).forEach((option) =>
+      map.set(option.id, option.label),
+    );
+    return map;
+  }, [categoryOptions, fallbackCategoryOptions]);
 
   const filteredDeals = useMemo(() => {
     return deals.filter((deal) => {
@@ -327,6 +385,7 @@ const Deals = () => {
     
     setFormData(initialData);
     setModalError(null);
+    setDetailError(null);
     setIsModalOpen(true);
     
     // Clear the state after using it
@@ -340,6 +399,7 @@ const Deals = () => {
       return;
     }
     setIsModalOpen(false);
+    setDetailError(null);
   };
 
   const handleInputChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -381,9 +441,8 @@ const Deals = () => {
       pipelineId: formData.pipelineId ? Number(formData.pipelineId) : undefined,
       stageId: formData.stageId ? Number(formData.stageId) : undefined,
       organizationId: formData.organizationId ? Number(formData.organizationId) : undefined,
-      categoryId: formData.categoryId ? Number(formData.categoryId) : undefined,
+      categoryId: resolvedCategory,
       eventType: formData.eventType ? formData.eventType : undefined,
-      commissionAmount: formData.commissionAmount ? Number(formData.commissionAmount) : undefined,
       venue: formData.venue ? formData.venue : undefined,
       phoneNumber: formData.phoneNumber ? formData.phoneNumber : undefined,
       eventDate: formData.eventDate ? formData.eventDate : undefined,
@@ -435,6 +494,99 @@ const Deals = () => {
 
   const isLoadingAction = (dealId: number, type: 'status' | 'stage') =>
     actionInFlight?.dealId === dealId && actionInFlight?.type === type;
+
+  const toggleDealSelection = (dealId: number, checked: boolean) => {
+    setBulkDeleteError(null);
+    setSelectedDealIds((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(dealId);
+      } else {
+        next.delete(dealId);
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setBulkDeleteError(null);
+    setSelectedDealIds(new Set());
+  };
+  const hasSelection = selectedDealIds.size > 0;
+  const allFilteredSelected = filteredDeals.length > 0 && filteredDeals.every((deal) => selectedDealIds.has(deal.id));
+
+  const selectAllFiltered = useCallback(() => {
+    if (filteredDeals.length === 0) return;
+    setBulkDeleteError(null);
+    setSelectedDealIds(new Set(filteredDeals.map((deal) => deal.id)));
+  }, [filteredDeals]);
+
+  const handleBulkDelete = async () => {
+    if (!hasSelection || bulkDeleteLoading) return;
+    const ids = Array.from(selectedDealIds);
+    const confirmed = window.confirm(
+      `Delete ${ids.length} selected deal${ids.length > 1 ? 's' : ''}? This action cannot be undone.`,
+    );
+    if (!confirmed) return;
+    setBulkDeleteLoading(true);
+    setBulkDeleteError(null);
+    const failures: Array<{ id: number; message: string }> = [];
+    for (const id of ids) {
+      try {
+        await dealsApi.remove(id);
+        setDeals((prev) => prev.filter((deal) => deal.id !== id));
+        setSelectedDeal((prev) => (prev && prev.id === id ? null : prev));
+      } catch (err: any) {
+        const message = err?.response?.data?.message || err?.message || 'Failed to delete deal.';
+        failures.push({ id, message });
+      }
+    }
+    setBulkDeleteLoading(false);
+    if (failures.length > 0) {
+      setBulkDeleteError(
+        failures.length === ids.length
+          ? failures[0]?.message ?? 'Failed to delete selected deals.'
+          : `Deleted ${ids.length - failures.length} deals, but ${failures.length} failed.`,
+      );
+    } else {
+      setBulkDeleteError(null);
+    }
+    clearSelection();
+  };
+
+  useEffect(() => {
+    if (selectedDealIds.size === 0) return;
+    setBulkDeleteError(null);
+    setSelectedDealIds(new Set());
+  }, [filterStatus, filterOrganization, filterCategory, filterPerson]);
+
+  const handleDeleteDeal = async (deal: Deal) => {
+    const label = deal.name?.trim().length ? `“${deal.name.trim()}”` : `Deal #${deal.id}`;
+    const confirmed = window.confirm(`Delete ${label}? This action cannot be undone.`);
+    if (!confirmed) return;
+  if (bulkDeleteLoading) return;
+    setDeleteLoadingId(deal.id);
+    setDetailError(null);
+    try {
+      await dealsApi.remove(deal.id);
+      setDeals((prev) => prev.filter((item) => item.id !== deal.id));
+      setSelectedDeal((prev) => (prev && prev.id === deal.id ? null : prev));
+    setSelectedDealIds((prev) => {
+      if (!prev.has(deal.id)) return prev;
+      const next = new Set(prev);
+      next.delete(deal.id);
+      return next;
+    });
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'Failed to delete deal.';
+      setDetailError(message);
+      if (viewMode !== 'grid') {
+        window.alert(message);
+      }
+    } finally {
+      setDeleteLoadingId(null);
+    }
+  };
 
   const selectedDealPipeline = selectedDeal?.pipelineId
     ? pipelinesById.get(selectedDeal.pipelineId) ?? null
@@ -513,6 +665,32 @@ const Deals = () => {
             <button className="deals-add-btn" onClick={handleOpenModal}>
               + New Deal
             </button>
+            <button
+              className="deals-delete-selected-btn"
+              onClick={() => void handleBulkDelete()}
+              disabled={!hasSelection || bulkDeleteLoading}
+            >
+              {bulkDeleteLoading ? 'Deleting…' : 'Delete selected'}
+            </button>
+            <button
+              className="deals-select-all-btn"
+              onClick={selectAllFiltered}
+              disabled={filteredDeals.length === 0 || allFilteredSelected || bulkDeleteLoading}
+            >
+              Select all
+            </button>
+            {hasSelection && (
+              <button
+                className="deals-clear-selection-btn"
+                onClick={clearSelection}
+                disabled={bulkDeleteLoading}
+              >
+                Clear selection
+              </button>
+            )}
+            {hasSelection && (
+              <span className="deals-selection-count">{selectedDealIds.size} selected</span>
+            )}
           </div>
         </div>
         <div className="deals-header-bottom">
@@ -556,15 +734,28 @@ const Deals = () => {
           </select>
           <select
             className="filter-select"
-            value={filterCategory ?? ''}
-            onChange={(event) => setFilterCategory(event.target.value === '' ? null : Number(event.target.value))}
+            value={filterCategory != null ? String(filterCategory) : ''}
+            onChange={(event) => {
+              const { value } = event.target;
+              if (value === '') {
+                setFilterCategory(null);
+                return;
+              }
+              setFilterCategory(value);
+            }}
           >
             <option value="">All Categories</option>
-            {categoryOptions.map((cat) => (
+            {categoryOptions.length === 0
+              ? fallbackCategoryOptions.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.label}
+                  </option>
+                ))
+              : categoryOptions.map((cat) => (
               <option key={cat.id} value={cat.id}>
-                {cat.name}
+                {cat.label}
               </option>
-            ))}
+                ))}
           </select>
           <select
             className="filter-select"
@@ -581,7 +772,15 @@ const Deals = () => {
         </div>
       </div>
 
+      {bulkDeleteError && <div className="deals-inline-error">{bulkDeleteError}</div>}
+
       <div className="deals-content">
+        {bulkDeleteLoading && (
+          <div className="deals-loading-overlay" role="status" aria-live="polite">
+            <div className="deals-loading-spinner" />
+            <span>Deleting selected deals…</span>
+          </div>
+        )}
         {viewMode === 'grid' ? (
           <div className="deals-kanban-board">
             {/* All Column */}
@@ -729,6 +928,21 @@ const Deals = () => {
             <table className="deals-sheet-table">
               <thead>
                 <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      className="deals-sheet-select-all"
+                      checked={allFilteredSelected}
+                      onChange={(event) => {
+                        if (event.target.checked) {
+                          selectAllFiltered();
+                        } else {
+                          clearSelection();
+                        }
+                      }}
+                      aria-label="Select all deals"
+                    />
+                  </th>
                   <th>Name</th>
                   <th>Value</th>
                   <th>Status</th>
@@ -740,17 +954,19 @@ const Deals = () => {
                   <th>Event Type</th>
                   <th>Phone</th>
                   <th>Created</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 {filteredDeals.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="deals-empty-cell">
+                    <td colSpan={12} className="deals-empty-cell">
                       No deals found
                     </td>
                   </tr>
                 ) : (
                   filteredDeals.map((deal) => {
+                    const isSelected = selectedDealIds.has(deal.id);
                     const orgName = deal.organizationId
                       ? organizationsById.get(deal.organizationId)?.name ?? `Organization ${deal.organizationId}`
                       : '—';
@@ -759,11 +975,20 @@ const Deals = () => {
                       : '—';
                     const categoryLabel =
                       deal.categoryId != null
-                        ? categoryOptions.find((category) => category.id === deal.categoryId)?.name ??
+                        ? categoryLabelById.get(String(deal.categoryId)) ??
                           `Category ${deal.categoryId}`
                         : '—';
                     return (
                       <tr key={deal.id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            className="deals-sheet-checkbox"
+                            checked={isSelected}
+                            onChange={(event) => toggleDealSelection(deal.id, event.target.checked)}
+                            aria-label={`Select ${deal.name || `Deal ${deal.id}`}`}
+                          />
+                        </td>
                         <td>{deal.name || `Deal #${deal.id}`}</td>
                         <td>{formatCurrency(deal.value)}</td>
                         <td>{deal.status}</td>
@@ -775,6 +1000,18 @@ const Deals = () => {
                         <td>{deal.eventType || '—'}</td>
                         <td>{deal.phoneNumber || '—'}</td>
                         <td>{formatDate(deal.createdAt)}</td>
+                        <td>
+                          <button
+                            className="deals-table-delete"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleDeleteDeal(deal);
+                            }}
+                            disabled={deleteLoadingId === deal.id || bulkDeleteLoading}
+                          >
+                            {deleteLoadingId === deal.id ? 'Deleting…' : 'Delete'}
+                          </button>
+                        </td>
                       </tr>
                     );
                   })
@@ -788,9 +1025,29 @@ const Deals = () => {
           <div className="deal-detail-panel">
             <div className="deal-detail-header">
               <h3 className="deal-detail-title">Deal Details</h3>
-              <button className="deal-detail-close" onClick={() => setSelectedDeal(null)}>
+              <div className="deal-detail-actions">
+                {detailError && <div className="deal-detail-error">{detailError}</div>}
+                <button
+                  className="deal-detail-delete"
+                  onClick={() => {
+                    if (selectedDeal) {
+                      void handleDeleteDeal(selectedDeal);
+                    }
+                  }}
+                  disabled={deleteLoadingId === selectedDeal.id}
+                >
+                  {deleteLoadingId === selectedDeal.id ? 'Deleting…' : 'Delete'}
+                </button>
+                <button
+                  className="deal-detail-close"
+                  onClick={() => {
+                    setSelectedDeal(null);
+                    setDetailError(null);
+                  }}
+                >
                 ×
               </button>
+              </div>
             </div>
 
             <div className="deal-detail-content">
@@ -934,7 +1191,7 @@ const Deals = () => {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Value *</label>
+                  <label className="form-label">Deal Value</label>
                   <input
                     type="number"
                     name="value"
@@ -943,7 +1200,6 @@ const Deals = () => {
                     onChange={handleInputChange}
                     min="0"
                     step="0.01"
-                    required
                     disabled={isSubmitting}
                   />
                 </div>
@@ -1044,29 +1300,29 @@ const Deals = () => {
                     className="form-input"
                     value={formData.categoryId}
                     onChange={handleInputChange}
-                    disabled={isSubmitting}
+                  disabled={isSubmitting || categoryLoading}
+                  onFocus={() => {
+                    void fetchCategories();
+                  }}
                   >
                     <option value="">Select Category</option>
-                    {categoryOptions.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
+                    {categoryLoading ? (
+                      <option value="" disabled>
+                        Loading categories...
                       </option>
-                    ))}
+                  ) : categoryOptions.length === 0 ? (
+                      <option value="" disabled>
+                        No categories available
+                      </option>
+                    ) : (
+                    categoryOptions.map((cat) => (
+                        <option key={cat.id} value={String(cat.id)}>
+                          {cat.label}
+                        </option>
+                      ))
+                    )}
                   </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Commission Override</label>
-                  <input
-                    type="number"
-                    name="commissionAmount"
-                    className="form-input"
-                    value={formData.commissionAmount}
-                    onChange={handleInputChange}
-                    min="0"
-                    step="0.01"
-                    disabled={isSubmitting}
-                  />
+                  {categoryError && <span className="form-hint error">{categoryError}</span>}
                 </div>
               </div>
 

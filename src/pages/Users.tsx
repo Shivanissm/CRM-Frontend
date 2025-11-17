@@ -1,556 +1,735 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import './Users.css';
-import { usersApi } from '../services/users';
-import type { User } from '../types/user';
+import { useMemo, useState, useEffect } from 'react'
+import './Users.css'
+import { usersApi } from '../services/users'
+import type { User } from '../types/user'
 
-type SortKey = 'name' | 'role' | 'status' | 'createdAt' | 'lastLoginAt';
-type SortDirection = 'asc' | 'desc';
+type Member = {
+  id: string
+  name: string
+  role: string
+  email: string
+  avatar?: string
+  total?: number
+  direct?: number
+  preSales?: Member[]
+}
 
-const ALLOWED_ROLES = ['ADMIN', 'CATEGORY_MANAGER', 'SALES', 'PRESALES'] as const;
-type AllowedRole = (typeof ALLOWED_ROLES)[number];
+type Group = {
+  id: string
+  label: string
+  count: number
+  avatars: string[]
+  members: Member[]
+}
 
-const ROLE_LABELS: Record<AllowedRole, string> = {
-  ADMIN: 'Admin',
-  CATEGORY_MANAGER: 'Category Manager',
-  SALES: 'Sales',
-  PRESALES: 'Pre-Sales',
-};
-
-const ROLE_OPTIONS: Array<{ value: AllowedRole; label: string; requiresManager: boolean }> = [
-  { value: 'ADMIN', label: ROLE_LABELS.ADMIN, requiresManager: false },
-  { value: 'CATEGORY_MANAGER', label: ROLE_LABELS.CATEGORY_MANAGER, requiresManager: false },
-  { value: 'SALES', label: ROLE_LABELS.SALES, requiresManager: true },
-  { value: 'PRESALES', label: ROLE_LABELS.PRESALES, requiresManager: true },
-];
-
-const INVITE_FORM_INITIAL: {
-  firstName: string;
-  lastName: string;
-  email: string;
-  role: AllowedRole;
-  managerId: string;
-} = {
-  firstName: '',
-  lastName: '',
-  email: '',
-  role: ROLE_OPTIONS[0]?.value ?? 'CATEGORY_MANAGER',
-  managerId: '',
-};
-
-const formatDate = (value: string | null): string => {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return new Intl.DateTimeFormat('en', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  }).format(date);
-};
-
-const getUserRoleLabel = (role: string): string =>
-  ROLE_LABELS[role as AllowedRole] ?? role.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
-
-const buildAvatar = (user: User): string => {
-  const initials = [user.firstName, user.lastName]
-    .filter(Boolean)
-    .map((part) => part[0] ?? '')
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-  if (initials.length > 0) return initials;
-  return user.email?.[0]?.toUpperCase() ?? '?';
-};
-
-export default function Users() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'ALL' | AllowedRole>('ALL');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
-  const [sortKey, setSortKey] = useState<SortKey>('createdAt');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [refreshing, setRefreshing] = useState(false);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const [inviteError, setInviteError] = useState<string | null>(null);
-  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
-  const [inviteForm, setInviteForm] = useState(INVITE_FORM_INITIAL);
-
-  const loadUsers = useCallback(
-    async ({ silent = false }: { silent?: boolean } = {}) => {
-      try {
-        if (!silent) setLoading(true);
-        setError(null);
-        const data = await usersApi.list();
-        setUsers(data);
-      } catch (err: any) {
-        const message = err?.response?.data?.message || err?.message || 'Failed to load users.';
-        setError(message);
-      } finally {
-        if (!silent) setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    void loadUsers();
-  }, [loadUsers]);
-
-  useEffect(() => {
-    if (!inviteSuccess) return;
-    const timer = window.setTimeout(() => setInviteSuccess(null), 4000);
-    return () => window.clearTimeout(timer);
-  }, [inviteSuccess]);
-
-  const uniqueRoles = useMemo(() => {
-    const set = new Set<AllowedRole>();
-    users.forEach((user) => {
-      if (ALLOWED_ROLES.includes(user.role as AllowedRole)) {
-        set.add(user.role as AllowedRole);
-      }
-    });
-    return Array.from(set).sort((a, b) => getUserRoleLabel(a).localeCompare(getUserRoleLabel(b)));
-  }, [users]);
-
-const managerOptions = useMemo(() => {
-  switch (inviteForm.role) {
-    case 'SALES':
-      return users
-        .filter((user) => user.active && user.role === 'CATEGORY_MANAGER')
-        .slice()
-        .sort((a, b) => {
-          const nameA = `${a.firstName ?? ''} ${a.lastName ?? ''}`.trim().toLowerCase();
-          const nameB = `${b.firstName ?? ''} ${b.lastName ?? ''}`.trim().toLowerCase();
-          return nameA.localeCompare(nameB);
-        });
-    case 'PRESALES':
-      return users
-        .filter((user) => user.active && user.role === 'SALES')
-        .slice()
-        .sort((a, b) => {
-          const nameA = `${a.firstName ?? ''} ${a.lastName ?? ''}`.trim().toLowerCase();
-          const nameB = `${b.firstName ?? ''} ${b.lastName ?? ''}`.trim().toLowerCase();
-          return nameA.localeCompare(nameB);
-        });
-    default:
-      return [];
+// Transform API users to component structure
+const transformUsersToGroups = (users: User[]): Group[] => {
+  if (!users || users.length === 0) {
+    console.log('No users provided to transform')
+    return []
   }
-}, [users, inviteForm.role]);
-
-  const requiresManager = useMemo(
-    () => ROLE_OPTIONS.find((option) => option.value === inviteForm.role)?.requiresManager ?? false,
-    [inviteForm.role],
-  );
-
-const filteredUsers = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return users
-      .filter((user) => {
-        if (roleFilter !== 'ALL' && user.role !== roleFilter) return false;
-        if (statusFilter === 'ACTIVE' && !user.active) return false;
-        if (statusFilter === 'INACTIVE' && user.active) return false;
-
-        if (term.length === 0) return true;
-        const haystack = [
-          user.firstName,
-          user.lastName,
-          user.email,
-          user.role,
-          user.managerName,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return haystack.includes(term);
-      })
-      .sort((a, b) => {
-        const direction = sortDirection === 'asc' ? 1 : -1;
-        switch (sortKey) {
-          case 'name': {
-            const nameA = `${a.firstName ?? ''} ${a.lastName ?? ''}`.trim().toLowerCase();
-            const nameB = `${b.firstName ?? ''} ${b.lastName ?? ''}`.trim().toLowerCase();
-            return nameA.localeCompare(nameB) * direction;
-          }
-          case 'role':
-            return getUserRoleLabel(a.role).localeCompare(getUserRoleLabel(b.role)) * direction;
-          case 'status': {
-            const delta = Number(a.active) - Number(b.active);
-            return delta * direction;
-          }
-          case 'lastLoginAt': {
-            const timeA = a.lastLoginAt ? new Date(a.lastLoginAt).getTime() : 0;
-            const timeB = b.lastLoginAt ? new Date(b.lastLoginAt).getTime() : 0;
-            return (timeA - timeB) * direction;
-          }
-          case 'createdAt':
-          default: {
-            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return (timeA - timeB) * direction;
-          }
-        }
-      });
-  }, [users, search, roleFilter, statusFilter, sortKey, sortDirection]);
-
-  const handleSort = (key: SortKey) => {
-    setSortKey((prevKey) => {
-      if (prevKey === key) {
-        setSortDirection((prevDir) => (prevDir === 'asc' ? 'desc' : 'asc'));
-        return prevKey;
+  
+  console.log('Transforming users:', users.length)
+  
+  // Find admin user (not used in transform, but kept for consistency)
+  // const adminUser = users.find(u => u.role === 'ADMIN')
+  
+  // Group by category manager (users with CATEGORY_MANAGER role or users who are managers of others)
+  const categoryManagers = users.filter(u => u.role === 'CATEGORY_MANAGER')
+  
+  console.log('Category managers found:', categoryManagers.length)
+  
+  // If no category managers, create groups based on managers
+  if (categoryManagers.length === 0) {
+    console.log('No category managers, looking for top-level managers')
+    // Group by top-level managers (users who have no manager or are managers of others)
+    const topManagers = users.filter(u => 
+      u.role === 'MANAGER' && (!u.managerId || !users.find(m => m.id === u.managerId))
+    )
+    
+    console.log('Top-level managers found:', topManagers.length)
+    
+    if (topManagers.length === 0) {
+      // If no managers at all, create a single group with all non-admin users
+      console.log('No managers found, creating default group')
+      const nonAdminUsers = users.filter(u => u.role !== 'ADMIN')
+      if (nonAdminUsers.length === 0) {
+        return []
       }
-      setSortDirection(key === 'createdAt' || key === 'lastLoginAt' ? 'desc' : 'asc');
-      return key;
-    });
-  };
-
-  const sortIndicator = (key: SortKey) => {
-    if (sortKey !== key) return null;
-    return sortDirection === 'asc' ? '▲' : '▼';
-  };
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await loadUsers({ silent: true });
-  };
-
-  const handleInviteFieldChange = (key: keyof typeof inviteForm, value: string) => {
-    if (key === 'role') {
-      setInviteForm((prev) => ({
-        ...prev,
-        role: value as AllowedRole,
-        managerId: '',
-      }));
-      return;
+      
+      // Group all users together
+      const members: Member[] = nonAdminUsers.map(u => ({
+        id: u.id.toString(),
+        name: `${u.firstName} ${u.lastName}`,
+        role: u.role === 'SALESREP' ? 'Pre Sales' : u.role === 'MANAGER' ? 'Sales Rep' : 'Category Manager',
+        email: u.email,
+      }))
+      
+      return [{
+        id: 'group-default',
+        label: 'All Users',
+        count: members.length,
+        avatars: [],
+        members,
+      }]
     }
-
-    setInviteForm((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
-  };
-
-  const openInviteModal = () => {
-    setInviteForm({ ...INVITE_FORM_INITIAL });
-    setInviteError(null);
-    setInviteOpen(true);
-  };
-
-  const closeInviteModal = (force = false) => {
-    if (inviteLoading && !force) return;
-    setInviteOpen(false);
-    setInviteError(null);
-    setInviteForm({ ...INVITE_FORM_INITIAL });
-  };
-
-  const handleInviteSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!inviteForm.firstName.trim() || !inviteForm.lastName.trim()) {
-      setInviteError('First and last name are required.');
-      return;
+    
+    return topManagers.map((cm) => {
+      const salesReps = users.filter(u => u.managerId === cm.id && u.role === 'MANAGER')
+      const preSales = users.filter(u => {
+        const manager = users.find(m => m.id === u.managerId)
+        return manager && salesReps.some(sr => sr.id === manager.id) && u.role === 'SALESREP'
+      })
+      
+      // Attach pre-sales to their managers
+      const salesWithPreSales = salesReps.map(sr => {
+        const srPreSales = preSales.filter(ps => {
+          const psManager = users.find(m => m.id === ps.managerId)
+          return psManager?.id === sr.id
+        }).map(ps => ({
+          id: ps.id.toString(),
+          name: `${ps.firstName} ${ps.lastName}`,
+          role: 'Pre Sales',
+          email: ps.email,
+        }))
+        
+        return {
+          id: sr.id.toString(),
+          name: `${sr.firstName} ${sr.lastName}`,
+          role: 'Sales Rep',
+          email: sr.email,
+          preSales: srPreSales.length > 0 ? srPreSales : undefined,
+        }
+      })
+      
+      const members: Member[] = [
+        {
+          id: cm.id.toString(),
+          name: `${cm.firstName} ${cm.lastName}`,
+          role: 'Category Manager',
+          email: cm.email,
+          total: salesReps.length + preSales.length,
+          direct: salesReps.length,
+        },
+        ...salesWithPreSales,
+      ]
+      
+      return {
+        id: `group-${cm.id}`,
+        label: `${cm.firstName} ${cm.lastName}'s Team`,
+        count: members.length,
+        avatars: [],
+        members,
+      }
+    })
+  }
+  
+  // Create groups for each category manager
+  return categoryManagers.map((cm) => {
+    // Find all users managed by this category manager (direct and indirect)
+    const directReports = users.filter(u => u.managerId === cm.id)
+    const salesReps = directReports.filter(u => u.role === 'MANAGER')
+    
+    // Find pre-sales (SALESREP) that report to the sales reps
+    const preSales = users.filter(u => {
+      if (u.role !== 'SALESREP') return false
+      const manager = users.find(m => m.id === u.managerId)
+      return manager && salesReps.some(sr => sr.id === manager.id)
+    })
+    
+    // Attach pre-sales to their managers
+    const salesWithPreSales = salesReps.map(sr => {
+      const srPreSales = preSales.filter(ps => {
+        const psManager = users.find(m => m.id === ps.managerId)
+        return psManager?.id === sr.id
+      }).map(ps => ({
+        id: ps.id.toString(),
+        name: `${ps.firstName} ${ps.lastName}`,
+        role: 'Pre Sales',
+        email: ps.email,
+      }))
+      
+      return {
+        id: sr.id.toString(),
+        name: `${sr.firstName} ${sr.lastName}`,
+        role: 'Sales Rep',
+        email: sr.email,
+        preSales: srPreSales.length > 0 ? srPreSales : undefined,
+      }
+    })
+    
+    const members: Member[] = [
+      {
+        id: cm.id.toString(),
+        name: `${cm.firstName} ${cm.lastName}`,
+        role: 'Category Manager',
+        email: cm.email,
+        total: salesReps.length + preSales.length,
+        direct: salesReps.length,
+      },
+      ...salesWithPreSales,
+    ]
+    
+    return {
+      id: `group-${cm.id}`,
+      label: `${cm.firstName} ${cm.lastName}'s Team`,
+      count: members.length,
+      avatars: [],
+      members,
     }
-    if (!inviteForm.email.trim()) {
-      setInviteError('Email address is required.');
-      return;
+  })
+}
+
+const Users = () => {
+  const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string | null>(null)
+  const [groupsState, setGroupsState] = useState<Group[]>([])
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('')
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null)
+  const [selectedSalesId, setSelectedSalesId] = useState<string | null>(null)
+  const [isCategorySelected, setIsCategorySelected] = useState<boolean>(false)
+  const [isAdminSelected, setIsAdminSelected] = useState<boolean>(false)
+  const [viewMode, setViewMode] = useState<'tree' | 'sheet'>('tree')
+  const [isViewDropdownOpen, setIsViewDropdownOpen] = useState<boolean>(false)
+  const [isSheetEditing, setIsSheetEditing] = useState<boolean>(false)
+  const [adminUser, setAdminUser] = useState<User | null>(null)
+
+  const groups = groupsState
+  const selected = groups.find((g) => g.id === selectedGroupId) || groups[0]
+  
+  const categoryManagerTagged = useMemo(() => selected?.members?.find((m) => /category\s*manager/i.test(m.role)), [selected])
+  const salesMembersTagged = useMemo(() => selected?.members?.filter((m) => /sales/i.test(m.role) && !/pre/i.test(m.role)) || [], [selected])
+  const preSalesMembersTagged = useMemo(() => selected?.members?.filter((m) => /pre\s*-?\s*sales/i.test(m.role)) || [], [selected])
+
+  // Fallback grouping when roles are not tagged in data
+  const categoryManager = categoryManagerTagged ?? selected?.members?.[0]
+  const restMembers = useMemo(() => (selected?.members || []).filter((m) => m !== categoryManager), [selected, categoryManager])
+  const preSalesFallbackCount = Math.max(1, Math.floor(restMembers.length / 3))
+  const preSalesMembers = preSalesMembersTagged.length ? preSalesMembersTagged : restMembers.slice(-preSalesFallbackCount)
+  const salesMembers = salesMembersTagged.length ? salesMembersTagged : restMembers.filter((m) => !preSalesMembers.includes(m))
+
+  const allSales = useMemo(() => groups.flatMap((g) => g.members.filter((m) => /sales/i.test(m.role) && !/pre/i.test(m.role))), [groups])
+  const allPreSales = useMemo(() => groups.flatMap((g) => g.members.flatMap((m) => m.preSales || [])), [groups])
+
+  const displayedSales = useMemo(() => {
+    if (isAdminSelected) return allSales
+    if (isCategorySelected) return salesMembers
+    return [] // Show nothing until a category manager is selected
+  }, [isAdminSelected, isCategorySelected, allSales, salesMembers])
+  
+  const salesCount = displayedSales.length
+  
+  const preSalesCount = useMemo(() => {
+    if (!isCategorySelected && !isAdminSelected) return 0
+    if (selectedSalesId) {
+      const selectedSales = displayedSales.find((s) => s.id === selectedSalesId)
+      return selectedSales?.preSales?.length || 0
     }
-    if (!inviteForm.email.includes('@')) {
-      setInviteError('Please enter a valid email address.');
-      return;
+    if (isAdminSelected) return allPreSales.length
+    return displayedSales.reduce((sum, s) => sum + (s.preSales?.length || 0), 0)
+  }, [isCategorySelected, isAdminSelected, selectedSalesId, displayedSales, allPreSales])
+  
+  const visiblePreSales = useMemo(() => {
+    if (!isCategorySelected && !isAdminSelected) return [] // Show nothing until something is selected
+    const base = isAdminSelected ? allSales : salesMembers
+    if (selectedSalesId) {
+      return base.find((s) => s.id === selectedSalesId)?.preSales || []
     }
-    if (requiresManager && !inviteForm.managerId) {
-      setInviteError('Select a manager for this role.');
-      return;
+    if (isAdminSelected) return allPreSales
+    return salesMembers.flatMap((s) => s.preSales || [])
+  }, [isAdminSelected, isCategorySelected, allSales, allPreSales, salesMembers, selectedSalesId])
+
+  // Fetch users from API
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const response = await usersApi.getAllUsers()
+        console.log('API Response:', response) // Debug log
+        if (response.success && response.data) {
+          console.log('Users data:', response.data) // Debug log
+          console.log('Users count:', response.data.length) // Debug log
+          const transformedGroups = transformUsersToGroups(response.data)
+          console.log('Transformed groups:', transformedGroups) // Debug log
+          setGroupsState(transformedGroups)
+          if (transformedGroups.length > 0) {
+            setSelectedGroupId(transformedGroups[0].id)
+          }
+          
+          // Find admin user
+          const admin = response.data.find(u => u.role === 'ADMIN')
+          if (admin) {
+            setAdminUser(admin)
+          }
+        } else {
+          setError(response.message || 'Failed to fetch users')
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch users')
+        console.error('Error fetching users:', err)
+      } finally {
+        setLoading(false)
+      }
     }
+    
+    fetchUsers()
+  }, [])
 
-    setInviteLoading(true);
-    setInviteError(null);
-    try {
-      const payload = {
-        email: inviteForm.email.trim(),
-        firstName: inviteForm.firstName.trim(),
-        lastName: inviteForm.lastName.trim(),
-        role: inviteForm.role,
-        managerId: inviteForm.managerId ? Number(inviteForm.managerId) : undefined,
-      };
-      const created = await usersApi.createUser(payload);
-      setInviteSuccess(`Invitation sent to ${created.email}.`);
-      closeInviteModal(true);
-      await loadUsers({ silent: true });
-    } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message || 'Failed to invite user.';
-      setInviteError(message);
-    } finally {
-      setInviteLoading(false);
+  const adminMember: Member = adminUser ? {
+    id: adminUser.id.toString(),
+    name: `${adminUser.firstName} ${adminUser.lastName}`,
+    role: 'Admin',
+    email: adminUser.email,
+  } : { id: 'admin', name: 'Admin', role: 'Admin', email: '' }
+
+  // Sheet edit helpers
+  const renameGroup = (groupId: string, newLabel: string) => {
+    setGroupsState((prev) => prev.map((g) => (g.id === groupId ? { ...g, label: newLabel } : g)))
+  }
+  const renameMember = (memberId: string, newName: string) => {
+    setGroupsState((prev) => prev.map((g) => ({
+      ...g,
+      members: g.members.map((m) => {
+        if (m.id === memberId) return { ...m, name: newName }
+        if (m.preSales && m.preSales.length) {
+          const updated = m.preSales.map((ps) => (ps.id === memberId ? { ...ps, name: newName } : ps))
+          return updated !== m.preSales ? { ...m, preSales: updated } : m
+        }
+        return m
+      })
+    })))
+  }
+
+  const renderCell = (
+    value: string,
+    onSave: (v: string) => void,
+    autoFocus?: boolean
+  ) => {
+    if (!isSheetEditing) {
+      return <span className="cell-text">{value}</span>
     }
-  };
+    return (
+      <input
+        className="sheet-input"
+        value={value}
+        autoFocus={autoFocus}
+        onChange={(e) => onSave(e.target.value)}
+      />
+    )
+  }
 
-  return (
-    <div className="users-page">
-      <header className="users-header">
-        <div>
-          <h1>Users</h1>
-          <p>Review account access, roles, and activity across your team.</p>
-        </div>
-        <div className="users-actions">
-          <button
-            className="users-refresh"
-            onClick={() => void handleRefresh()}
-            disabled={refreshing || loading}
-          >
-            {refreshing ? 'Refreshing…' : 'Refresh'}
-          </button>
-          <button className="users-add" onClick={openInviteModal}>
-            + Invite user
-          </button>
-        </div>
-      </header>
+  // Clear all selections when switching views
+  useEffect(() => {
+    setSelectedMember(null)
+    setSelectedSalesId(null)
+    setIsCategorySelected(false)
+    setIsAdminSelected(false)
+  }, [viewMode])
 
-      <section className="users-filters">
-        <input
-          type="search"
-          placeholder="Search name, email, role, manager…"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          className="users-search"
-        />
-        <div className="users-filter-group">
-          <label htmlFor="users-role-filter">Role</label>
-          <select
-            id="users-role-filter"
-            value={roleFilter}
-            onChange={(event) =>
-              setRoleFilter(event.target.value === 'ALL' ? 'ALL' : (event.target.value as AllowedRole))
-            }
-          >
-            <option value="ALL">All roles</option>
-            {uniqueRoles.map((role) => (
-              <option key={role} value={role}>
-                {getUserRoleLabel(role)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="users-filter-group">
-          <label htmlFor="users-status-filter">Status</label>
-          <select
-            id="users-status-filter"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}
-          >
-            <option value="ALL">All users</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-          </select>
-        </div>
-      </section>
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('.view-dropdown')) {
+        setIsViewDropdownOpen(false)
+      }
+    }
+    if (isViewDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isViewDropdownOpen])
 
-      {error && (
-        <div className="users-error">
-          <span>{error}</span>
-          <button onClick={() => void loadUsers()}>Try again</button>
-        </div>
-      )}
+  // Create connection lines
+  useEffect(() => {
+    const svg = document.getElementById('connection-lines-svg')
+    if (!svg || !(svg instanceof SVGElement)) return
 
-      {inviteSuccess && (
-        <div className="users-success">
-          <span>{inviteSuccess}</span>
-          <button type="button" onClick={() => setInviteSuccess(null)}>
-            Dismiss
-          </button>
-        </div>
-      )}
+    // Clear existing lines
+    svg.innerHTML = ''
 
-      {loading && !refreshing ? (
-        <div className="users-loading">Loading users…</div>
-      ) : filteredUsers.length === 0 ? (
-        <div className="users-empty">
-          <h2>No users found</h2>
-          <p>Adjust your filters or invite new team members.</p>
-        </div>
-      ) : (
-        <div className="users-table-wrapper">
-          <table className="users-table">
-            <thead>
-              <tr>
-                <th data-sortable onClick={() => handleSort('name')}>
-                  User {sortIndicator('name')}
-                </th>
-                <th data-sortable onClick={() => handleSort('role')}>
-                  Role {sortIndicator('role')}
-                </th>
-                <th>
-                  Manager
-                </th>
-                <th data-sortable onClick={() => handleSort('status')}>
-                  Status {sortIndicator('status')}
-                </th>
-                <th data-sortable onClick={() => handleSort('createdAt')}>
-                  Created {sortIndicator('createdAt')}
-                </th>
-                <th data-sortable onClick={() => handleSort('lastLoginAt')}>
-                  Last login {sortIndicator('lastLoginAt')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map((user) => (
-                <tr key={user.id}>
-                  <td data-label="User">
-                    <div className="users-user-cell">
-                      <div className="users-avatar">{buildAvatar(user)}</div>
-                      <div>
-                        <div className="users-name">
-                          {[user.firstName, user.lastName].filter(Boolean).join(' ') || user.email}
-                        </div>
-                        <div className="users-email">{user.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td data-label="Role">
-                    <span className="users-role-pill">{getUserRoleLabel(user.role)}</span>
-                  </td>
-                  <td data-label="Manager">
-                    {user.managerName ? (
-                      <span className="users-manager">{user.managerName}</span>
-                    ) : (
-                      <span className="users-manager muted">—</span>
-                    )}
-                  </td>
-                  <td data-label="Status">
-                    <span className={`users-status ${user.active ? 'active' : 'inactive'}`}>
-                      {user.active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td data-label="Created">{formatDate(user.createdAt)}</td>
-                  <td data-label="Last login">{formatDate(user.lastLoginAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+    // Get all elements
+    const cmCircles = document.querySelectorAll('.cm-circle[data-cm-index]')
+    const salesPills = document.querySelectorAll('.board-pill.sales[data-sales-index]')
+    const presalesPills = document.querySelectorAll('.board-pill.presales[data-presales-index]')
 
-      {inviteOpen && (
-        <div className="users-modal-overlay" onClick={() => closeInviteModal(false)}>
-          <div className="users-modal" onClick={(event) => event.stopPropagation()}>
-            <header className="users-modal-header">
-              <h2>Invite user</h2>
-              <button
-                type="button"
-                className="users-modal-close"
-                onClick={() => closeInviteModal(false)}
-                disabled={inviteLoading}
-              >
-                ×
-              </button>
-            </header>
-            <p className="users-modal-subtitle">
-              Send an invitation so the user can set their password and join your team.
-            </p>
-            <form className="users-modal-form" onSubmit={handleInviteSubmit}>
-              <label className="users-modal-label">
-                First name
-                <input
-                  type="text"
-                  value={inviteForm.firstName}
-                  onChange={(event) => handleInviteFieldChange('firstName', event.target.value)}
-                  placeholder="Taylor"
-                  disabled={inviteLoading}
-                  required
-                />
-              </label>
-              <label className="users-modal-label">
-                Last name
-                <input
-                  type="text"
-                  value={inviteForm.lastName}
-                  onChange={(event) => handleInviteFieldChange('lastName', event.target.value)}
-                  placeholder="Jordan"
-                  disabled={inviteLoading}
-                  required
-                />
-              </label>
-              <label className="users-modal-label">
-                Email
-                <input
-                  type="email"
-                  value={inviteForm.email}
-                  onChange={(event) => handleInviteFieldChange('email', event.target.value)}
-                  placeholder="taylor.jordan@example.com"
-                  disabled={inviteLoading}
-                  required
-                />
-              </label>
-              <label className="users-modal-label">
-                Role
-                <select
-                  value={inviteForm.role}
-                  onChange={(event) => handleInviteFieldChange('role', event.target.value)}
-                  disabled={inviteLoading}
-                >
-                  {ROLE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="users-modal-label">
-                Manager
-                {requiresManager ? (
-                  <>
-                    <select
-                      value={inviteForm.managerId}
-                      onChange={(event) => handleInviteFieldChange('managerId', event.target.value)}
-                      disabled={inviteLoading || managerOptions.length === 0}
-                      required
-                    >
-                      <option value="">
-                        {managerOptions.length === 0
-                          ? 'No eligible managers available'
-                          : 'Select manager'}
-                      </option>
-                      {managerOptions.map((manager) => (
-                        <option key={manager.id} value={manager.id}>
-                          {[manager.firstName, manager.lastName].filter(Boolean).join(' ') || manager.email} ·{' '}
-                          {getUserRoleLabel(manager.role)}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="users-modal-hint">
-                      {managerOptions.length > 0
-                        ? inviteForm.role === 'SALES'
-                          ? 'Assign a Category Manager who oversees this sales rep.'
-                          : 'Assign a Sales user who this pre-sales member supports.'
-                        : 'No eligible managers found. Add one first.'}
-                    </span>
-                  </>
-                ) : (
-                  <input type="text" value="Not required" disabled />
-                )}
-              </label>
-              {inviteError && <div className="users-modal-error">{inviteError}</div>}
-              <div className="users-modal-actions">
-                <button
-                  type="button"
-                  className="users-modal-cancel"
-                  onClick={() => closeInviteModal(false)}
-                  disabled={inviteLoading}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="users-modal-submit" disabled={inviteLoading}>
-                  {inviteLoading ? 'Sending…' : 'Send invite'}
-                </button>
-              </div>
-            </form>
+    // Connect Sales to Category Manager (horizontal + vertical)
+    salesPills.forEach((salesPill) => {
+      const cmIndex = parseInt(salesPill.getAttribute('data-cm-index') || '-1')
+      const salesIndex = parseInt(salesPill.getAttribute('data-sales-index') || '-1')
+      
+      if (cmIndex >= 0 && salesIndex >= 0 && cmCircles[cmIndex]) {
+        const cmRect = cmCircles[cmIndex].getBoundingClientRect()
+        const salesRect = salesPill.getBoundingClientRect()
+        const orgGrid = document.querySelector('.org-grid')?.getBoundingClientRect()
+        
+        if (orgGrid) {
+          const cmY = cmRect.top + cmRect.height / 2 - orgGrid.top
+          const salesY = salesRect.top + salesRect.height / 2 - orgGrid.top
+          const cmX = cmRect.right - orgGrid.left
+          const salesX = salesRect.left - orgGrid.left
+          
+          // Create path for L-shaped connection: horizontal then vertical
+          const midX = (cmX + salesX) / 2
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+          path.setAttribute('d', `M ${cmX} ${cmY} L ${midX} ${cmY} L ${midX} ${salesY} L ${salesX} ${salesY}`)
+          path.setAttribute('stroke', '#800000')
+          path.setAttribute('stroke-width', '2')
+          path.setAttribute('fill', 'none')
+          path.setAttribute('opacity', '0.4')
+          svg.appendChild(path)
+        }
+      }
+    })
+
+    // Connect Pre-Sales to Sales (horizontal + vertical)
+    presalesPills.forEach((presalesPill) => {
+      const salesIndex = parseInt(presalesPill.getAttribute('data-sales-index') || '-1')
+      const presalesIndex = parseInt(presalesPill.getAttribute('data-presales-index') || '-1')
+      
+      if (salesIndex >= 0 && presalesIndex >= 0 && salesPills[salesIndex]) {
+        const salesRect = salesPills[salesIndex].getBoundingClientRect()
+        const presalesRect = presalesPill.getBoundingClientRect()
+        const orgGrid = document.querySelector('.org-grid')?.getBoundingClientRect()
+        
+        if (orgGrid) {
+          const salesY = salesRect.top + salesRect.height / 2 - orgGrid.top
+          const presalesY = presalesRect.top + presalesRect.height / 2 - orgGrid.top
+          const salesX = salesRect.right - orgGrid.left
+          const presalesX = presalesRect.left - orgGrid.left
+          
+          // Create path for L-shaped connection: horizontal then vertical
+          const midX = (salesX + presalesX) / 2
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+          path.setAttribute('d', `M ${salesX} ${salesY} L ${midX} ${salesY} L ${midX} ${presalesY} L ${presalesX} ${presalesY}`)
+          path.setAttribute('stroke', '#c026d3')
+          path.setAttribute('stroke-width', '2')
+          path.setAttribute('fill', 'none')
+          path.setAttribute('opacity', '0.4')
+          svg.appendChild(path)
+        }
+      }
+    })
+  }, [displayedSales, visiblePreSales, selectedGroupId, selectedSalesId, isCategorySelected, isAdminSelected])
+
+  if (loading) {
+    return (
+      <>
+        <h1 className="users-page-title">Users</h1>
+        <div className="board-page">
+          <div style={{ padding: '40px', textAlign: 'center' }}>Loading users...</div>
+        </div>
+      </>
+    )
+  }
+
+  if (error) {
+    return (
+      <>
+        <h1 className="users-page-title">Users</h1>
+        <div className="board-page">
+          <div style={{ padding: '40px', textAlign: 'center', color: 'red' }}>
+            Error: {error}
           </div>
         </div>
-      )}
-    </div>
-  );
+      </>
+    )
+  }
+
+  if (groups.length === 0) {
+    return (
+      <>
+        <h1 className="users-page-title">Users</h1>
+        <div className="board-page">
+          <div style={{ padding: '40px', textAlign: 'center' }}>No users found</div>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <h1 className="users-page-title">Users</h1>
+      <div className="users-header-new">
+          <div className="users-header-top">
+            <div className="users-toolbar-left">
+              <button className="tab-new active">Active Users <span className="dropdown-arrow">▾</span></button>
+              <div className="users-secondary-actions">
+                <button className="icon-btn-small" title="Time">⏳</button>
+                <button className="icon-btn-small" title="Search">🔍</button>
+                <button className="icon-btn-small" title="Filter">⚲</button>
+                <button className="icon-btn-close" title="Close">×</button>
+              </div>
+            </div>
+            <div className="users-toolbar-right">
+              <div className="view-dropdown">
+                <button className="icon-btn-tree" onClick={() => setIsViewDropdownOpen(!isViewDropdownOpen)}>
+                  {viewMode === 'tree' ? 'Tree' : 'Sheet'} <span>▾</span>
+                </button>
+                {isViewDropdownOpen && (
+                  <div className="view-menu">
+                    <button className={`view-menu-item ${viewMode === 'tree' ? 'active' : ''}`} onClick={() => { setViewMode('tree'); setIsViewDropdownOpen(false); }}>
+                      Tree
+                    </button>
+                    <button className={`view-menu-item ${viewMode === 'sheet' ? 'active' : ''}`} onClick={() => { setViewMode('sheet'); setIsViewDropdownOpen(false); }}>
+                      Sheet
+                    </button>
+                  </div>
+                )}
+              </div>
+              {viewMode === 'sheet' && (
+                <button
+                  className="icon-btn"
+                  onClick={() => setIsSheetEditing((v) => !v)}
+                  title={isSheetEditing ? 'Finish editing' : 'Edit sheet'}
+                  aria-label={isSheetEditing ? 'Finish editing' : 'Edit sheet'}
+                >
+                  {isSheetEditing ? '✓' : '✎'}
+                </button>
+              )}
+              <button className="btn-add-user">Add User</button>
+            </div>
+          </div>
+        </div>
+        <div className="board-page">
+      {/* category chips removed per request */}
+
+      <div className="branch-bar" style={{display:'none'}}>
+        <div className="branch-track" />
+        <div className="branch-nodes">
+          <div className="branch-node-chip inactive">
+            <span className="chip-badge">{selected.count}</span>
+            <span className="chip-label">Admin</span>
+          </div>
+          <div className="branch-node-chip inactive">
+            <span className="chip-badge">{selected.count - 37 > 0 ? selected.count - 37 : 32}</span>
+            <span className="chip-label">Category Manager</span>
+          </div>
+          <div className="branch-node-chip inactive">
+            <span className="chip-badge">{salesCount || 28}</span>
+            <span className="chip-label">Sales</span>
+          </div>
+          <div className="branch-node-chip active">
+            <span className="chip-badge">{preSalesCount || 22}</span>
+            <span className="chip-label">Pre Sales</span>
+          </div>
+        </div>
+      </div>
+
+      {/* chain removed per request */}
+
+      <div className="board-content">
+        {viewMode === 'tree' ? (
+        <div className="org-grid">
+          {/* SVG for connection lines */}
+          <svg id="connection-lines-svg" className="connection-lines-svg" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 0 }}></svg>
+          <div className="org-col admin-col">
+            <div className="org-title">admin <span className="title-badge">{groups.length}</span></div>
+            <div className="avatar-stack">
+              <div
+                className={`avatar-small ${isAdminSelected ? 'active' : ''}`}
+                onClick={() => { setIsAdminSelected(true); setIsCategorySelected(false); setSelectedSalesId(null); setSelectedMember(adminMember) }}
+                title={adminMember.name}
+              >
+                <span>{adminMember.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'AD'}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="org-col cm-col">
+            <div className="org-title">category manager <span className="title-badge">{groups.length}</span></div>
+            <div className="cm-stack">
+              {groups.map((g, cmIndex) => {
+                const cm = g.members.find((m) => /category\s*manager/i.test(m.role)) || g.members[0]
+                const initials = (cm?.name || g.label).split(' ').map((n) => n[0]).join('').slice(0,2)
+                const isActive = selectedGroupId === g.id && isCategorySelected
+                return (
+                  <div
+                    key={g.id}
+                    className={`cm-circle ${isActive ? 'active' : ''}`}
+                    onClick={() => { setSelectedGroupId(g.id); setIsAdminSelected(false); setIsCategorySelected(true); setSelectedSalesId(null); if (cm) setSelectedMember(cm); }}
+                    title={cm?.name || g.label}
+                    data-cm-index={cmIndex}
+                    data-group-id={g.id}
+                  >
+                    <div className="cm-circle-inner">
+                      <div className="cm-avatar">{initials}</div>
+                      <div className="cm-name">{cm?.name || g.label}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="org-col sales-col">
+            <div className="column-title">sales <span className="title-badge">{salesCount}</span></div>
+            {!isCategorySelected && !isAdminSelected ? (
+              <div className="placeholder-msg">Select Category Manager</div>
+            ) : (
+            <div className="column-list">
+              {displayedSales.map((s, salesIndex) => {
+                const salesGroup = groups.find(g => g.members.some(m => m.id === s.id))
+                const cmIndex = groups.findIndex(g => g.id === salesGroup?.id)
+  return (
+                  <div
+                    key={s.id}
+                    className={`board-pill sales ${selectedSalesId === s.id ? 'is-active' : ''} ${s.preSales?.length ? 'has-children' : ''}`}
+                    onClick={() => { setSelectedMember(s); setSelectedSalesId(s.id); }}
+                    data-sales-id={s.id}
+                    data-cm-index={cmIndex}
+                    data-sales-index={salesIndex}
+                  >
+                    <div className="board-pill-avatar">{s.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}</div>
+                    <div className="board-pill-info">
+                      <div className="board-pill-name">{s.name}</div>
+                      <div className="board-pill-role">{s.role}</div>
+                      {s.email && <div className="board-pill-email">{s.email}</div>}
+                    </div>
+                    <span className="row-badge">{s.preSales?.length ?? 0}</span>
+                  </div>
+                )
+              })}
+            </div>
+            )}
+          </div>
+
+          <div className="org-col presales-col">
+            <div className="column-title">pre sales <span className="title-badge">{preSalesCount}</span></div>
+            {!isCategorySelected && !isAdminSelected ? (
+              <div className="placeholder-msg">Select Category Manager</div>
+            ) : visiblePreSales.length === 0 && !selectedSalesId ? (
+              <div className="placeholder-msg">Select Sales Rep</div>
+            ) : (
+            <div className="column-list">
+              {visiblePreSales.map((ps, presalesIndex) => {
+                const parentSales = displayedSales.find(s => s.preSales?.some(p => p.id === ps.id))
+                const salesGroup = groups.find(g => g.members.some(m => m.id === parentSales?.id))
+                const cmIndex = groups.findIndex(g => g.id === salesGroup?.id)
+                const salesIndex = displayedSales.findIndex(s => s.id === parentSales?.id)
+                return (
+                <div
+                  key={ps.id}
+                  className={`board-pill small presales ${selectedMember?.id === ps.id ? 'is-active' : ''}`}
+                  onClick={() => setSelectedMember(ps)}
+                  data-presales-id={ps.id}
+                    data-parent-sales-id={parentSales?.id}
+                    data-cm-index={cmIndex}
+                    data-sales-index={salesIndex}
+                    data-presales-index={presalesIndex}
+                  >
+                    <div className="board-pill-avatar">{ps.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}</div>
+                    <div className="board-pill-info">
+                      <div className="board-pill-name">{ps.name}</div>
+                      <div className="board-pill-role">{ps.role}</div>
+                      {ps.email && <div className="board-pill-email">{ps.email}</div>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            )}
+          </div>
+        </div>
+        ) : (
+          <div className="sheet-view">
+            <table className="users-sheet-table">
+              <thead>
+                <tr>
+                  <th>Group</th>
+                  <th>Category Manager</th>
+                  <th>Sales Rep</th>
+                  <th>Pre Sales</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((g) => {
+                  const cm = g.members.find((m) => /category\s*manager/i.test(m.role)) || g.members[0]
+                  const sales = g.members.filter((m) => /sales/i.test(m.role) && !/pre/i.test(m.role))
+                  
+                  if (sales.length === 0) {
+                    return (
+                      <tr key={`${g.id}-empty`}>
+                        <td>{renderCell(g.label, (v) => renameGroup(g.id, v), true)}</td>
+                        <td>{renderCell(cm?.name || '', (v) => cm && renameMember(cm.id, v))}</td>
+                        <td></td>
+                        <td></td>
+                      </tr>
+                    )
+                  }
+                  
+                  return sales.flatMap((s) => {
+                    const presales = s.preSales || []
+                    if (presales.length === 0) {
+                      return (
+                        <tr key={s.id}>
+                          <td>{renderCell(g.label, (v) => renameGroup(g.id, v))}</td>
+                          <td>{renderCell(cm?.name || '', (v) => cm && renameMember(cm.id, v))}</td>
+                          <td>{renderCell(s.name, (v) => renameMember(s.id, v))}</td>
+                          <td></td>
+                        </tr>
+                      )
+                    }
+                    return presales.map((p, idx) => (
+                      <tr key={`${s.id}-${p.id}`}>
+                        <td>{idx === 0 ? renderCell(g.label, (v) => renameGroup(g.id, v)) : null}</td>
+                        <td>{idx === 0 ? renderCell(cm?.name || '', (v) => cm && renameMember(cm.id, v)) : null}</td>
+                        <td>{idx === 0 ? renderCell(s.name, (v) => renameMember(s.id, v)) : null}</td>
+                        <td>{renderCell(p.name, (v) => renameMember(p.id, v))}</td>
+                      </tr>
+                    ))
+                  })
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+            {selectedMember && (
+              <div className="board-detail">
+                <div className="board-detail-name">{selectedMember.name}</div>
+                <div className="board-detail-email">{selectedMember.email}</div>
+            <div className="board-detail-stats">
+              <div className="stat">
+                    <div className="stat-num">{selectedMember.total ?? 0}</div>
+                <div className="stat-label">Total Members</div>
+              </div>
+              <div className="stat">
+                    <div className="stat-num">{selectedMember.direct ?? 0}</div>
+                <div className="stat-label">Direct reports</div>
+              </div>
+            </div>
+                {(isCategorySelected && /category\s*manager/i.test(selectedMember.role)) && (
+                  <div className="detail-info-section">
+                    <div className="detail-info-line">
+                      <span className="detail-info-label">Category:</span>
+                      <span className="detail-info-value">{selected.label}</span>
+                    </div>
+                    <div className="detail-info-line">
+                      <span className="detail-info-label">Sales reps:</span>
+                      <span className="detail-info-value">{salesMembers.length}</span>
+                    </div>
+                    <div className="detail-info-line">
+                      <span className="detail-info-label">Pre sales:</span>
+                      <span className="detail-info-value">{salesMembers.reduce((s, m) => s + (m.preSales?.length || 0), 0)}</span>
+                    </div>
+                  </div>
+                )}
+            <div className="board-detail-actions">
+              <button>✉</button>
+              <button>📞</button>
+              <button>💬</button>
+                  <button onClick={() => setSelectedMember(null)}>✕</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <button className="board-invite">send invite</button>
+        </div>
+        </>
+  )
 }
+
+export default Users

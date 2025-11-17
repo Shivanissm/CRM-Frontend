@@ -10,8 +10,14 @@ import Organizations from './pages/Organizations';
 import Users from './pages/Users';
 import Login from './pages/Login';
 import AppLayout from './components/AppLayout';
-import { getStoredToken } from './utils/authToken';
+import { getStoredToken, getStoredUser } from './utils/authToken';
 import './App.css';
+import AcceptInvitation from './pages/AcceptInvitation';
+import ResetPassword from './pages/ResetPassword';
+import SalesDashboard from './pages/SalesDashboard';
+import CategoryManagerDashboard from './pages/CategoryManagerDashboard';
+import PreSalesDashboard from './pages/PreSalesDashboard';
+import { resolveRoleDashboardRoute } from './utils/roleRoutes';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const location = useLocation();
@@ -29,23 +35,22 @@ function RequireGuest({ children }: { children: JSX.Element }) {
     return <Navigate to="/persons" replace />;
   }
   return children;
+function RoleAwareHome() {
+  const storedUser = getStoredUser();
+  const dashboardRoute = resolveRoleDashboardRoute(storedUser?.role);
+  if (dashboardRoute && dashboardRoute !== '/') {
+    return <Navigate to={dashboardRoute} replace />;
+  }
+  return <PersonsList />;
 }
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Login page - only accessible when not logged in */}
-        <Route
-          path="/login"
-          element={(
-            <RequireGuest>
-              <Login />
-            </RequireGuest>
-          )}
-        />
-        
-        {/* Protected routes - require authentication */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/accept-invitation" element={<AcceptInvitation />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route
           element={(
             <RequireAuth>
@@ -69,6 +74,9 @@ function App() {
           
           {/* Catch all for protected routes - redirect to persons if route not found */}
           <Route path="*" element={<Navigate to="/persons" replace />} />
+          <Route path="/dashboard/sales" element={<SalesDashboard />} />
+          <Route path="/dashboard/category-manager" element={<CategoryManagerDashboard />} />
+          <Route path="/dashboard/pre-sales" element={<PreSalesDashboard />} />
         </Route>
       </Routes>
     </BrowserRouter>

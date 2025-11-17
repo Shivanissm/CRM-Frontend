@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import OrganizationModal from '../components/OrganizationModal';
 import { organizationsApi } from '../services/organizations';
-import type { Organization, OrganizationOwner, OrganizationRequest } from '../types/organization';
+import type { Organization, OrganizationCategory, OrganizationOwner, OrganizationRequest } from '../types/organization';
 import './Organizations.css';
 import { clearAuthSession } from '../utils/authToken';
 
@@ -18,16 +18,24 @@ export default function Organizations() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [owners, setOwners] = useState<OrganizationOwner[]>([]);
+  const [categories, setCategories] = useState<OrganizationCategory[]>([]);
 
   const filteredOrganizations = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return organizations;
-    return organizations.filter((org) => org.name.toLowerCase().includes(term));
+    return organizations.filter((org) => {
+      const category = org.category ?? '';
+      return (
+        org.name.toLowerCase().includes(term) ||
+        category.toLowerCase().includes(term)
+      );
+    });
   }, [organizations, search]);
 
   useEffect(() => {
     void loadOrganizations();
     void loadOwners();
+    void loadCategories();
   }, []);
 
   const handleAuthRedirect = () => {
@@ -45,6 +53,19 @@ export default function Organizations() {
         return;
       }
       console.warn('Failed to load organization owners', err);
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      const data = await organizationsApi.listCategories();
+      setCategories(data);
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        handleAuthRedirect();
+        return;
+      }
+      console.warn('Failed to load organization categories', err);
     }
   };
 
@@ -163,6 +184,7 @@ export default function Organizations() {
             <tr>
               <th style={{ width: '80px' }}>ID</th>
               <th>Name</th>
+              <th style={{ width: '200px' }}>Category</th>
               <th style={{ width: '180px' }}>Actions</th>
             </tr>
           </thead>
@@ -173,6 +195,7 @@ export default function Organizations() {
                 <tr key={organization.id}>
                   <td>{organization.id}</td>
                   <td>{organization.name}</td>
+                  <td>{organization.category ?? '—'}</td>
                   <td>
                     <div className="organizations-row-actions">
                       <button
@@ -206,6 +229,7 @@ export default function Organizations() {
           onClose={() => setModalState(null)}
           onSubmit={handleModalSubmit}
           owners={owners}
+          categories={categories}
         />
       )}
     </div>

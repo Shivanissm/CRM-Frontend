@@ -47,6 +47,12 @@ export const usersApi = {
     return unwrap<User[]>(response.data);
   },
 
+  // Get all users (returns ApiResponse for compatibility)
+  getAllUsers: async (): Promise<ApiResponse<User[]>> => {
+    const response = await api.get<ApiResponse<User[]>>('');
+    return response.data;
+  },
+
   // Get user by ID
   getUserById: async (id: number): Promise<User> => {
     const response = await api.get<ApiResponse<User>>(`/${id}`);

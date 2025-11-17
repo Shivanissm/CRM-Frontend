@@ -9,7 +9,7 @@ export interface Deal {
   stageId?: number | null;
   sourceId?: number | null;
   organizationId?: number | null;
-  categoryId?: number | null;
+  categoryId?: number | string | null;
   eventType?: string | null;
   status: DealStatus;
   commissionAmount?: number | null;
@@ -33,7 +33,7 @@ export interface DealCreateRequest {
   stageId?: number | null;
   sourceId?: number | null;
   organizationId?: number | null;
-  categoryId?: number | null;
+  categoryId?: number | string | null;
   eventType?: string | null;
   status?: DealStatus;
   commissionAmount?: number | null;
@@ -53,5 +53,10 @@ export interface DealStageUpdateRequest {
 
 export interface DealStatusUpdateRequest {
   status: DealStatus;
+}
+
+export interface DealCategory {
+  id: string;
+  label: string;
 }
 
