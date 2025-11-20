@@ -852,7 +852,7 @@ export default function PersonsList() {
                 onChange={(e) => handleFilterChange('manager', e.target.value)}
                 className="filter-select"
               >
-                <option value="">All Managers</option>
+                <option value="">All Users</option>
                 {filterMeta.managers.map(mgr => (
                   <option key={mgr} value={mgr}>{mgr}</option>
                 ))}

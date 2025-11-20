@@ -70,7 +70,35 @@ code {
   letter-spacing: 0.5px;
 }
 
-.toolbar { display: flex; gap: 8px; align-items: center; margin: 12px 0 16px; }
+.toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 0 16px;
+  flex-wrap: wrap;
+}
+.toolbar-left {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.toolbar-filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.toolbar-select {
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  padding: 6px 12px;
+  background-color: #fff;
+  font-size: 13px;
+  color: #1f2328;
+  min-width: 150px;
+}
 .btn { border: 1px solid var(--border); background: #fff; padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
 .btn.active { background: #eef2ff; border-color: #c7d2fe; color: #3730a3; }
 .btn.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
