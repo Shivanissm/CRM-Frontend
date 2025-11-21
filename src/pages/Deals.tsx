@@ -669,6 +669,12 @@ const Deals = () => {
     return [tbsOrg, ...organizations];
   }, [organizations]);
 
+  const selectedOrganizationForForm = formData.organizationId
+    ? organizationsById.get(Number(formData.organizationId)) ?? null
+    : null;
+  const selectedOrgCalendarEmail = selectedOrganizationForForm?.googleCalendarId?.trim() || '';
+  const hasCalendarSyncForForm = Boolean(selectedOrgCalendarEmail);
+
   const personsById = useMemo(() => {
     const map = new Map<number, Person>();
     persons.forEach((person) => map.set(person.id, person));
