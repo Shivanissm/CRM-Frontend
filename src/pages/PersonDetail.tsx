@@ -1462,7 +1462,7 @@ export default function PersonDetail() {
                             <>
                               <span className="deal-activity-separator">·</span>
                               <span className="deal-activity-deal">
-                                <span className="deal-activity-deal-icon">$</span>
+                                <span className="deal-activity-deal-icon">₹</span>
                                 {activityDeal.name}
                               </span>
                             </>
@@ -1585,7 +1585,7 @@ export default function PersonDetail() {
                               <>
                                 <span className="deal-history-separator">·</span>
                                 <span className="deal-history-deal">
-                                  <span className="deal-history-deal-icon">$</span>
+                                  <span className="deal-history-deal-icon">₹</span>
                                   {activityDeal.name}
                                 </span>
                               </>

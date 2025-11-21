@@ -7,6 +7,7 @@ import {
   type DealStatus,
   type DealStatusUpdateRequest,
 } from '../types/deal';
+import type { Pipeline } from '../types/pipeline';
 import { getStoredToken, logoutAndRedirect } from '../utils/authToken';
 import { withApiBase } from '../config/api';
 
@@ -97,6 +98,11 @@ export const dealsApi = {
 
   remove: async (id: number): Promise<void> => {
     await api.delete(`/${id}`);
+  },
+
+  getAvailablePipelines: async (dealId: number): Promise<Pipeline[]> => {
+    const response = await api.get(`/${dealId}/available-pipelines`);
+    return unwrap<Pipeline[]>(response.data);
   },
 };
 

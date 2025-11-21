@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import './ActivityModal.css';
 import { activitiesApi } from '../services/activities';
+import { organizationsApi } from '../services/organizations';
+import type { Organization } from '../types/organization';
 
 export interface ActivityFormValues {
   subject: string;
@@ -34,6 +37,11 @@ export default function ActivityModal({
   const [values, setValues] = useState<ActivityFormValues>({ subject: '' });
   const [_categories, setCategories] = useState<Array<{ id: string; label: string }>>([]);
   const [categoryLoading, setCategoryLoading] = useState(false);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [showOrgSuggestions, setShowOrgSuggestions] = useState(false);
+  const [filteredOrganizations, setFilteredOrganizations] = useState<Organization[]>([]);
+  const orgInputRef = useRef<HTMLInputElement>(null);
+  const orgSuggestionsRef = useRef<HTMLDivElement>(null);
 
   const update = (k: keyof ActivityFormValues, v: string | number) => {
     if (k === 'personId') {
@@ -63,13 +71,58 @@ export default function ActivityModal({
     }
   };
 
+  const loadOrganizations = async () => {
+    try {
+      const data = await organizationsApi.list();
+      setOrganizations(data);
+    } catch (err: any) {
+      console.error('Failed to load organizations:', err);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       setValues({ subject: '', organization: initialOrganization || '' });
       void loadCategories();
+      void loadOrganizations();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialOrganization]);
+
+  // Filter organizations based on input
+  useEffect(() => {
+    const orgInput = values.organization || '';
+    if (orgInput.trim().length > 0) {
+      const filtered = organizations.filter(org =>
+        org.name.toLowerCase().includes(orgInput.toLowerCase())
+      );
+      setFilteredOrganizations(filtered);
+    } else {
+      // Show all organizations when input is empty
+      setFilteredOrganizations(organizations);
+    }
+  }, [values.organization, organizations]);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        orgInputRef.current &&
+        orgSuggestionsRef.current &&
+        !orgInputRef.current.contains(event.target as Node) &&
+        !orgSuggestionsRef.current.contains(event.target as Node)
+      ) {
+        setShowOrgSuggestions(false);
+      }
+    };
+
+    if (showOrgSuggestions) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showOrgSuggestions]);
 
   if (!isOpen) return null;
 
@@ -106,9 +159,9 @@ export default function ActivityModal({
     if (!dateStr) return undefined;
     // Convert yyyy-MM-dd to dd/MM/yyyy for backend
     if (dateStr.includes('-')) {
-      const parts = dateStr.split('-');
-      if (parts.length === 3) {
-        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
       }
     }
     return dateStr;
@@ -132,7 +185,9 @@ export default function ActivityModal({
     setValues({ subject: '' }); // Reset after save
   };
 
-  return (
+  if (!isOpen) return null;
+
+  const modalContent = (
     <div className="am-overlay" onClick={onClose}>
       <div className="am-modal" onClick={(e) => e.stopPropagation()}>
         <div className="am-header">
@@ -187,15 +242,50 @@ export default function ActivityModal({
           <textarea className="am-textarea" placeholder="Notes (not visible to event guests)" value={values.notes || ''} onChange={(e) => update('notes', e.target.value)} />
 
           <div className="am-meta">
-            <div>
+            <div style={{ position: 'relative', width: '100%' }}>
               <strong>Organization:</strong>{' '}
-              <input
-                className="am-input"
-                style={{ width: 200 }}
-                value={values.organization || ''}
-                onChange={(e) => update('organization', e.target.value)}
-                placeholder="Organization name"
-              />
+              <div style={{ position: 'relative', display: 'inline-block', width: '100%', maxWidth: '400px' }}>
+                <input
+                  ref={orgInputRef}
+                  className="am-input"
+                  style={{ width: '100%' }}
+                  value={values.organization || ''}
+                  onChange={(e) => {
+                    update('organization', e.target.value);
+                    setShowOrgSuggestions(true);
+                  }}
+                  onFocus={() => {
+                    if (filteredOrganizations.length > 0) {
+                      setShowOrgSuggestions(true);
+                    }
+                  }}
+                  placeholder="Organization name"
+                />
+                {showOrgSuggestions && filteredOrganizations.length > 0 && (
+                  <div
+                    ref={orgSuggestionsRef}
+                    className="am-org-suggestions"
+                  >
+                    {filteredOrganizations.slice(0, 10).map((org) => (
+                      <div
+                        key={org.id}
+                        className="am-org-suggestion-item"
+                        onClick={() => {
+                          update('organization', org.name);
+                          setShowOrgSuggestions(false);
+                        }}
+                      >
+                        {org.name}
+                      </div>
+                    ))}
+                    {filteredOrganizations.length > 10 && (
+                      <div className="am-org-suggestion-item" style={{ color: '#64748b', fontStyle: 'italic', cursor: 'default' }}>
+                        +{filteredOrganizations.length - 10} more...
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -207,5 +297,7 @@ export default function ActivityModal({
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
 
