@@ -10,6 +10,8 @@ export interface User {
   managerName: string | null;
   createdAt: string;
   lastLoginAt: string | null;
+  totalMembers?: number;
+  directReports?: number;
 }
 
 export interface ApiResponse<T> {
