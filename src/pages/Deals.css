@@ -9,6 +9,7 @@
   position: relative;
   overflow-x: visible;
   overflow-y: visible;
+  z-index: 1;
 }
 
 .deals-page-title {
@@ -36,6 +37,7 @@
   width: 100%;
   box-sizing: border-box;
   position: relative;
+  z-index: 100;
 }
 
 .deals-header-top {
@@ -47,9 +49,11 @@
 }
 
 .deals-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   flex: 1;
   min-width: 0;
-  max-width: 400px;
 }
 
 .deals-search-container {
@@ -62,17 +66,356 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 12px;
   flex: 0 0 auto;
+  flex-wrap: nowrap;
+  position: relative;
+  z-index: 101;
+}
+
+.deals-total-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  white-space: nowrap;
+  position: relative;
+  z-index: 102;
+}
+
+.deals-info-icon {
+  font-size: 12px;
+  cursor: help;
+  opacity: 0.7;
+  position: relative;
+  display: inline-block;
+  z-index: 103;
+}
+
+.deals-info-icon.summary-open {
+  opacity: 1;
+}
+
+.deals-info-icon .deals-summary-card {
+  opacity: 1 !important;
+  background: #ffffff !important;
+  isolation: isolate;
+}
+
+.deals-view-buttons {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.deals-view-icon-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #6b7280;
+  padding: 0;
+}
+
+.deals-view-icon-btn:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.deals-view-icon-btn.active {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.deals-view-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deals-add-button-container {
+  position: relative;
+}
+
+.deals-add-btn {
+  padding: 8px 16px;
+  background: #10b981;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.deals-add-btn:hover {
+  background: #059669;
+}
+
+.deals-pin-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.deals-pin-filters:hover {
+  background: #f9fafb;
+}
+
+.deals-pin-icon {
+  font-size: 14px;
+}
+
+.deals-pin-text {
+  font-weight: 500;
+}
+
+.deals-summary-card {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: #ffffff !important;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10001;
+  min-width: 400px;
+  padding: 20px;
+  opacity: 1 !important;
+  backdrop-filter: none;
+  isolation: isolate;
+}
+
+.deals-summary-section {
+  margin-bottom: 20px;
+}
+
+.deals-summary-section:last-child {
+  margin-bottom: 0;
+}
+
+.deals-summary-label {
+  font-weight: 700;
+  font-size: 14px;
+  color: #111827;
+  margin-bottom: 12px;
+}
+
+.deals-summary-values {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   flex-wrap: wrap;
+}
+
+.deals-summary-value {
+  font-size: 16px;
+  font-weight: 500;
+  color: #111827;
+}
+
+.deals-summary-weighted {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #111827;
+}
+
+.deals-summary-icon {
+  font-size: 16px;
+}
+
+.deals-summary-count {
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.deals-pipeline-selector {
+  position: relative;
+}
+
+.deals-pipeline-btn {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.deals-pipeline-btn:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.deals-pipeline-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 200px;
+  overflow: hidden;
+}
+
+.deals-pipeline-option {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  background: #fff;
+  border: none;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.deals-pipeline-option:hover {
+  background: #f9fafb;
+}
+
+.deals-pipeline-option.active {
+  background: #eff6ff;
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.deals-filter-button-container {
+  position: relative;
+}
+
+.deals-filter-btn {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.deals-filter-btn:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.deals-filter-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 160px;
+  overflow: hidden;
+}
+
+.deals-filter-option {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  background: #fff;
+  border: none;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.deals-filter-option:hover {
+  background: #f9fafb;
+}
+
+.deals-filter-option.active {
+  background: #eff6ff;
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.deals-sort-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.deals-sort-icon {
+  font-size: 14px;
+}
+
+.deals-sort-label {
+  font-weight: 500;
+}
+
+.deals-sort-btn {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.deals-sort-btn:hover {
+  color: #3b82f6;
 }
 
 .deals-header-bottom {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
   width: 100%;
+}
+
+.deals-header-bottom > .deals-sort-container {
+  margin-left: auto;
 }
 
 .deals-search-input {
@@ -210,6 +553,7 @@
   min-width: 0;
   padding: 0 32px 24px 32px;
   position: relative;
+  z-index: 1;
 }
 
 .deals-grid {
@@ -217,6 +561,526 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 16px;
+}
+
+/* Kanban Board Styles */
+.deals-kanban-board {
+  display: flex;
+  gap: 10px;
+  overflow-x: hidden;
+  padding-bottom: 16px;
+  width: 100%;
+  min-height: 600px;
+}
+
+.kanban-column {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 0;
+  background: #f9fafb;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 300px);
+  min-height: calc(100vh - 300px);
+  transition: all 0.2s;
+  position: relative;
+  z-index: 1;
+  overflow: visible;
+}
+
+.kanban-column.diversion-stage {
+  background: #fff7ed;
+  border: 2px solid #fb923c;
+  box-shadow: 0 4px 12px rgba(251, 146, 60, 0.2);
+}
+
+.kanban-column.diversion-stage .kanban-column-header {
+  background: #ffedd5;
+  border-bottom: 2px solid #fb923c;
+}
+
+.kanban-column.diversion-stage .kanban-column-title {
+  color: #c2410c;
+  font-weight: 700;
+}
+
+.kanban-column.highlighted {
+  background: #eff6ff;
+  border: 2px solid #3b82f6;
+}
+
+.kanban-column-header {
+  padding: 16px;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  border-radius: 8px 8px 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.kanban-column-title {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.kanban-column-summary {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.kanban-column-content {
+  flex: 1;
+  padding: 12px;
+  padding-bottom: 150px; /* Extra padding at bottom to ensure dropdown is visible */
+  overflow-y: auto;
+  overflow-x: visible;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  z-index: 1;
+  contain: layout style;
+  position: relative;
+  min-height: 200px; /* Minimum height to ensure content area is tall enough */
+}
+
+.kanban-empty {
+  text-align: center;
+  padding: 24px;
+  color: #9ca3af;
+  font-size: 14px;
+  position: relative;
+  z-index: 1;
+}
+
+.kanban-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  width: 100%;
+  padding: 48px;
+}
+
+.kanban-empty-state p {
+  color: #6b7280;
+  font-size: 16px;
+  margin: 0;
+}
+
+.kanban-card {
+  position: relative;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  z-index: 10;
+}
+
+.kanban-card:hover,
+.kanban-card.dropdown-open {
+  z-index: 100;
+}
+
+.kanban-card:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+  border-color: #9ca3af;
+}
+
+.kanban-card.selected {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.kanban-card.status-won {
+  background: #dcfce7;
+  border-color: #22c55e;
+}
+
+.kanban-card.status-lost {
+  background: #fee2e2;
+  border-color: #ef4444;
+}
+
+.kanban-card-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.kanban-card-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.kanban-card-status-badge.status-won {
+  background: #22c55e;
+  color: #fff;
+}
+
+.kanban-card-status-badge.status-lost {
+  background: #ef4444;
+  color: #fff;
+}
+
+.kanban-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.kanban-card-rsp {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.kanban-card-date {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-bottom: 8px;
+}
+
+.kanban-card-value {
+  font-size: 11px;
+  font-weight: 700;
+  color: #111827;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #f3f4f6;
+}
+
+.kanban-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.kanban-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.kanban-card-action-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #f3f4f6;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  transition: all 0.2s ease;
+  padding: 0;
+  margin: 0;
+}
+
+.kanban-card-action-btn:hover {
+  background: #e5e7eb;
+  color: #111827;
+  transform: scale(1.05);
+}
+
+.kanban-card-action-btn:active {
+  transform: scale(0.95);
+}
+
+.kanban-card-action-btn svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.2s ease;
+}
+
+.kanban-card.dropdown-open .kanban-card-action-btn {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.kanban-card.dropdown-open .kanban-card-action-btn:hover {
+  background: #2563eb;
+}
+
+.kanban-dropdown-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9998;
+  background: transparent;
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.kanban-card-dropdown {
+  position: fixed !important;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+  z-index: 10000 !important;
+  min-width: 200px;
+  max-width: 250px;
+  overflow: visible;
+  animation: slideIn 0.2s ease-out;
+  transform-origin: top left;
+  pointer-events: auto;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.kanban-card-dropdown-item {
+  width: 100%;
+  padding: 12px 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+.kanban-card-dropdown-item:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+.kanban-card-dropdown-item:active {
+  background: #e5e7eb;
+  transform: scale(0.98);
+}
+
+.kanban-card-dropdown-item:not(:last-child) {
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.kanban-card-dropdown-item:first-child {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+.kanban-card-dropdown-item:last-child {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+.kanban-card-tooltip {
+  position: fixed;
+  background: #1f2937;
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  z-index: 10000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+  min-width: 220px;
+  max-width: 300px;
+  white-space: normal;
+  transform: translate(-50%, -100%);
+  margin-top: -8px;
+}
+
+.kanban-card.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.kanban-card {
+  cursor: grab;
+}
+
+.kanban-card:active {
+  cursor: grabbing;
+}
+
+/* Status Zones (Delete, WON, LOST) */
+.kanban-status-zone,
+.kanban-delete-zone {
+  position: absolute;
+  bottom: 0;
+  width: calc((100% - 48px - 16px) / 3);
+  height: 75px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  transition: all 0.2s ease;
+  pointer-events: auto;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.kanban-status-zone-content,
+.kanban-delete-zone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.kanban-status-zone-text,
+.kanban-delete-zone-text {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+/* Delete Zone - Leftmost */
+.kanban-delete-zone {
+  left: 24px;
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #dc2626;
+}
+
+.kanban-delete-zone.drag-over {
+  background: #fecaca;
+  border-color: #dc2626;
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.35);
+  transform: translateY(-2px) scale(1.05);
+}
+
+.kanban-delete-zone-content {
+  color: #dc2626;
+}
+
+.kanban-delete-zone-text {
+  color: #dc2626;
+}
+
+.kanban-delete-zone svg {
+  color: #dc2626;
+}
+
+/* WON Zone - Middle */
+.kanban-won-zone {
+  left: calc(24px + (100% - 48px - 16px) / 3 + 8px);
+  background: #dcfce7;
+  border-color: #22c55e;
+  color: #16a34a;
+}
+
+.kanban-won-zone.drag-over {
+  background: #bbf7d0;
+  border-color: #16a34a;
+  box-shadow: 0 8px 20px rgba(34, 197, 94, 0.35);
+  transform: translateY(-2px) scale(1.05);
+}
+
+.kanban-won-zone svg {
+  color: #16a34a;
+}
+
+.kanban-won-zone .kanban-status-zone-text {
+  color: #16a34a;
+}
+
+/* LOST Zone - Rightmost */
+.kanban-lost-zone {
+  left: calc(24px + 2 * (100% - 48px - 16px) / 3 + 16px);
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #dc2626;
+}
+
+.kanban-lost-zone.drag-over {
+  background: #fecaca;
+  border-color: #dc2626;
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.35);
+  transform: translateY(-2px) scale(1.05);
+}
+
+.kanban-lost-zone svg {
+  color: #dc2626;
+}
+
+.kanban-lost-zone .kanban-status-zone-text {
+  color: #dc2626;
+}
+
+.kanban-card-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #1f2937;
+}
+
+.tooltip-item {
+  display: block;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.tooltip-item:last-child {
+  margin-bottom: 0;
+}
+
+.tooltip-label {
+  color: #9ca3af;
+  font-size: 11px;
+  font-weight: 500;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.tooltip-value {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  display: block;
 }
 
 /* Modal Styles */
@@ -347,6 +1211,106 @@
 .form-input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
+}
+
+/* Person Autocomplete Suggestions */
+.form-person-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.form-person-suggestion-item {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #1e293b;
+  transition: background-color 0.15s;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.form-person-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.form-person-suggestion-item:hover {
+  background-color: #f8fafc;
+}
+
+.form-person-suggestions::-webkit-scrollbar {
+  width: 6px;
+}
+
+.form-person-suggestions::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.form-person-suggestions::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.form-person-suggestions::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Venue Autocomplete Suggestions */
+.form-venue-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.form-venue-suggestion-item {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #1e293b;
+  transition: background-color 0.15s;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.form-venue-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.form-venue-suggestion-item:hover {
+  background-color: #f8fafc;
+}
+
+.form-venue-suggestions::-webkit-scrollbar {
+  width: 6px;
+}
+
+.form-venue-suggestions::-webkit-scrollbar-track {
+  background: #f8fafc;
+}
+
+.form-venue-suggestions::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.form-venue-suggestions::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 .modal-actions {
@@ -825,6 +1789,81 @@
   border-bottom: none;
 }
 
+.deal-detail-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.deal-detail-status-badge.status-in_progress {
+  background: #e0e7ff;
+  color: #6366f1;
+}
+
+.deal-detail-status-badge.status-won {
+  background: #22c55e;
+  color: #fff;
+}
+
+.deal-detail-status-badge.status-lost {
+  background: #ef4444;
+  color: #fff;
+}
+
+.deal-detail-status-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.deal-detail-status-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.deal-detail-status-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deal-detail-status-btn-won {
+  background: #22c55e;
+  color: #fff;
+}
+
+.deal-detail-status-btn-won:hover:not(:disabled) {
+  background: #16a34a;
+}
+
+.deal-detail-status-btn-lost {
+  background: #ef4444;
+  color: #fff;
+}
+
+.deal-detail-status-btn-lost:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.deal-detail-status-btn-reopen {
+  background: #6b7280;
+  color: #fff;
+}
+
+.deal-detail-status-btn-reopen:hover:not(:disabled) {
+  background: #4b5563;
+}
+
 .deal-detail-row .deal-detail-label {
   color: #6b7280;
   font-weight: 500;
@@ -1195,6 +2234,350 @@
   .deals-grid {
     grid-template-columns: 1fr;
   }
+
+  .deals-kanban-board {
+    flex-direction: column;
+  }
+
+  .kanban-column {
+    min-width: 100%;
+    max-width: 100%;
+  }
+
+/* Delete Confirmation Modal */
+.delete-confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100000;
+  animation: fadeIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 20px;
+}
+
+.delete-confirm-modal {
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 
+    0 25px 50px -12px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(0, 0, 0, 0.05),
+    0 0 0 0 rgba(220, 38, 38, 0.1);
+  max-width: 520px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: slideUpScale 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: center center;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.delete-confirm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 28px 32px 24px 32px;
+  border-bottom: 1px solid #f0f0f0;
+  background: linear-gradient(to bottom, #ffffff 0%, #fafbfc 100%);
+  position: relative;
+}
+
+.delete-confirm-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(to right, transparent, #e5e7eb, transparent);
+}
+
+.delete-confirm-header h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.025em;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  line-height: 1.2;
+}
+
+.delete-confirm-header h2::before {
+  content: '🗑️';
+  font-size: 28px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+.delete-confirm-close {
+  background: #f5f5f5;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 300;
+  position: relative;
+}
+
+.delete-confirm-close::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.02));
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.delete-confirm-close:hover {
+  background: #e8e8e8;
+  color: #111827;
+  transform: rotate(90deg) scale(1.05);
+}
+
+.delete-confirm-close:hover::before {
+  opacity: 1;
+}
+
+.delete-confirm-close:active {
+  transform: rotate(90deg) scale(0.95);
+}
+
+.delete-confirm-content {
+  padding: 32px;
+  background: #ffffff;
+}
+
+.delete-confirm-content p {
+  margin: 0 0 20px 0;
+  font-size: 17px;
+  color: #4b5563;
+  line-height: 1.65;
+  font-weight: 400;
+}
+
+.delete-confirm-content p:first-child {
+  font-size: 18px;
+  color: #1f2937;
+  font-weight: 500;
+  margin-bottom: 16px;
+}
+
+.delete-confirm-content p:last-of-type {
+  margin-bottom: 0;
+}
+
+.delete-confirm-content strong {
+  color: #111827;
+  font-weight: 700;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 50%, #fcd34d 100%);
+  padding: 4px 12px;
+  border-radius: 8px;
+  display: inline-block;
+  box-shadow: 0 2px 4px rgba(251, 191, 36, 0.2);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  margin: 0 2px;
+}
+
+.delete-confirm-warning {
+  color: #dc2626 !important;
+  font-weight: 600;
+  font-size: 15px !important;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border-left: 4px solid #dc2626;
+  border-radius: 12px;
+  margin-top: 12px;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.delete-confirm-warning::before {
+  content: '⚠️';
+  font-size: 20px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+}
+
+.delete-confirm-warning::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(220, 38, 38, 0.3), transparent);
+}
+
+.delete-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: 24px 32px 32px 32px;
+  border-top: 1px solid #f0f0f0;
+  background: linear-gradient(to bottom, #fafbfc 0%, #f5f5f5 100%);
+  position: relative;
+}
+
+.delete-confirm-actions::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(to right, transparent, #e5e7eb, transparent);
+}
+
+.delete-confirm-cancel,
+.delete-confirm-delete {
+  padding: 14px 28px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border: none;
+  min-width: 110px;
+  letter-spacing: -0.01em;
+  position: relative;
+  overflow: hidden;
+}
+
+.delete-confirm-cancel {
+  background: #ffffff;
+  color: #374151;
+  border: 2px solid #e5e7eb;
+  box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.05),
+    0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.delete-confirm-cancel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.02), transparent);
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.delete-confirm-cancel:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #d1d5db;
+  transform: translateY(-2px);
+  box-shadow: 
+    0 8px 12px -2px rgba(0, 0, 0, 0.1),
+    0 4px 6px -1px rgba(0, 0, 0, 0.08);
+}
+
+.delete-confirm-cancel:hover:not(:disabled)::before {
+  opacity: 1;
+}
+
+.delete-confirm-cancel:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.delete-confirm-delete {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 50%, #991b1b 100%);
+  color: #ffffff;
+  box-shadow: 
+    0 6px 12px -2px rgba(220, 38, 38, 0.4),
+    0 4px 6px -1px rgba(220, 38, 38, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  position: relative;
+}
+
+.delete-confirm-delete::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.2), transparent);
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.delete-confirm-delete:hover:not(:disabled) {
+  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 50%, #7f1d1d 100%);
+  transform: translateY(-2px);
+  box-shadow: 
+    0 12px 20px -4px rgba(220, 38, 38, 0.5),
+    0 6px 10px -2px rgba(220, 38, 38, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.delete-confirm-delete:hover:not(:disabled)::before {
+  opacity: 1;
+}
+
+.delete-confirm-delete:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 
+    0 4px 6px -1px rgba(220, 38, 38, 0.4),
+    inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.delete-confirm-cancel:disabled,
+.delete-confirm-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUpScale {
+  from {
+    transform: translateY(20px) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Delete Modal Animations */
+.delete-modal-overlay {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.delete-modal-content {
+  animation: slideUpScale 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
 
   .deals-sheet-table {
     min-width: 800px;

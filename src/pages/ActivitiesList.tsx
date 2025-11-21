@@ -1,19 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { activitiesApi, type Activity, type PageResponse, type ActivityFilters } from '../services/activities';
 import FilterDropdown, { type SavedFilter as DropdownSavedFilter } from '../components/FilterDropdown';
 import FilterModal, { type FilterCondition } from '../components/FilterModal';
-import ActivityModal from '../components/ActivityModal';
+import ActivityModal, { type ActivityFormValues } from '../components/ActivityModal';
 import ColumnMenu from '../components/ColumnMenu';
 import BulkEditModal from '../components/BulkEditModal';
+import { organizationsApi } from '../services/organizations';
+import { usersApi } from '../services/users';
+import type { Organization } from '../types/organization';
+import type { User } from '../types/user';
+
+const tabOptions = ['All', 'To‑do', 'Overdue', 'Today', 'Tomorrow', 'This week', 'Next week', 'This month', 'Prev month', 'This year', 'Select period', 'Select Date'] as const;
+const primaryTabs: Array<(typeof tabOptions)[number]> = ['All', 'Overdue', 'Today'];
+type TabOption = (typeof tabOptions)[number];
+type SummaryCardAction =
+  | 'activityAll'
+  | 'activityPending'
+  | 'activityCompleted'
+  | 'callAll'
+  | 'callDone'
+  | 'meetingAll'
+  | 'meetingDone'
+  | 'overdue';
 
 export default function ActivitiesList() {
   const [data, setData] = useState<PageResponse<Activity> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState<'Activity' | 'Call' | 'Meeting scheduler'>('Activity');
-  const [tab, setTab] = useState<'All' | 'To‑do' | 'Overdue' | 'Today' | 'Tomorrow' | 'This week' | 'Next week' | 'Select period' | 'Select Date'>('Today');
+  const [tab, setTab] = useState<TabOption>('Today');
   const [filters, setFilters] = useState<ActivityFilters>({ page: 0, size: 25 });
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
+  const [isTabDropdownOpen, setIsTabDropdownOpen] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   type SavedFilterOption = DropdownSavedFilter<FilterCondition>;
   const [savedFilters, setSavedFilters] = useState<SavedFilterOption[]>([]);
@@ -35,10 +53,90 @@ export default function ActivitiesList() {
   const [currentCalendarMonth, setCurrentCalendarMonth] = useState(new Date());
   const [selectedActivities, setSelectedActivities] = useState<Set<number>>(new Set());
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
-  const [todayCount, setTodayCount] = useState(0);
-  const [completedCount, setCompletedCount] = useState(0);
-  const [pendingCount, setPendingCount] = useState(0);
+  const [rowMenu, setRowMenu] = useState<{ activity: Activity; x: number; y: number } | null>(null);
   const [overdueCount, setOverdueCount] = useState(0);
+  const [callAssignedCount, setCallAssignedCount] = useState(0);
+  const [callTakenCount, setCallTakenCount] = useState(0);
+  const [meetingAssignedCount, setMeetingAssignedCount] = useState(0);
+  const [meetingDoneCount, setMeetingDoneCount] = useState(0);
+  const [totalCallDurationMinutes, setTotalCallDurationMinutes] = useState(0);
+  const [activityTotalCount, setActivityTotalCount] = useState(0);
+  const [activityPendingCount, setActivityPendingCount] = useState(0);
+  const [activityCompletedCount, setActivityCompletedCount] = useState(0);
+  const DEFAULT_CATEGORY_OPTIONS: Array<{ code: string; label: string }> = [
+    { code: 'PHOTOGRAPHY', label: 'Photography' },
+    { code: 'MAKEUP', label: 'Makeup' },
+    { code: 'PLANNING_DECOR', label: 'Planning & Decor' },
+  ];
+  const defaultServiceCategoryCode = DEFAULT_CATEGORY_OPTIONS[0].code;
+  const categoryLabelMap = useMemo(() => {
+    return DEFAULT_CATEGORY_OPTIONS.reduce<Record<string, string>>((acc, option) => {
+      acc[option.code] = option.label;
+      return acc;
+    }, {});
+  }, []);
+  const [categoryFilterOptions, setCategoryFilterOptions] = useState<Array<{ code: string; label: string }>>(DEFAULT_CATEGORY_OPTIONS);
+  const [organizationOptions, setOrganizationOptions] = useState<Organization[]>([]);
+  const [managerOptions, setManagerOptions] = useState<User[]>([]);
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('');
+  const [selectedOrganizationFilter, setSelectedOrganizationFilter] = useState('');
+  const [selectedManagerFilter, setSelectedManagerFilter] = useState('');
+  const [attachmentPreviews, setAttachmentPreviews] = useState<Record<number, string>>({});
+  const [durationEntries, setDurationEntries] = useState<Record<number, string>>({});
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [pendingDoneActivity, setPendingDoneActivity] = useState<Activity | null>(null);
+  const [pendingDoneValue, setPendingDoneValue] = useState(false);
+  const [pendingDurationValue, setPendingDurationValue] = useState('');
+  const [pendingAttachmentName, setPendingAttachmentName] = useState('');
+  const [pendingDialogPosition, setPendingDialogPosition] = useState<{ top: number; left: number } | null>(null);
+  const [lastClickPosition, setLastClickPosition] = useState<{ top: number; left: number } | null>(null);
+  const SERVICE_CATEGORY_STORAGE_KEY = 'activityServiceCategories';
+  const [serviceCategories, setServiceCategories] = useState<Record<number, string>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const stored = localStorage.getItem(SERVICE_CATEGORY_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+  const updateServiceCategory = useCallback((id: number, value?: string) => {
+    setServiceCategories((prev) => {
+      const next = { ...prev };
+      if (!value) {
+        delete next[id];
+      } else {
+        next[id] = value;
+      }
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(SERVICE_CATEGORY_STORAGE_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
+  }, [SERVICE_CATEGORY_STORAGE_KEY]);
+  const getServiceCategoryForActivity = (id: number) => serviceCategories[id] || defaultServiceCategoryCode;
+
+  useEffect(() => {
+    if (!data?.content) return;
+    setServiceCategories((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      data.content?.forEach((activity) => {
+        if (!next[activity.id]) {
+          next[activity.id] = defaultServiceCategoryCode;
+          changed = true;
+        }
+      });
+      if (changed) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(SERVICE_CATEGORY_STORAGE_KEY, JSON.stringify(next));
+        }
+        return next;
+      }
+      return prev;
+    });
+  }, [data, defaultServiceCategoryCode, SERVICE_CATEGORY_STORAGE_KEY]);
 
   // Helper function to get calendar days for a month
   const getCalendarDays = (date: Date) => {
@@ -94,15 +192,67 @@ export default function ActivitiesList() {
     const [dd, mm, yyyy] = parts.map(Number);
     return new Date(yyyy, mm - 1, dd);
   };
+
+  const toBackendDateString = (dateStr?: string): string | undefined => {
+    if (!dateStr) return undefined;
+    if (dateStr.includes('-')) {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+    }
+    return dateStr;
+  };
+
+  const mapActivityTypeToCategory = (activityType?: string): string => {
+    if (!activityType) return getCategoryEnum(category);
+    switch (activityType.toUpperCase()) {
+      case 'CALL':
+        return 'CALL';
+      case 'MEETING':
+      case 'MEETING_SCHEDULER':
+        return 'MEETING_SCHEDULER';
+      case 'FOLLOW_UP':
+      case 'SEND_QUOTES':
+      case 'TASK':
+      case 'OTHER':
+      case 'ACTIVITY':
+      default:
+        return 'ACTIVITY';
+    }
+  };
+
+  const formatActivityTypeLabel = (value?: string | null): string => {
+    if (!value) return '-';
+    return value
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  };
   
+  // Convert category to backend enum format
+  const getCategoryEnum = (cat: string): string => {
+    switch (cat) {
+      case 'Activity':
+        return 'ACTIVITY';
+      case 'Call':
+        return 'CALL';
+      case 'Meeting scheduler':
+        return 'MEETING_SCHEDULER';
+      default:
+        return cat.toUpperCase().replace(/\s+/g, '_');
+    }
+  };
+
   const getDefaultColumnOrder = () => {
     if (category === 'Activity') {
-      return ['Done', 'Subject', 'Deal', 'Instagram ID', 'Phone', 'Organization', 'Due date', 'Assigned user', 'Priority', 'Notes'];
+      return ['Done', 'Subject', 'Type', 'Deal', 'Instagram ID', 'Phone', 'Organization', 'Category', 'Due date', 'Assigned user', 'Priority', 'Notes'];
     }
     if (category === 'Call') {
-      return ['Done', 'Subject', 'Deal', 'Instagram ID', 'Phone', 'Organization', 'Call type', 'Schedule date', 'Schedule time', 'Assigned user', 'Schedule by', 'Priority', 'Notes'];
+      return ['Done', 'Subject', 'Type', 'Deal', 'Instagram ID', 'Phone', 'Organization', 'Category', 'Schedule date', 'Schedule time', 'Duration', 'Attach image', 'Assigned user', 'Priority', 'Notes'];
     }
-    return ['Done', 'Subject', 'Deal', 'Instagram ID', 'Phone', 'Organization', 'Schedule date', 'Schedule time', 'Assigned user', 'Schedule by', 'Priority', 'Notes'];
+    return ['Done', 'Subject', 'Type', 'Deal', 'Instagram ID', 'Phone', 'Organization', 'Category', 'Schedule date', 'Schedule time', 'Assigned user', 'Priority', 'Notes'];
   };
 
   
@@ -143,12 +293,156 @@ export default function ActivitiesList() {
     done: ['true', 'false'],
   };
 
+  useEffect(() => {
+    let isMounted = true;
+    const loadFilterOptions = async () => {
+      try {
+        const [orgs, users] = await Promise.all([
+          organizationsApi.list().catch(() => []),
+          usersApi.list().catch(() => []),
+        ]);
+        if (!isMounted) return;
+        setCategoryFilterOptions(DEFAULT_CATEGORY_OPTIONS);
+        setOrganizationOptions(Array.isArray(orgs) ? orgs : []);
+        setManagerOptions(Array.isArray(users) ? users : []);
+      } catch (err) {
+        console.error('Failed to load filter options', err);
+      }
+    };
+    loadFilterOptions();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const getDatePreservingFilters = () => {
+    const next: ActivityFilters = { page: 0, size: 25 };
+    if (filters.dateFrom) {
+      next.dateFrom = filters.dateFrom;
+    }
+    if (filters.dateTo) {
+      next.dateTo = filters.dateTo;
+    }
+    if (filters.assignedUser) {
+      next.assignedUser = filters.assignedUser;
+    }
+    return next;
+  };
+
+  const normalizeDateFilters = (source?: ActivityFilters): ActivityFilters => {
+    const normalized: ActivityFilters = {};
+    if (source?.dateFrom) {
+      normalized.dateFrom = toBackendDateString(source.dateFrom);
+    }
+    if (source?.dateTo) {
+      normalized.dateTo = toBackendDateString(source.dateTo);
+    }
+    return normalized;
+  };
+
+  const parseTimeToMinutes = (time?: string | null) => {
+    if (!time) return null;
+    const [hoursStr, minutesStr] = time.split(':');
+    const hours = Number(hoursStr);
+    const minutes = Number(minutesStr);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+    return hours * 60 + minutes;
+  };
+
+  const parseDurationInputToMinutes = (value: string) => {
+    const trimmed = value?.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.includes(':')) {
+      const parts = trimmed.split(':').map((p) => p.trim());
+      if (parts.length < 2 || parts.length > 3) {
+        return null;
+      }
+      const [hoursStr, minutesStr, secondsStr] = parts;
+      const hours = Number(hoursStr);
+      const minutes = Number(minutesStr);
+      const seconds = parts.length === 3 ? Number(secondsStr) : 0;
+      if ([hours, minutes, seconds].some((n) => Number.isNaN(n))) {
+        return null;
+      }
+      return hours * 60 + minutes + Math.floor(seconds / 60);
+    }
+
+    const numericMinutes = Number(trimmed);
+    if (Number.isNaN(numericMinutes)) {
+      return null;
+    }
+    return numericMinutes;
+  };
+
+  const formatMinutesToHHMM = (minutes: number) => {
+    const safeMinutes = Math.max(0, minutes);
+    const hours = Math.floor(safeMinutes / 60);
+    const remainingMinutes = safeMinutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(remainingMinutes).padStart(2, '0')}`;
+  };
+
+  const loadCallDuration = async (dateFilters: ActivityFilters) => {
+    try {
+      const pageSize = 200;
+      let cumulativeMinutes = 0;
+      let page = 0;
+      let totalPages = 1;
+
+      while (page < totalPages) {
+        const response = await activitiesApi.list({
+          ...dateFilters,
+          category: 'CALL',
+          page,
+          size: pageSize,
+        });
+
+        response.content.forEach((activity) => {
+          const startMinutes = parseTimeToMinutes(activity.startTime);
+          const endMinutes = parseTimeToMinutes(activity.endTime);
+          if (
+            startMinutes !== null &&
+            endMinutes !== null &&
+            endMinutes >= startMinutes
+          ) {
+            cumulativeMinutes += endMinutes - startMinutes;
+          }
+        });
+
+        totalPages = response.totalPages || 1;
+        page += 1;
+        if (!response.content.length) {
+          break;
+        }
+      }
+
+      setTotalCallDurationMinutes(cumulativeMinutes);
+    } catch (error) {
+      console.error('Failed to load total call duration:', error);
+      setTotalCallDurationMinutes(0);
+    }
+  };
+
   const loadActivities = (customFilters?: ActivityFilters) => {
     setLoading(true);
-    const filtersToUse = customFilters || filters;
-    activitiesApi
-      .list({ ...filtersToUse, category })
-      .then(setData)
+      const filtersToUse = customFilters || filters;
+      // Only apply page category if category is not already specified in filters
+      // If category is explicitly undefined/null, don't apply any category filter
+      const finalFilters = filtersToUse.hasOwnProperty('category') && filtersToUse.category === undefined
+        ? filtersToUse
+        : filtersToUse.category 
+          ? filtersToUse 
+          : { ...filtersToUse, category: getCategoryEnum(category) };
+      const normalizedFilters: ActivityFilters = { ...finalFilters };
+      if (normalizedFilters.dateFrom) {
+        normalizedFilters.dateFrom = toBackendDateString(normalizedFilters.dateFrom);
+      }
+      if (normalizedFilters.dateTo) {
+        normalizedFilters.dateTo = toBackendDateString(normalizedFilters.dateTo);
+      }
+      activitiesApi
+        .list(normalizedFilters)
+        .then(setData)
       .catch((e) => setError(e?.message ?? 'Failed to load'))
       .finally(() => setLoading(false));
   };
@@ -157,74 +451,90 @@ export default function ActivitiesList() {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const todayFormatted = formatDateYYYYMMDD(today);
-      
       const yesterday = new Date(today);
       yesterday.setDate(today.getDate() - 1);
-      const yesterdayFormatted = formatDateYYYYMMDD(yesterday);
+      const yesterdayFormatted = formatDateDDMMYYYY(yesterday);
 
-      // First box (TODAY/Tomorrow/etc): Show activities for the selected tab's date range
-      // If currentFilters has date range, use it; otherwise default to actual today
-      const firstBoxFilters: ActivityFilters = {
-        category,
-        size: 1,
+      const dateOnlyFilters = normalizeDateFilters(currentFilters);
+
+      const baseRequests: Promise<PageResponse<Activity>>[] = [
+        activitiesApi.list({
+          ...dateOnlyFilters,
+          category: 'CALL',
+          size: 1,
+          page: 0,
+        }),
+        activitiesApi.list({
+          ...dateOnlyFilters,
+          category: 'CALL',
+          done: true,
+          size: 1,
+          page: 0,
+        }),
+        activitiesApi.list({
+          ...dateOnlyFilters,
+          category: 'MEETING_SCHEDULER',
+          size: 1,
+          page: 0,
+        }),
+        activitiesApi.list({
+          ...dateOnlyFilters,
+          category: 'MEETING_SCHEDULER',
+          done: true,
+          size: 1,
+          page: 0,
+        }),
+        activitiesApi.list({
+          dateTo: yesterdayFormatted, 
+          done: false, 
+          category: getCategoryEnum(category),
+          size: 1,
+          page: 0,
+        }),
+      ];
+
+      if (category === 'Activity') {
+        const activityBaseFilters = {
+          ...dateOnlyFilters,
+          category: 'ACTIVITY',
+          size: 1,
         page: 0,
       };
-      
-      if (currentFilters?.dateFrom && currentFilters?.dateTo) {
-        firstBoxFilters.dateFrom = currentFilters.dateFrom;
-        firstBoxFilters.dateTo = currentFilters.dateTo;
+        baseRequests.push(
+          activitiesApi.list(activityBaseFilters),
+          activitiesApi.list({ ...activityBaseFilters, done: false }),
+          activitiesApi.list({ ...activityBaseFilters, done: true }),
+        );
+      }
+
+      const responses = await Promise.all(baseRequests);
+      const [
+        callAssignedResponse,
+        callTakenResponse,
+        meetingAssignedResponse,
+        meetingDoneResponse,
+        overdueResult,
+        ...activityResponses
+      ] = responses;
+
+      setCallAssignedCount(callAssignedResponse.totalElements || 0);
+      setCallTakenCount(callTakenResponse.totalElements || 0);
+      setMeetingAssignedCount(meetingAssignedResponse.totalElements || 0);
+      setMeetingDoneCount(meetingDoneResponse.totalElements || 0);
+      setOverdueCount(overdueResult.totalElements || 0);
+
+      if (category === 'Activity') {
+        const [activityTotalResponse, activityPendingResponse, activityCompletedResponse] = activityResponses;
+        setActivityTotalCount(activityTotalResponse?.totalElements || 0);
+        setActivityPendingCount(activityPendingResponse?.totalElements || 0);
+        setActivityCompletedCount(activityCompletedResponse?.totalElements || 0);
       } else {
-        // Default to actual today if no date filters
-        firstBoxFilters.dateFrom = todayFormatted;
-        firstBoxFilters.dateTo = todayFormatted;
+        setActivityTotalCount(0);
+        setActivityPendingCount(0);
+        setActivityCompletedCount(0);
       }
-      
-      const todayResult = await activitiesApi.list(firstBoxFilters);
-      setTodayCount(todayResult.totalElements);
 
-      // OVERDUE: Always show actual overdue activities count (regardless of selected tab)
-      const overdueResult = await activitiesApi.list({ 
-        dateTo: yesterdayFormatted, 
-        done: false, 
-        category,
-        size: 1 
-      });
-      setOverdueCount(overdueResult.totalElements);
-
-      // COMPLETED: Show completed activities for the selected tab's date range
-      const completedFilters: ActivityFilters = {
-        category,
-        done: true,
-        size: 1,
-        page: 0,
-      };
-      
-      // If currentFilters has date range, use it; otherwise show all completed
-      if (currentFilters?.dateFrom && currentFilters?.dateTo) {
-        completedFilters.dateFrom = currentFilters.dateFrom;
-        completedFilters.dateTo = currentFilters.dateTo;
-      }
-      
-      const completedResult = await activitiesApi.list(completedFilters);
-      setCompletedCount(completedResult.totalElements);
-
-      // PENDING: Show pending activities for the selected tab's date range
-      const pendingFilters: ActivityFilters = {
-        category,
-        done: false,
-        size: 1,
-        page: 0,
-      };
-      
-      // If currentFilters has date range, use it; otherwise show all pending
-      if (currentFilters?.dateFrom && currentFilters?.dateTo) {
-        pendingFilters.dateFrom = currentFilters.dateFrom;
-        pendingFilters.dateTo = currentFilters.dateTo;
-      }
-      
-      const pendingResult = await activitiesApi.list(pendingFilters);
-      setPendingCount(pendingResult.totalElements);
+      await loadCallDuration(dateOnlyFilters);
     } catch (error) {
       console.error('Failed to load activity counts:', error);
     }
@@ -236,6 +546,38 @@ export default function ActivitiesList() {
     // Clear selections when filters or category change
     setSelectedActivities(new Set());
   }, [category, filters]);
+
+  useEffect(() => {
+    if (!filters.assignedUser) {
+      setSelectedManagerFilter('');
+    } else {
+      setSelectedManagerFilter(filters.assignedUser.trim());
+    }
+  }, [filters.assignedUser]);
+
+  const handleTabSelection = (nextTab: TabOption) => {
+    if (nextTab === 'Select period') {
+      setIsDateRangeModalOpen(true);
+    } else if (nextTab === 'Select Date') {
+      setIsSingleDateModalOpen(true);
+    } else {
+      setTab(nextTab);
+    }
+    setIsTabDropdownOpen(false);
+  };
+
+  const handleManagerFilterChange = (value: string) => {
+    const normalizedValue = value.trim();
+    setSelectedManagerFilter(normalizedValue);
+    setFilters((prev) => {
+      const next = { ...prev, page: 0 };
+      if (normalizedValue) {
+        return { ...next, assignedUser: normalizedValue };
+      }
+      const { assignedUser, ...rest } = next;
+      return rest;
+    });
+  };
 
   // Handle tab changes and update filters accordingly
   useEffect(() => {
@@ -260,29 +602,50 @@ export default function ActivitiesList() {
     let newFilters: ActivityFilters = { page: 0, size: 25 };
 
     if (tab === 'Today') {
-      const todayStr = formatDateYYYYMMDD(today);
+      const todayStr = formatDateDDMMYYYY(today);
       newFilters.dateFrom = todayStr;
       newFilters.dateTo = todayStr;
     } else if (tab === 'Tomorrow') {
-      const tomorrowStr = formatDateYYYYMMDD(tomorrow);
+      const tomorrowStr = formatDateDDMMYYYY(tomorrow);
       newFilters.dateFrom = tomorrowStr;
       newFilters.dateTo = tomorrowStr;
     } else if (tab === 'Overdue') {
       const yesterday = new Date(today);
       yesterday.setDate(today.getDate() - 1);
-      const yesterdayStr = formatDateYYYYMMDD(yesterday);
+      const yesterdayStr = formatDateDDMMYYYY(yesterday);
       newFilters.dateTo = yesterdayStr;
       newFilters.done = false;
     } else if (tab === 'This week') {
-      const weekStartStr = formatDateYYYYMMDD(weekStart);
-      const weekEndStr = formatDateYYYYMMDD(weekEnd);
+      const weekStartStr = formatDateDDMMYYYY(weekStart);
+      const weekEndStr = formatDateDDMMYYYY(weekEnd);
       newFilters.dateFrom = weekStartStr;
       newFilters.dateTo = weekEndStr;
     } else if (tab === 'Next week') {
-      const nextWeekStartStr = formatDateYYYYMMDD(nextWeekStart);
-      const nextWeekEndStr = formatDateYYYYMMDD(nextWeekEnd);
+      const nextWeekStartStr = formatDateDDMMYYYY(nextWeekStart);
+      const nextWeekEndStr = formatDateDDMMYYYY(nextWeekEnd);
       newFilters.dateFrom = nextWeekStartStr;
       newFilters.dateTo = nextWeekEndStr;
+    } else if (tab === 'This month') {
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      const monthStartStr = formatDateDDMMYYYY(monthStart);
+      const monthEndStr = formatDateDDMMYYYY(monthEnd);
+      newFilters.dateFrom = monthStartStr;
+      newFilters.dateTo = monthEndStr;
+    } else if (tab === 'Prev month') {
+      const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const prevMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+      const prevMonthStartStr = formatDateDDMMYYYY(prevMonthStart);
+      const prevMonthEndStr = formatDateDDMMYYYY(prevMonthEnd);
+      newFilters.dateFrom = prevMonthStartStr;
+      newFilters.dateTo = prevMonthEndStr;
+    } else if (tab === 'This year') {
+      const yearStart = new Date(today.getFullYear(), 0, 1);
+      const yearEnd = new Date(today.getFullYear(), 11, 31);
+      const yearStartStr = formatDateDDMMYYYY(yearStart);
+      const yearEndStr = formatDateDDMMYYYY(yearEnd);
+      newFilters.dateFrom = yearStartStr;
+      newFilters.dateTo = yearEndStr;
     } else if (tab === 'All') {
       // Clear date filters for "All"
       newFilters = { page: 0, size: 25 };
@@ -310,22 +673,22 @@ export default function ActivitiesList() {
       let newFilters: ActivityFilters = { ...filters };
       
       if (filter.name.includes('today')) {
-        newFilters.dateFrom = today.toISOString().split('T')[0];
-        newFilters.dateTo = today.toISOString().split('T')[0];
+        newFilters.dateFrom = formatDateDDMMYYYY(today);
+        newFilters.dateTo = formatDateDDMMYYYY(today);
       } else if (filter.name.includes('yesterday')) {
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
-        newFilters.dateFrom = yesterday.toISOString().split('T')[0];
-        newFilters.dateTo = yesterday.toISOString().split('T')[0];
+        newFilters.dateFrom = formatDateDDMMYYYY(yesterday);
+        newFilters.dateTo = formatDateDDMMYYYY(yesterday);
       } else if (filter.name.includes('this week')) {
-        newFilters.dateFrom = weekStart.toISOString().split('T')[0];
-        newFilters.dateTo = tomorrow.toISOString().split('T')[0];
+        newFilters.dateFrom = formatDateDDMMYYYY(weekStart);
+        newFilters.dateTo = formatDateDDMMYYYY(tomorrow);
       } else if (filter.name.includes('this month')) {
-        newFilters.dateFrom = monthStart.toISOString().split('T')[0];
-        newFilters.dateTo = tomorrow.toISOString().split('T')[0];
+        newFilters.dateFrom = formatDateDDMMYYYY(monthStart);
+        newFilters.dateTo = formatDateDDMMYYYY(tomorrow);
       } else if (filter.name.includes('last month')) {
-        newFilters.dateFrom = lastMonthStart.toISOString().split('T')[0];
-        newFilters.dateTo = lastMonthEnd.toISOString().split('T')[0];
+        newFilters.dateFrom = formatDateDDMMYYYY(lastMonthStart);
+        newFilters.dateTo = formatDateDDMMYYYY(lastMonthEnd);
       }
 
       setFilters(newFilters);
@@ -356,8 +719,8 @@ export default function ActivitiesList() {
         newFilters.assignedUser = condition.value;
       } else if (condition.field === 'organization') {
         // Organization filtering is handled by backend, skip here
-      } else if (condition.field === 'category') {
-        newFilters.category = condition.value;
+        } else if (condition.field === 'category') {
+          newFilters.category = getCategoryEnum(condition.value);
       } else if (condition.field === 'status') {
         newFilters.status = condition.value;
       } else if (condition.field === 'callType') {
@@ -365,9 +728,9 @@ export default function ActivitiesList() {
       } else if (condition.field === 'done') {
         newFilters.done = condition.value === 'true';
       } else if (condition.field === 'dateFrom') {
-        newFilters.dateFrom = condition.value;
+        newFilters.dateFrom = toBackendDateString(condition.value) ?? undefined;
       } else if (condition.field === 'dateTo') {
-        newFilters.dateTo = condition.value;
+        newFilters.dateTo = toBackendDateString(condition.value) ?? undefined;
       }
     });
 
@@ -387,6 +750,7 @@ export default function ActivitiesList() {
       'Checkbox': 'checkbox',
       'Done': 'done',
       'Subject': 'subject',
+      'Type': 'category',
       'Deal': 'deal',
       'Instagram ID': 'instagramId',
       'Phone': 'phone',
@@ -400,6 +764,9 @@ export default function ActivitiesList() {
       'Schedule date': 'scheduleDate',
       'Schedule time': 'scheduleTime',
       'Schedule by': 'scheduleBy',
+      'Duration': 'duration',
+      'Attach image': 'attachment',
+      'Category': 'categoryDisplay',
     };
     return map[header] || header.toLowerCase().replace(/\s+/g, '');
   };
@@ -456,6 +823,187 @@ export default function ActivitiesList() {
     }
   };
 
+  const handleAttachmentChange = (activityId: number, files?: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    setAttachmentPreviews((prev) => ({
+      ...prev,
+      [activityId]: file.name,
+    }));
+  };
+
+  const handleDurationChange = (activityId: number, value: string) => {
+    setDurationEntries((prev) => ({
+      ...prev,
+      [activityId]: value,
+    }));
+  };
+
+  const handlePendingAttachmentInput = (files?: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setPendingAttachmentName(files[0].name);
+  };
+
+  const handlePendingDoneCancel = () => {
+    setPendingDoneActivity(null);
+    setPendingDoneValue(false);
+    setPendingDurationValue('');
+    setPendingAttachmentName('');
+    setPendingDialogPosition(null);
+  };
+
+  const handleDeleteActivity = async (activityId: number) => {
+    try {
+      await activitiesApi.delete(activityId);
+      setSelectedActivities((prev) => {
+        if (!prev.has(activityId)) return prev;
+        const next = new Set(prev);
+        next.delete(activityId);
+        return next;
+      });
+      loadActivities();
+    } catch (error: any) {
+      console.error('Failed to delete activity:', error);
+      alert(`Failed to delete activity: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
+    }
+  };
+
+  const completeToggleDone = async (id: number, value: boolean) => {
+    try {
+      await activitiesApi.markDone(id, value);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              content: prev.content.map((a) => (a.id === id ? { ...a, done: value } : a)),
+            }
+          : prev
+      );
+      loadCounts(filters);
+    } catch (e) {
+      console.error('Failed to toggle done', e);
+    }
+  };
+
+  const handlePendingDoneConfirm = async () => {
+    if (!pendingDoneActivity) return;
+    const duration = pendingDurationValue.trim();
+    if (!duration) {
+      alert('Please enter a duration.');
+      return;
+    }
+    if (!pendingAttachmentName) {
+      alert('Please attach an image.');
+      return;
+    }
+    const durationMinutes = parseDurationInputToMinutes(duration);
+    if (durationMinutes === null || durationMinutes <= 0) {
+      alert('Please enter a valid duration (e.g., 15 or 00:15:00).');
+      return;
+    }
+    const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
+    const startMinutes = existingStartMinutes ?? 0;
+    const endMinutes = startMinutes + durationMinutes;
+    const startTimeFormatted =
+      existingStartMinutes !== null && pendingDoneActivity.startTime
+        ? pendingDoneActivity.startTime
+        : formatMinutesToHHMM(startMinutes);
+    const endTimeFormatted = formatMinutesToHHMM(endMinutes);
+    try {
+      const updatedActivity = await activitiesApi.update(pendingDoneActivity.id, {
+        startTime: startTimeFormatted,
+        endTime: endTimeFormatted,
+      });
+      if (updatedActivity) {
+        setData((prev) =>
+          prev
+            ? {
+                ...prev,
+                content: prev.content.map((a) =>
+                  a.id === updatedActivity.id ? { ...a, ...updatedActivity } : a,
+                ),
+              }
+            : prev,
+        );
+      }
+    } catch (error: any) {
+      console.error('Failed to save call duration:', error);
+      alert(
+        `Failed to save call duration: ${
+          error?.response?.data?.message || error?.message || 'Unknown error'
+        }`,
+      );
+      return;
+    }
+    const durationDisplay = duration.includes(':')
+      ? duration
+      : formatMinutesToHHMM(durationMinutes);
+    setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
+    setAttachmentPreviews((prev) => ({ ...prev, [pendingDoneActivity.id]: pendingAttachmentName }));
+    await completeToggleDone(pendingDoneActivity.id, pendingDoneValue);
+    handlePendingDoneCancel();
+  };
+
+  const handleRowClick = (activity: Activity) => {
+    setEditingActivity(activity);
+    setIsEditOpen(true);
+  };
+
+  const normalizeCategoryLabel = (cat?: string | null): 'Activity' | 'Call' | 'Meeting scheduler' => {
+    if (!cat) return 'Activity';
+    if (cat === 'CALL') return 'Call';
+    if (cat === 'MEETING_SCHEDULER') return 'Meeting scheduler';
+    return 'Activity';
+  };
+
+const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
+  if (!value.id) return;
+  try {
+    const isoDateForDateTime = (() => {
+      if (!value.date) return undefined;
+      if (value.date.includes('-')) return value.date;
+      if (value.date.includes('/')) {
+        const parts = value.date.split('/');
+        if (parts.length === 3) {
+          return `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+      }
+      return undefined;
+    })();
+
+    const activityData: Partial<Activity> = {
+      subject: value.subject.trim(),
+      date: value.date,
+      dueDate: value.date,
+      startTime: value.startTime || undefined,
+      endTime: value.endTime || undefined,
+      priority: value.priority ? value.priority.toUpperCase() : undefined,
+      assignedUser: value.assignedUser || undefined,
+      phone: value.phone || undefined,
+      instagramId: value.instagramId || undefined,
+      notes: value.notes || undefined,
+      organization: value.organization || undefined,
+      type: value.type,
+      category: value.category,
+      personId: value.personId,
+      dealId: value.dealId,
+      dealName: value.dealName?.trim() || undefined,
+      dateTime: isoDateForDateTime ? `${isoDateForDateTime}T${value.startTime || '00:00'}:00` : undefined,
+    };
+
+    await activitiesApi.update(value.id, activityData);
+    setIsEditOpen(false);
+    setEditingActivity(null);
+    loadActivities();
+    if (value.serviceCategory) {
+      updateServiceCategory(value.id, value.serviceCategory);
+    }
+  } catch (error: any) {
+    console.error('Failed to update activity:', error);
+    alert(`Failed to update activity: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
+    }
+  };
+
   const onDragStart = (col: string) => {
     setDraggingColumn(col);
   };
@@ -478,21 +1026,46 @@ export default function ActivitiesList() {
     setDraggingColumn(null);
   };
 
-  const toggleDone = async (id: number, value: boolean) => {
-    try {
-      await activitiesApi.markDone(id, value);
-      setData((prev) =>
-        prev
-          ? {
-              ...prev,
-              content: prev.content.map((a) => (a.id === id ? { ...a, done: value } : a)),
-            }
-          : prev
-      );
-      loadCounts(filters);
-    } catch (e) {
-      console.error('Failed to toggle done', e);
+  const toggleDone = async (activity: Activity, value: boolean) => {
+    if (normalizeCategoryLabel(activity.category) === 'Call' && value) {
+      setPendingDoneActivity(activity);
+      setPendingDoneValue(value);
+      setPendingDurationValue(durationEntries[activity.id] ?? '');
+      setPendingAttachmentName(attachmentPreviews[activity.id] ?? '');
+      setPendingDialogPosition(lastClickPosition || null);
+      return;
     }
+    await completeToggleDone(activity.id, value);
+  };
+
+  const openRowMenu = (event: React.MouseEvent<HTMLButtonElement>, activity: Activity) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    setRowMenu({
+      activity,
+      x: rect.left + window.scrollX,
+      y: rect.bottom + window.scrollY + 4,
+    });
+  };
+
+  const closeRowMenu = () => setRowMenu(null);
+
+  const handleRowMenuMarkDone = async () => {
+    if (!rowMenu) return;
+    const { activity, x, y } = rowMenu;
+    setRowMenu(null);
+    setLastClickPosition({ top: y, left: x });
+    await toggleDone(activity, !activity.done);
+  };
+
+  const handleRowMenuDelete = async () => {
+    if (!rowMenu) return;
+    const { activity } = rowMenu;
+    setRowMenu(null);
+    if (!confirm('Are you sure you want to delete this activity?')) {
+      return;
+    }
+    await handleDeleteActivity(activity.id);
   };
 
   const parseDate = (s?: string) => {
@@ -517,6 +1090,23 @@ export default function ActivitiesList() {
   };
 
   const shouldShow = (a: Activity) => {
+    if (selectedCategoryFilter && getServiceCategoryForActivity(a.id) !== selectedCategoryFilter) {
+      return false;
+    }
+    if (selectedOrganizationFilter) {
+      const orgName = (a.organization || '').trim().toLowerCase();
+      if (orgName !== selectedOrganizationFilter.trim().toLowerCase()) {
+        return false;
+      }
+    }
+
+    if (selectedManagerFilter) {
+      const assigned = (a.assignedUser || '').trim().toLowerCase();
+      if (assigned !== selectedManagerFilter.trim().toLowerCase()) {
+        return false;
+      }
+    }
+
     const ed = effectiveDate(a);
     
     // "All" tab shows everything
@@ -528,7 +1118,7 @@ export default function ActivitiesList() {
     // For date-based tabs, we need the activity to have a date
     if (!ed) {
       // Activities without dates don't show in date-specific tabs
-      if (tab === 'Today' || tab === 'Tomorrow' || tab === 'Overdue' || tab === 'This week' || tab === 'Next week' || tab === 'Select period' || tab === 'Select Date') {
+      if (tab === 'Today' || tab === 'Tomorrow' || tab === 'Overdue' || tab === 'This week' || tab === 'Next week' || tab === 'This month' || tab === 'Prev month' || tab === 'This year' || tab === 'Select period' || tab === 'Select Date') {
         return false;
       }
       return true;
@@ -571,6 +1161,33 @@ export default function ActivitiesList() {
       nextWeekEnd.setDate(nextWeekStart.getDate() + 6); // End of next week
       nextWeekEnd.setHours(23, 59, 59, 999);
       return ed.getTime() >= nextWeekStart.getTime() && ed.getTime() <= nextWeekEnd.getTime();
+    }
+    
+    // "This month" tab: show activities within current month
+    if (tab === 'This month') {
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      monthStart.setHours(0, 0, 0, 0);
+      const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      monthEnd.setHours(23, 59, 59, 999);
+      return ed.getTime() >= monthStart.getTime() && ed.getTime() <= monthEnd.getTime();
+    }
+    
+    // "Prev month" tab: show activities within previous month
+    if (tab === 'Prev month') {
+      const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      prevMonthStart.setHours(0, 0, 0, 0);
+      const prevMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+      prevMonthEnd.setHours(23, 59, 59, 999);
+      return ed.getTime() >= prevMonthStart.getTime() && ed.getTime() <= prevMonthEnd.getTime();
+    }
+    
+    // "This year" tab: show activities within current year
+    if (tab === 'This year') {
+      const yearStart = new Date(today.getFullYear(), 0, 1);
+      yearStart.setHours(0, 0, 0, 0);
+      const yearEnd = new Date(today.getFullYear(), 11, 31);
+      yearEnd.setHours(23, 59, 59, 999);
+      return ed.getTime() >= yearStart.getTime() && ed.getTime() <= yearEnd.getTime();
     }
     
     // "Select period" and "Select Date": rely on backend filtering
@@ -628,7 +1245,15 @@ export default function ActivitiesList() {
       case 'done':
         return (
           <div
-            onClick={() => toggleDone(a.id, !a.done)}
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              setLastClickPosition({
+                top: rect.top + window.scrollY + rect.height + 8,
+                left: rect.left + window.scrollX,
+              });
+              toggleDone(a, !a.done);
+            }}
             style={{
               width: '20px',
               height: '20px',
@@ -654,6 +1279,29 @@ export default function ActivitiesList() {
             style={{ textDecoration: a.done ? 'line-through' : 'none' }}
           >
             {a.subject}
+          </span>
+        );
+      case 'category':
+        // Prefer type field if present, fallback to category
+        const typeDisplay = formatActivityTypeLabel(a.type || a.category);
+        return (
+          <span 
+            className={statusClass(a)}
+            style={{ textDecoration: a.done ? 'line-through' : 'none' }}
+          >
+            {typeDisplay}
+          </span>
+        );
+      case 'categoryDisplay':
+        return (
+          <span
+            className={statusClass(a)}
+            style={{ textTransform: 'capitalize' }}
+          >
+            {(() => {
+              const code = getServiceCategoryForActivity(a.id);
+              return categoryLabelMap[code] || code;
+            })()}
           </span>
         );
       case 'deal':
@@ -781,26 +1429,147 @@ export default function ActivitiesList() {
             {a.scheduleBy || '-'}
           </span>
         );
+      case 'duration':
+        {
+          const parseTime = (time?: string | null) => {
+            if (!time) return null;
+            const [h, m] = time.split(':');
+            if (h === undefined || m === undefined) return null;
+            const hours = Number(h);
+            const minutes = Number(m);
+            if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+            return hours * 60 + minutes;
+          };
+          const startMinutes = parseTime(a.startTime);
+          const endMinutes = parseTime(a.endTime);
+          const value = durationEntries[a.id] ?? (startMinutes != null && endMinutes != null && endMinutes > startMinutes
+            ? String(endMinutes - startMinutes)
+            : '');
+          return (
+            <input
+              type="text"
+              placeholder="hh:mm:ss"
+              value={value}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => handleDurationChange(a.id, e.target.value)}
+              style={{ width: 90 }}
+            />
+          );
+        }
+      case 'attachment':
+        return (
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <label
+              style={{
+                color: '#2563eb',
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: 13,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {attachmentPreviews[a.id] || 'Select image'}
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => handleAttachmentChange(a.id, e.target.files)}
+              />
+            </label>
+          </div>
+        );
       default:
         return '-';
     }
   };
 
   // Get the label for the first summary box based on the selected tab
-  const getFirstBoxLabel = () => {
-    if (tab === 'Tomorrow') return 'TOMORROW';
-    if (tab === 'This week') return 'THIS WEEK';
-    if (tab === 'Next week') return 'NEXT WEEK';
-    if (tab === 'Select period') return 'SELECT PERIOD';
-    if (tab === 'Select Date') return 'SELECT DATE';
-    if (tab === 'All') return 'ALL';
-    if (tab === 'To‑do') return 'TO-DO';
-    if (tab === 'Overdue') return 'OVERDUE';
-    return 'TODAY'; // Default to TODAY
+  const applyCardFilter = (action: SummaryCardAction) => {
+    const dateFilters = getDatePreservingFilters();
+    switch (action) {
+      case 'activityAll':
+        setCategory('Activity');
+        setFilters(dateFilters);
+        break;
+      case 'activityPending':
+        setCategory('Activity');
+        setFilters({ ...dateFilters, done: false });
+        break;
+      case 'activityCompleted':
+        setCategory('Activity');
+        setFilters({ ...dateFilters, done: true });
+        break;
+      case 'callAll':
+        setCategory('Call');
+        setFilters(dateFilters);
+        break;
+      case 'callDone':
+        setCategory('Call');
+        setFilters({ ...dateFilters, done: true });
+        break;
+      case 'meetingAll':
+        setCategory('Meeting scheduler');
+        setFilters(dateFilters);
+        break;
+      case 'meetingDone':
+        setCategory('Meeting scheduler');
+        setFilters({ ...dateFilters, done: true });
+        break;
+      case 'overdue':
+        setTab('Overdue');
+        break;
+      default:
+        break;
+    }
+  };
+
+  const formatDurationDisplay = (minutes: number) => {
+    if (!minutes || minutes === 0) return '0';
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (minutes >= 60) {
+      return `${hours}h ${remainingMinutes}m`;
+    }
+    return `${minutes}m`;
   };
 
   if (loading) return <div style={{ padding: 16 }}>Loading activities…</div>;
   if (error) return <div style={{ padding: 16, color: 'red' }}>{error}</div>;
+
+  type SummaryCard = {
+    value: string | number;
+    label: string;
+    action: SummaryCardAction;
+    tone?: 'blue' | 'green' | 'yellow' | 'red';
+  };
+
+  const toneStyles: Record<
+    NonNullable<SummaryCard['tone']>,
+    { background: string; text: string }
+  > = {
+    blue: { background: '#E3F2FD', text: '#1D4ED8' },
+    green: { background: '#E6F4EA', text: '#15803D' },
+    yellow: { background: '#FEF7CD', text: '#B45309' },
+    red: { background: '#FEE2E2', text: '#B91C1C' },
+  };
+
+  const summaryCards: SummaryCard[] =
+    category === 'Activity'
+      ? [
+          { value: activityTotalCount, label: 'TOTAL ACTIVITIES', action: 'activityAll' as SummaryCardAction, tone: 'blue' },
+          { value: activityPendingCount, label: 'PENDING', action: 'activityPending' as SummaryCardAction, tone: 'yellow' },
+          { value: activityCompletedCount, label: 'COMPLETED', action: 'activityCompleted' as SummaryCardAction, tone: 'green' },
+          { value: callAssignedCount, label: 'Total\nAssign\u00A0Call', action: 'callAll' as SummaryCardAction, tone: 'blue' },
+          { value: meetingAssignedCount, label: 'Total\nMeeting\u00A0Scheduled', action: 'meetingAll' as SummaryCardAction, tone: 'blue' },
+        ]
+      : [
+          { value: callAssignedCount, label: 'Total\nAssign\u00A0Call', action: 'callAll' as SummaryCardAction, tone: 'blue' },
+          { value: callTakenCount, label: 'CALL TAKEN', action: 'callDone' as SummaryCardAction, tone: 'green' },
+          { value: meetingAssignedCount, label: 'Total\nMeeting\u00A0Scheduled', action: 'meetingAll' as SummaryCardAction, tone: 'blue' },
+          { value: meetingDoneCount, label: 'MEETING DONE', action: 'meetingDone' as SummaryCardAction, tone: 'green' },
+          { value: formatDurationDisplay(totalCallDurationMinutes), label: 'Total\nCall\u00A0Duration', action: 'callAll' as SummaryCardAction, tone: 'yellow' },
+          { value: overdueCount, label: 'OVERDUE', action: 'overdue' as SummaryCardAction, tone: 'red' },
+        ];
 
   return (
     <div className="page">
@@ -819,6 +1588,58 @@ export default function ActivitiesList() {
           >
             + Activity
           </button>
+          <div style={{ position: 'relative' }}>
+            <button
+              className="btn"
+              onClick={() => setIsTabDropdownOpen(prev => !prev)}
+              style={{ minWidth: 140, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
+            >
+              <span>{tab}</span>
+              <span style={{ fontSize: 12 }}>▾</span>
+            </button>
+            {isTabDropdownOpen && (
+              <>
+                <div
+                  style={{ position: 'fixed', inset: 0, zIndex: 990 }}
+                  onClick={() => setIsTabDropdownOpen(false)}
+                />
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 4px)',
+                    right: 0,
+                    background: '#fff',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: 6,
+                    boxShadow: '0 8px 20px rgba(0,0,0,0.12)',
+                    minWidth: 220,
+                    zIndex: 1000,
+                    padding: 8,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
+                  }}
+                >
+                  {tabOptions.map(option => (
+                    <button
+                      key={option}
+                      onClick={() => handleTabSelection(option)}
+                      className="btn"
+                      style={{
+                        width: '100%',
+                        justifyContent: 'flex-start',
+                        background: tab === option ? '#e3f2fd' : '#fff',
+                        border: '1px solid transparent',
+                        color: '#111',
+                      }}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <div style={{ position: 'relative' }}>
             <button 
               className="btn" 
@@ -872,43 +1693,110 @@ export default function ActivitiesList() {
 
       {/* Summary Boxes */}
       <div className="summary-boxes-container">
-        <div className="summary-box">
-          <div className="summary-number">{todayCount}</div>
-          <div className="summary-label">{getFirstBoxLabel()}</div>
+        {summaryCards.map((card) => {
+          const tone = card.tone ? toneStyles[card.tone] : null;
+          return (
+            <div
+              key={card.label}
+              className="summary-box"
+              style={{
+                flex: summaryCards.length > 4 ? '0 1 160px' : undefined,
+                cursor: 'pointer',
+                border: '1px solid transparent',
+                backgroundColor: tone?.background ?? '#fff',
+              }}
+              onClick={() => applyCardFilter(card.action)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  applyCardFilter(card.action);
+                }
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              <div
+                className="summary-number"
+                style={{ color: tone?.text ?? '#2563eb' }}
+              >
+                {String(card.value)}
         </div>
-        <div className="summary-box">
-          <div className="summary-number">{overdueCount}</div>
-          <div className="summary-label">OVERDUE</div>
+              <div
+                className="summary-label"
+                style={{ color: tone?.text ?? '#28a745', textAlign: 'center' }}
+              >
+                {card.label.includes('\n') ? (
+                  <>
+                    {card.label.split('\n').map((line, idx) => (
+                      <div key={idx} style={{ whiteSpace: 'nowrap' }}>{line}</div>
+                    ))}
+                  </>
+                ) : (
+                  card.label
+                )}
         </div>
-        <div className="summary-box">
-          <div className="summary-number">{completedCount}</div>
-          <div className="summary-label">COMPLETED</div>
         </div>
-        <div className="summary-box">
-          <div className="summary-number">{pendingCount}</div>
-          <div className="summary-label">PENDING</div>
-        </div>
+          );
+        })}
       </div>
 
       <div className="toolbar">
+        <div className="toolbar-left">
         <button className={`btn ${category==='Activity' ? 'active' : ''}`} onClick={() => setCategory('Activity')}>Activity</button>
         <button className={`btn ${category==='Call' ? 'active' : ''}`} onClick={() => setCategory('Call')}>Call</button>
         <button className={`btn ${category==='Meeting scheduler' ? 'active' : ''}`} onClick={() => setCategory('Meeting scheduler')}>Meeting scheduler</button>
+        </div>
+        <div className="toolbar-filters">
+          <select
+            className="toolbar-select"
+            value={selectedCategoryFilter}
+            onChange={(e) => setSelectedCategoryFilter(e.target.value.trim())}
+            title="Filters by service categories on the backend"
+          >
+            <option value="">All Categories</option>
+            {categoryFilterOptions.map((opt) => (
+              <option key={opt.code} value={opt.code}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className="toolbar-select"
+            value={selectedOrganizationFilter}
+            onChange={(e) => setSelectedOrganizationFilter(e.target.value.trim())}
+          >
+            <option value="">All Organizations</option>
+            {organizationOptions.map((org) => (
+              <option key={org.id} value={(org.name || '').trim()}>
+                {org.name || `Organization #${org.id}`}
+              </option>
+            ))}
+          </select>
+          <select
+            className="toolbar-select"
+            value={selectedManagerFilter}
+            onChange={(e) => handleManagerFilterChange(e.target.value)}
+          >
+            <option value="">All Users</option>
+            {managerOptions.map((manager) => {
+              const fullName = `${manager.firstName || ''} ${manager.lastName || ''}`.trim();
+              const label = fullName || manager.email || `User #${manager.id}`;
+              const value = (manager.email || label).trim();
+              return (
+                <option key={manager.id} value={value}>
+                  {label}
+                </option>
+              );
+            })}
+          </select>
+        </div>
       </div>
       <div className="tabs">
-        {(['All','To‑do','Overdue','Today','Tomorrow','This week','Next week','Select period','Select Date'] as const).map(t => (
+        {primaryTabs.map((t) => (
           <span 
             key={t} 
-            className={`tab ${tab===t?'active':''}`} 
-            onClick={() => {
-              if (t === 'Select period') {
-                setIsDateRangeModalOpen(true);
-              } else if (t === 'Select Date') {
-                setIsSingleDateModalOpen(true);
-              } else {
-                setTab(t);
-              }
-            }}
+            className={`tab ${tab === t ? 'active' : ''}`}
+            onClick={() => handleTabSelection(t)}
           >
             {t}
           </span>
@@ -1020,16 +1908,18 @@ export default function ActivitiesList() {
                   {h}
                 </th>
             ))}
+            <th style={{ width: '48px' }}></th>
           </tr>
         </thead>
         <tbody>
           {data?.content?.filter(shouldShow).map((a) => (
-            <tr key={a.id}>
+            <tr key={a.id} onClick={() => handleRowClick(a)} style={{ cursor: 'pointer' }}>
               {/* Checkbox column cell */}
               <td style={{ textAlign: 'center', padding: '10px 8px' }}>
                 <input
                   type="checkbox"
                   checked={selectedActivities.has(a.id)}
+                  onClick={(e) => e.stopPropagation()}
                   onChange={() => handleToggleSelect(a.id)}
                   style={{ cursor: 'pointer' }}
                 />
@@ -1039,11 +1929,73 @@ export default function ActivitiesList() {
                 .map((col) => (
                   <td key={col}>{getCellValue(a, col)}</td>
                 ))}
+              <td style={{ width: '48px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={(e) => openRowMenu(e, a)}
+                  title="Row actions"
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '20px', lineHeight: 1 }}
+                >
+                  ⋯
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
       </div>
+
+      {rowMenu && (
+        <div
+          onClick={closeRowMenu}
+          style={{ position: 'fixed', inset: 0, zIndex: 1300 }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              top: rowMenu.y,
+              left: rowMenu.x,
+              background: '#fff',
+              boxShadow: '0 8px 24px rgba(15,23,42,0.15)',
+              borderRadius: 8,
+              padding: '4px 0',
+              minWidth: 160,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={handleRowMenuMarkDone}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '10px 16px',
+                border: 'none',
+                background: 'transparent',
+                textAlign: 'left',
+                cursor: 'pointer',
+                fontSize: '14px',
+              }}
+            >
+              {rowMenu.activity.done ? 'Mark undone' : 'Mark as done'}
+            </button>
+            <button
+              onClick={handleRowMenuDelete}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '10px 16px',
+                border: 'none',
+                background: 'transparent',
+                textAlign: 'left',
+                cursor: 'pointer',
+                fontSize: '14px',
+                color: '#dc2626',
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
 
       {columnMenu && (
         <ColumnMenu
@@ -1071,48 +2023,83 @@ export default function ActivitiesList() {
       <ActivityModal
         isOpen={isAddOpen}
         onClose={() => setIsAddOpen(false)}
+        initialCategory={category}
+        initialServiceCategory={DEFAULT_CATEGORY_OPTIONS[0].code}
+        userOptions={managerOptions}
         onSave={async (v) => {
           if (!v.subject || v.subject.trim() === '') {
             alert('Subject is required');
             return;
           }
           try {
-            // If no date is provided, default to today's date in dd/MM/yyyy format
+            // If no date is provided, default to today's date in dd/MM/yyyy format (backend format)
             let activityDate = v.date;
             if (!activityDate) {
-              const today = new Date();
-              const dd = String(today.getDate()).padStart(2, '0');
-              const mm = String(today.getMonth() + 1).padStart(2, '0');
-              const yyyy = today.getFullYear();
-              activityDate = `${dd}/${mm}/${yyyy}`;
+              activityDate = formatDateDDMMYYYY(new Date());
+            } else if (activityDate.includes('-')) {
+              // Convert yyyy-MM-dd to dd/MM/yyyy if needed
+              const parts = activityDate.split('-');
+              if (parts.length === 3) {
+                activityDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+              }
             }
-            
+
+            const isoDateForDateTime = (() => {
+              if (!v.date) return undefined;
+              if (v.date.includes('-')) return v.date;
+              if (v.date.includes('/')) {
+                const parts = v.date.split('/');
+                if (parts.length === 3) {
+                  return `${parts[2]}-${parts[1]}-${parts[0]}`;
+                }
+              }
+              return undefined;
+            })();
+
+            const selectedType = v.type || v.category || (category === 'Activity' ? 'ACTIVITY' : getCategoryEnum(category));
+            const parentCategory = mapActivityTypeToCategory(selectedType);
+
             const activityData: Partial<Activity> = {
               subject: v.subject.trim(),
               date: activityDate,
+              dueDate: activityDate, // Set dueDate for filtering
               startTime: v.startTime || undefined,
-              priority: v.priority || undefined,
+              priority: v.priority ? v.priority.toUpperCase() : undefined,
               assignedUser: v.assignedUser || undefined,
+              phone: v.phone || undefined,
+              instagramId: v.instagramId || undefined,
               notes: v.notes || undefined,
               organization: v.organization || undefined,
-              category: category,
+              dealName: v.dealName?.trim() || undefined,
+              // Use derived category and type
+              category: parentCategory,
+              type: selectedType || undefined,
+              dateTime: isoDateForDateTime ? `${isoDateForDateTime}T${v.startTime || '00:00'}:00` : undefined,
             };
             
             // Only include personId if it's provided and > 0
             if (v.personId && v.personId > 0) {
               activityData.personId = v.personId;
             }
+            if (v.dealId && v.dealId > 0) {
+              activityData.dealId = v.dealId;
+            }
             
-            // Only include dealId if it's provided and > 0 (if backend supports it)
-            // Note: dealId is not in Activity type, so we'll skip it if not needed
-            
-            await activitiesApi.create(activityData);
+            const created = await activitiesApi.create(activityData);
+            if (created?.id && v.serviceCategory) {
+              updateServiceCategory(created.id, v.serviceCategory);
+            }
             // Reset to "All" tab to ensure new activity is visible
             setTab('All');
-            // Clear any date filters that might hide the new activity
-            const newFilters = { page: 0, size: 25, category };
+            // Clear category filter to show the newly created activity
+            // The activity might have a different category than the page filter
+            const newFilters: ActivityFilters = { 
+              page: 0, 
+              size: 25,
+              category: undefined // Explicitly set to undefined to show all activities
+            };
             setFilters(newFilters);
-            // Load activities with the new filters immediately
+            // Load activities without category filter to show the new activity
             loadActivities(newFilters);
             loadCounts(newFilters);
             setIsAddOpen(false);
@@ -1122,6 +2109,131 @@ export default function ActivitiesList() {
           }
         }}
       />
+
+      {editingActivity && (
+        <ActivityModal
+          isOpen={isEditOpen}
+          onClose={() => {
+            setIsEditOpen(false);
+            setEditingActivity(null);
+          }}
+          onSave={handleEditSave}
+          initialCategory={normalizeCategoryLabel(editingActivity.category)}
+          initialOrganization={editingActivity.organization || undefined}
+          initialActivity={editingActivity}
+          initialServiceCategory={serviceCategories[editingActivity.id] || DEFAULT_CATEGORY_OPTIONS[0].code}
+          userOptions={managerOptions}
+        />
+      )}
+
+      {pendingDoneActivity && (
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.2)',
+              zIndex: 1499,
+            }}
+            onClick={handlePendingDoneCancel}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: pendingDialogPosition?.top ?? window.innerHeight / 2,
+              left: pendingDialogPosition?.left ?? window.innerWidth / 2,
+              transform:
+                pendingDialogPosition ? 'translateY(0)' : 'translate(-50%, -50%)',
+              background: '#fff',
+              borderRadius: 12,
+              width: 280,
+              boxShadow: '0 20px 45px rgba(15,23,42,0.25)',
+              zIndex: 1500,
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ 
+              background: '#e4e7ec', 
+              padding: '12px 16px', 
+              borderBottom: '1px solid #e5e7eb',
+              margin: 0,
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>Complete call activity</h3>
+            </div>
+            <div style={{ padding: 16 }}>
+            <label style={{ display: 'block', marginBottom: 10, fontWeight: 500, fontSize: '13px' }}>
+              Duration (hh:mm:ss)
+              <input
+                type="text"
+                value={pendingDurationValue}
+                onChange={(e) => setPendingDurationValue(e.target.value)}
+                placeholder="00:15:00"
+                style={{
+                  width: '100%',
+                  marginTop: 4,
+                  padding: '8px 10px',
+                  border: '1px solid #f5d867',
+                  borderRadius: 6,
+                  fontSize: '13px',
+                  background: '#fff9e6',
+                }}
+              />
+            </label>
+            <label style={{ display: 'block', marginBottom: 16, fontWeight: 500, fontSize: '13px' }}>
+              Attach image
+              <div style={{ marginTop: 4 }}>
+                <label
+                  style={{
+                    color: '#2563eb',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                  }}
+                >
+                  {pendingAttachmentName || 'Select image'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={(e) => handlePendingAttachmentInput(e.target.files)}
+                  />
+                </label>
+              </div>
+            </label>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                onClick={handlePendingDoneCancel}
+                style={{
+                  border: '1px solid #d1d5db',
+                  background: '#fff',
+                  borderRadius: 6,
+                  padding: '6px 12px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePendingDoneConfirm}
+                style={{
+                  border: 'none',
+                  background: '#2563eb',
+                  color: '#fff',
+                  borderRadius: 6,
+                  padding: '6px 12px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                }}
+              >
+                Save
+              </button>
+            </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Bulk Edit Modal */}
       <BulkEditModal
@@ -1255,10 +2367,12 @@ export default function ActivitiesList() {
               <button
                 onClick={() => {
                   if (dateRange.start && dateRange.end) {
+                    const backendStart = toBackendDateString(dateRange.start);
+                    const backendEnd = toBackendDateString(dateRange.end);
                     setFilters(prev => ({
                       ...prev,
-                      dateFrom: dateRange.start,
-                      dateTo: dateRange.end,
+                      dateFrom: backendStart,
+                      dateTo: backendEnd,
                       page: 0,
                     }));
                     setTab('Select period');
@@ -1495,11 +2609,11 @@ export default function ActivitiesList() {
                 <button
                   onClick={() => {
                     if (selectedSingleDate) {
-                      // selectedSingleDate is already in yyyy-MM-dd format
+                      const backendDate = toBackendDateString(selectedSingleDate);
                       setFilters(prev => ({
                         ...prev,
-                        dateFrom: selectedSingleDate,
-                        dateTo: selectedSingleDate,
+                        dateFrom: backendDate,
+                        dateTo: backendDate,
                         page: 0,
                       }));
                       setTab('Select Date');

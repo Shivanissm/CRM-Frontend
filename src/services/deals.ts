@@ -7,6 +7,7 @@ import {
   type DealStatus,
   type DealStatusUpdateRequest,
 } from '../types/deal';
+import type { Pipeline } from '../types/pipeline';
 import { getStoredToken, logoutAndRedirect } from '../utils/authToken';
 import { withApiBase } from '../config/api';
 
@@ -86,8 +87,22 @@ export const dealsApi = {
     return unwrap<Deal>(response.data);
   },
 
+  update: async (id: number, payload: Partial<DealCreateRequest>): Promise<Deal> => {
+    // TODO: Backend needs to implement PATCH /api/deals/:id endpoint
+    // Currently backend doesn't support PUT or PATCH for general deal updates
+    // See BACKEND_DEAL_UPDATE_REQUIREMENT.md for details
+    // Using PATCH as standard - backend developer needs to implement this endpoint
+    const response = await api.patch(`/${id}`, payload);
+    return unwrap<Deal>(response.data);
+  },
+
   remove: async (id: number): Promise<void> => {
     await api.delete(`/${id}`);
+  },
+
+  getAvailablePipelines: async (dealId: number): Promise<Pipeline[]> => {
+    const response = await api.get(`/${dealId}/available-pipelines`);
+    return unwrap<Pipeline[]>(response.data);
   },
 };
 

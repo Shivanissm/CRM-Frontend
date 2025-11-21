@@ -11,7 +11,7 @@ interface NavItem {
 }
 
 const baseNavItems: NavItem[] = [
-  { label: 'Persons', to: '/', icon: '👥' },
+  { label: 'Persons', to: '/persons' , icon: '👥' },
   { label: 'Deals', to: '/deals', icon: '💼' },
   { label: 'Calendar', to: '/calendar', icon: '📅' },
   { label: 'Pipelines', to: '/pipelines', icon: '🛤️' },
@@ -51,7 +51,7 @@ export default function AppLayout() {
             <NavLink
               key={item.to}
               to={item.to}
-              end={item.to === '/'}
+              end={item.to === '/persons'}
               className={({ isActive }) =>
                 `app-shell-link${isActive ? ' active' : ''}`
               }

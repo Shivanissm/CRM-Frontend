@@ -18,11 +18,17 @@ export interface Deal {
   venue?: string | null;
   googleCalendarEventId?: string | null;
   phoneNumber?: string | null;
+  email?: string | null;
   finalThankYouSent?: boolean | null;
   eventDateAsked?: boolean | null;
   contactNumberAsked?: boolean | null;
   venueAsked?: boolean | null;
   eventDate?: string | null;
+  label?: string | null;
+  source?: string | null;
+  isDiverted?: boolean | null;
+  referencedDealId?: number | null;
+  referencedPipelineId?: number | null;
 }
 
 export interface DealCreateRequest {
@@ -39,11 +45,15 @@ export interface DealCreateRequest {
   commissionAmount?: number | null;
   venue?: string | null;
   phoneNumber?: string | null;
+  email?: string | null;
   finalThankYouSent?: boolean | null;
   eventDateAsked?: boolean | null;
   contactNumberAsked?: boolean | null;
   venueAsked?: boolean | null;
   eventDate?: string | null;
+  label?: string | null;
+  source?: string | null;
+  referencedDealId?: number | null;
 }
 
 export interface DealStageUpdateRequest {
