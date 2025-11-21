@@ -230,6 +230,12 @@ const Deals = () => {
     return map;
   }, [organizations]);
 
+  const selectedOrganizationForForm = formData.organizationId
+    ? organizationsById.get(Number(formData.organizationId)) ?? null
+    : null;
+  const selectedOrgCalendarEmail = selectedOrganizationForForm?.googleCalendarId?.trim() || '';
+  const hasCalendarSyncForForm = Boolean(selectedOrgCalendarEmail);
+
   const personsById = useMemo(() => {
     const map = new Map<number, Person>();
     persons.forEach((person) => map.set(person.id, person));
@@ -498,6 +504,9 @@ const Deals = () => {
     ? pipelinesById.get(selectedDeal.pipelineId) ?? null
     : null;
   const selectedDealStages: Stage[] = selectedDealPipeline?.stages ?? [];
+  const selectedDealCalendarEmail = selectedDeal?.organizationId
+    ? organizationsById.get(selectedDeal.organizationId)?.googleCalendarId ?? null
+    : null;
 
   if (loading) {
     return (
@@ -694,6 +703,10 @@ const Deals = () => {
             ) : (
               filteredDeals.map((deal) => {
                 const isSelected = selectedDealIds.has(deal.id);
+                const orgCalendarEmail = deal.organizationId
+                  ? organizationsById.get(deal.organizationId)?.googleCalendarId ?? null
+                  : null;
+                const isCalendarSynced = Boolean(deal.googleCalendarEventId);
                 return (
                 <div
                   key={deal.id}
@@ -763,6 +776,14 @@ const Deals = () => {
                   {deal.commissionAmount != null && (
                     <div className="deal-commission">Commission: {formatCurrency(deal.commissionAmount)}</div>
                   )}
+                  {(orgCalendarEmail || isCalendarSynced) && (
+                    <div className="deal-calendar-status">
+                      <span className={`calendar-sync-pill ${isCalendarSynced ? 'active' : ''}`}>
+                        {isCalendarSynced ? 'Synced to Google Calendar' : 'Calendar enabled'}
+                      </span>
+                      {orgCalendarEmail && <span className="calendar-sync-meta">{orgCalendarEmail}</span>}
+                    </div>
+                  )}
                 </div>
                 );
               })
@@ -799,6 +820,7 @@ const Deals = () => {
                   <th>Event Type</th>
                   <th>Phone</th>
                   <th>Created</th>
+                  <th>Calendar</th>
                   <th />
                 </tr>
               </thead>
@@ -815,6 +837,10 @@ const Deals = () => {
                     const orgName = deal.organizationId
                       ? organizationsById.get(deal.organizationId)?.name ?? `Organization ${deal.organizationId}`
                       : '—';
+                    const orgCalendarEmail = deal.organizationId
+                      ? organizationsById.get(deal.organizationId)?.googleCalendarId ?? null
+                      : null;
+                    const isCalendarSynced = Boolean(deal.googleCalendarEventId);
                     const personName = deal.personId
                       ? personsById.get(deal.personId)?.name ?? `Person ${deal.personId}`
                       : '—';
@@ -845,6 +871,15 @@ const Deals = () => {
                         <td>{deal.eventType || '—'}</td>
                         <td>{deal.phoneNumber || '—'}</td>
                         <td>{formatDate(deal.createdAt)}</td>
+                      <td>
+                        {orgCalendarEmail || isCalendarSynced ? (
+                          <span className={`calendar-sync-pill ${isCalendarSynced ? 'active' : ''}`}>
+                            {isCalendarSynced ? 'Synced' : 'Enabled'}
+                          </span>
+                        ) : (
+                          <span className="calendar-sync-pill muted">Off</span>
+                        )}
+                      </td>
                         <td>
                           <button
                             className="deals-table-delete"
@@ -985,6 +1020,23 @@ const Deals = () => {
                   <span className="deal-detail-label">Event Type:</span>
                   <span className="deal-detail-value">{selectedDeal.eventType || '—'}</span>
                 </div>
+                <div className="deal-detail-row">
+                  <span className="deal-detail-label">Calendar:</span>
+                  <span className="deal-detail-value">
+                    {selectedDeal.googleCalendarEventId ? (
+                      <>
+                        Synced{' '}
+                        <span className="calendar-sync-meta">
+                          {selectedDeal.googleCalendarEventId}
+                        </span>
+                      </>
+                    ) : selectedDealCalendarEmail ? (
+                      `Enabled via ${selectedDealCalendarEmail}`
+                    ) : (
+                      'Off'
+                    )}
+                  </span>
+                </div>
               </div>
 
               <div className="deal-detail-section">
@@ -1098,9 +1150,24 @@ const Deals = () => {
                     {organizations.map((org) => (
                       <option key={org.id} value={org.id}>
                         {org.name}
+                        {org.googleCalendarId ? ' • Calendar' : ''}
                       </option>
                     ))}
                   </select>
+                  <div className={`calendar-sync-hint ${hasCalendarSyncForForm ? 'active' : ''}`}>
+                    {selectedOrganizationForForm ? (
+                      hasCalendarSyncForForm ? (
+                        <>
+                          Calendar sync on — events will post to{' '}
+                          <strong>{selectedOrgCalendarEmail}</strong>.
+                        </>
+                      ) : (
+                        'This organization lacks a calendar email, so events stay inside the CRM.'
+                      )
+                    ) : (
+                      'Select an organization to see whether calendar sync is enabled.'
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1199,6 +1266,9 @@ const Deals = () => {
                     onChange={handleInputChange}
                     disabled={isSubmitting}
                   />
+                  <span className="calendar-sync-hint subtle">
+                    Use YYYY-MM-DD so Google Calendar can mirror this deal’s event.
+                  </span>
                 </div>
 
                 <div className="form-group">

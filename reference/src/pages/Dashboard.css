@@ -1,0 +1,20 @@
+.dashboard-page {
+  padding: 32px;
+  background-color: #f9fafb;
+  min-height: calc(100vh - 80px);
+}
+
+.dashboard-page h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0 0 16px 0;
+}
+
+.dashboard-page p {
+  font-size: 16px;
+  color: #6b7280;
+}
+
+
+

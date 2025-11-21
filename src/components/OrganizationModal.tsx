@@ -30,6 +30,7 @@ export default function OrganizationModal({
   const [category, setCategory] = useState('');
   const [ownerId, setOwnerId] = useState<string>('');
   const [address, setAddress] = useState('');
+  const [googleCalendarId, setGoogleCalendarId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,6 +43,7 @@ export default function OrganizationModal({
       setCategory('');
       setOwnerId('');
       setAddress('');
+      setGoogleCalendarId('');
       setSaving(false);
       setError(null);
       return;
@@ -51,11 +53,13 @@ export default function OrganizationModal({
       setCategory(organization.category ?? '');
       setOwnerId(organization.owner?.id ? String(organization.owner.id) : '');
       setAddress(organization.address ?? '');
+      setGoogleCalendarId(organization.googleCalendarId ?? '');
     } else {
       setName('');
       setCategory('');
       setOwnerId('');
       setAddress('');
+      setGoogleCalendarId('');
     }
     setError(null);
   }, [isOpen, mode, organization]);
@@ -88,6 +92,14 @@ export default function OrganizationModal({
       setError('Owner must be a valid user.');
       return;
     }
+    const trimmedCalendarId = googleCalendarId.trim();
+    if (trimmedCalendarId.length > 0) {
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailPattern.test(trimmedCalendarId)) {
+        setError('Google Calendar email must be a valid email address.');
+        return;
+      }
+    }
 
     setSaving(true);
     setError(null);
@@ -95,8 +107,9 @@ export default function OrganizationModal({
       const payload: OrganizationRequest = {
         name: trimmed,
         category,
-        ownerId: ownerIdValue,
+        ownerId: ownerIdValue ?? null,
         address: trimmedAddress || undefined,
+        googleCalendarId: trimmedCalendarId || null,
       };
       await onSubmit(payload);
       onClose();
@@ -178,6 +191,21 @@ export default function OrganizationModal({
               ))}
             </select>
             <span className="organization-modal-hint">Only SALES or CATEGORY_MANAGER roles are available.</span>
+          </label>
+
+          <label className="organization-modal-label">
+            Google Calendar email (optional)
+            <input
+              type="email"
+              value={googleCalendarId}
+              onChange={(event) => setGoogleCalendarId(event.target.value)}
+              placeholder="vendor.calendar@example.com"
+              className="organization-modal-input"
+              inputMode="email"
+            />
+            <span className="organization-modal-hint">
+              Events sync only when a valid calendar email is present on the organization.
+            </span>
           </label>
 
           <label className="organization-modal-label">
