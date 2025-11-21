@@ -13,6 +13,7 @@ interface NavItem {
 const baseNavItems: NavItem[] = [
   { label: 'Persons', to: '/persons' , icon: '👥' },
   { label: 'Deals', to: '/deals', icon: '💼' },
+  { label: 'Calendar', to: '/calendar', icon: '📅' },
   { label: 'Pipelines', to: '/pipelines', icon: '🛤️' },
   { label: 'Teams', to: '/teams', icon: '🤝' },
   { label: 'Activities', to: '/activities', icon: '🗓️' },

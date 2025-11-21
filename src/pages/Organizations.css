@@ -132,6 +132,19 @@
   color: #2f4c3d;
 }
 
+.organizations-calendar-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.1);
+  color: #047857;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
 .organizations-table th {
   background: #f3fbf6;
   font-weight: 700;

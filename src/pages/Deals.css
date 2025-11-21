@@ -1353,6 +1353,63 @@
   background: #059669;
 }
 
+.calendar-sync-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.calendar-sync-hint.active {
+  color: #047857;
+  font-weight: 500;
+}
+
+.calendar-sync-hint.subtle {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.deal-calendar-status {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.calendar-sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  color: #1d4ed8;
+  background: rgba(59, 130, 246, 0.08);
+  font-weight: 600;
+}
+
+.calendar-sync-pill.active {
+  border-color: rgba(16, 185, 129, 0.6);
+  background: rgba(16, 185, 129, 0.18);
+  color: #047857;
+}
+
+.calendar-sync-pill.muted {
+  border-color: rgba(156, 163, 175, 0.5);
+  background: rgba(156, 163, 175, 0.12);
+  color: #4b5563;
+}
+
+.calendar-sync-meta {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 12px;
+  color: #4b5563;
+  word-break: break-all;
+}
+
 .deal-card {
   background: #fff;
   border: 1px solid #e5e7eb;

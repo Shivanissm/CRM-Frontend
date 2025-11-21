@@ -13,6 +13,7 @@ export interface Organization {
   category?: string | null;
   owner?: OrganizationOwner | null;
   address?: string | null;
+  googleCalendarId?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }
@@ -22,6 +23,7 @@ export interface OrganizationRequest {
   category: string;
   ownerId?: number | null;
   address?: string | null;
+  googleCalendarId?: string | null;
 }
 
 export interface OrganizationCategory {

@@ -1,0 +1,43 @@
+.goals-page { padding: 24px 32px; background: #fff; min-height: calc(100vh - 80px); }
+.goals-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.goals-title { margin: 0; font-size: 24px; font-weight: 700; color: #111827; }
+.goals-add { padding: 10px 16px; border: 1px solid #d1d5db; background: #10b981; color: #fff; border-radius: 8px; cursor: pointer; }
+.goals-add:hover { background: #059669; }
+
+.goals-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.goal-card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); background: #fff; }
+.goal-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.goal-title { font-weight: 700; color: #111827; }
+.badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 9999px; color: #fff; }
+.badge.sales { background: #800000; }
+.badge.presales { background: #c026d3; }
+.goal-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+.metric-label { font-size: 11px; color: #6b7280; }
+.metric-value { font-size: 13px; font-weight: 700; color: #111827; }
+.goal-progress { position: relative; height: 10px; background: #f3f4f6; border-radius: 9999px; overflow: hidden; margin: 10px 0 6px; }
+.goal-progress-bar { position: absolute; top: 0; left: 0; bottom: 0; background: #0ea5e9; border-radius: 9999px; }
+.goal-progress-bar.sales { background: #800000; }
+.goal-progress-bar.presales { background: #c026d3; }
+.goal-progress-label { font-size: 12px; color: #374151; font-weight: 600; }
+.goal-meta { margin-top: 6px; font-size: 12px; color: #6b7280; }
+
+.goals-section { margin-top: 24px; }
+.goals-subtitle { margin: 0 0 12px 0; font-size: 16px; font-weight: 700; color: #111827; }
+.person-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.person-card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.person-head { display: grid; grid-template-columns: 32px 1fr max-content; align-items: center; gap: 10px; margin-bottom: 8px; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; }
+.avatar.presales { background: #c026d3; }
+.avatar.sales { background: #800000; }
+.person-name { font-weight: 700; color: #111827; }
+.person-value { font-size: 12px; color: #6b7280; }
+.person-progress { position: relative; height: 8px; background: #f3f4f6; border-radius: 9999px; overflow: hidden; }
+.person-bar { position: absolute; top: 0; left: 0; bottom: 0; border-radius: 9999px; }
+.person-bar.presales { background: #c026d3; }
+.person-bar.sales { background: #800000; }
+
+@media (max-width: 768px) {
+  .goals-page { padding: 16px; }
+}
+
+

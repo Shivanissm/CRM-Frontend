@@ -8,6 +8,7 @@ import Deals from './pages/Deals';
 import DealDetail from './pages/DealDetail';
 import Organizations from './pages/Organizations';
 import Users from './pages/Users';
+import CalendarPage from './pages/Calendar';
 import Login from './pages/Login';
 import AppLayout from './components/AppLayout';
 import { getStoredToken } from './utils/authToken';
@@ -69,6 +70,7 @@ function App() {
           <Route path="/activities" element={<ActivitiesList />} />
           <Route path="/pipelines" element={<Pipelines />} />
           <Route path="/teams" element={<Teams />} />
+          <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/organizations" element={<Organizations />} />
           <Route path="/deals" element={<Deals />} />
           <Route path="/deals/:id" element={<DealDetail />} />

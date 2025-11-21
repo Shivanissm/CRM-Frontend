@@ -25,9 +25,11 @@ export default function Organizations() {
     if (!term) return organizations;
     return organizations.filter((org) => {
       const category = org.category ?? '';
+      const calendarEmail = org.googleCalendarId ?? '';
       return (
         org.name.toLowerCase().includes(term) ||
-        category.toLowerCase().includes(term)
+        category.toLowerCase().includes(term) ||
+        calendarEmail.toLowerCase().includes(term)
       );
     });
   }, [organizations, search]);
@@ -185,6 +187,7 @@ export default function Organizations() {
               <th style={{ width: '80px' }}>ID</th>
               <th>Name</th>
               <th style={{ width: '200px' }}>Category</th>
+              <th style={{ width: '240px' }}>Calendar email</th>
               <th style={{ width: '180px' }}>Actions</th>
             </tr>
           </thead>
@@ -196,6 +199,15 @@ export default function Organizations() {
                   <td>{organization.id}</td>
                   <td>{organization.name}</td>
                   <td>{organization.category ?? '—'}</td>
+                  <td>
+                    {organization.googleCalendarId ? (
+                      <span className="organizations-calendar-pill" title="This organization syncs to Google Calendar">
+                        {organization.googleCalendarId}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td>
                     <div className="organizations-row-actions">
                       <button

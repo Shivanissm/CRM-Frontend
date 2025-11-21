@@ -81,6 +81,11 @@ export default function Users() {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [inviteForm, setInviteForm] = useState(INVITE_FORM_INITIAL);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [isDetailVisible, setIsDetailVisible] = useState(false);
+  const [viewMode, setViewMode] = useState<'table' | 'tree'>('table');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [selectedSalesId, setSelectedSalesId] = useState<number | null>(null);
 
   const currentUser = useMemo(() => getStoredUser(), []);
   const isAdmin = (currentUser?.role ?? '').toUpperCase() === 'ADMIN';
@@ -205,6 +210,67 @@ const filteredUsers = useMemo(() => {
       });
   }, [users, search, roleFilter, statusFilter, sortKey, sortDirection]);
 
+  useEffect(() => {
+    if (filteredUsers.length === 0) {
+      if (selectedUser) {
+        setSelectedUser(null);
+      }
+      return;
+    }
+    if (!selectedUser || !filteredUsers.some((user) => user.id === selectedUser.id)) {
+      setSelectedUser(filteredUsers[0]);
+      setIsDetailVisible(true);
+    }
+  }, [filteredUsers, selectedUser]);
+
+  const admins = useMemo(() => users.filter((user) => user.role === 'ADMIN'), [users]);
+  const categoryManagers = useMemo(() => users.filter((user) => user.role === 'CATEGORY_MANAGER'), [users]);
+  const salesUsers = useMemo(() => users.filter((user) => user.role === 'SALES'), [users]);
+  const preSalesUsers = useMemo(() => users.filter((user) => user.role === 'PRESALES'), [users]);
+
+  useEffect(() => {
+    if (viewMode !== 'tree') return;
+    if (categoryManagers.length === 0) {
+      setSelectedCategoryId(null);
+      setSelectedSalesId(null);
+      return;
+    }
+    if (!selectedCategoryId || !categoryManagers.some((cm) => cm.id === selectedCategoryId)) {
+      setSelectedCategoryId(categoryManagers[0].id);
+      setSelectedSalesId(null);
+      return;
+    }
+    const linkedSales = salesUsers.filter((sales) => sales.managerId === selectedCategoryId);
+    if (
+      selectedSalesId &&
+      !linkedSales.some((sales) => sales.id === selectedSalesId)
+    ) {
+      setSelectedSalesId(linkedSales[0]?.id ?? null);
+    } else if (!selectedSalesId && linkedSales.length > 0) {
+      setSelectedSalesId(linkedSales[0].id);
+    }
+  }, [viewMode, categoryManagers, salesUsers, selectedCategoryId, selectedSalesId]);
+
+  const selectedCategory = useMemo(
+    () => categoryManagers.find((manager) => manager.id === selectedCategoryId) ?? null,
+    [categoryManagers, selectedCategoryId],
+  );
+
+  const salesForSelectedCategory = useMemo(() => {
+    if (!selectedCategory) return [];
+    return salesUsers.filter((sales) => sales.managerId === selectedCategory.id);
+  }, [salesUsers, selectedCategory]);
+
+  const selectedSales = useMemo(
+    () => salesForSelectedCategory.find((sales) => sales.id === selectedSalesId) ?? null,
+    [salesForSelectedCategory, selectedSalesId],
+  );
+
+  const preSalesForSelectedSales = useMemo(() => {
+    if (!selectedSales) return [];
+    return preSalesUsers.filter((preSales) => preSales.managerId === selectedSales.id);
+  }, [preSalesUsers, selectedSales]);
+
   const handleSort = (key: SortKey) => {
     setSortKey((prevKey) => {
       if (prevKey === key) {
@@ -322,13 +388,248 @@ const filteredUsers = useMemo(() => {
     }
   };
 
+  const renderDetailPanel = () => {
+    if (!selectedUser) {
+      return null;
+    }
+
+    if (!isDetailVisible) {
+      return (
+        <div className="detail-card-slot">
+          <button className="detail-reopen" type="button" onClick={() => setIsDetailVisible(true)}>
+            Show details
+          </button>
+        </div>
+      );
+    }
+
+    const displayName =
+      [selectedUser.firstName, selectedUser.lastName].filter(Boolean).join(' ').trim() || selectedUser.email;
+
+    const totalMembers = selectedUser.totalMembers ?? 0;
+    const directReports = selectedUser.directReports ?? 0;
+
+    return (
+      <div className="detail-card-slot">
+        <aside className="detail-card-overlay">
+          <div className="user-detail-card">
+            <button
+              className="detail-close-btn"
+              type="button"
+              aria-label="Close user details"
+              onClick={() => setIsDetailVisible(false)}
+            >
+              ×
+            </button>
+            <div className="detail-card-header-section">
+              <div className="detail-name-section">
+                <div className="detail-avatar">{buildAvatar(selectedUser)}</div>
+                <p className="detail-user-name">{displayName}</p>
+                <span className="detail-role-pill">{getUserRoleLabel(selectedUser.role)}</span>
+                <p className="detail-user-email">{selectedUser.email}</p>
+              </div>
+              <div className="detail-stats-section">
+                <div className="stat-box">
+                  <div className="stat-number">{totalMembers}</div>
+                  <div className="stat-label">Total Members</div>
+                </div>
+                <div className="stat-box">
+                  <div className="stat-number">{directReports}</div>
+                  <div className="stat-label">Direct Reports</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="detail-info-section">
+              <div className="detail-info-line">
+                <span className="detail-info-label">Status:</span>
+                <span className="detail-info-value">{selectedUser.active ? 'Active' : 'Inactive'}</span>
+              </div>
+              <div className="detail-info-line">
+                <span className="detail-info-label">Role:</span>
+                <span className="detail-info-value">{getUserRoleLabel(selectedUser.role)}</span>
+              </div>
+              <div className="detail-info-line">
+                <span className="detail-info-label">Manager:</span>
+                <span className="detail-info-value">{selectedUser.managerName ?? '—'}</span>
+              </div>
+              <div className="detail-info-line">
+                <span className="detail-info-label">Created:</span>
+                <span className="detail-info-value">{formatDate(selectedUser.createdAt)}</span>
+              </div>
+              <div className="detail-info-line">
+                <span className="detail-info-label">Last login:</span>
+                <span className="detail-info-value">{formatDate(selectedUser.lastLoginAt)}</span>
+              </div>
+            </div>
+
+            <div className="detail-card-actions">
+              <button className="detail-action-btn" type="button" title="Email user">
+                ✉
+              </button>
+              <button className="detail-action-btn" type="button" title="Call user">
+                📞
+              </button>
+              <button className="detail-action-btn" type="button" title="Message user">
+                💬
+              </button>
+              <button
+                className="detail-action-btn"
+                type="button"
+                title="Clear selection"
+                onClick={() => setSelectedUser(null)}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    );
+  };
+
+  const renderTreeView = () => (
+    <div className="tree-board">
+      <div className="org-grid">
+          <div className="org-col admin-col">
+          <div className="org-title">
+            admin <span className="title-badge">{admins.length}</span>
+          </div>
+            <div className="avatar-stack">
+            {admins.map((admin) => (
+              <button
+                key={admin.id}
+                type="button"
+                className={`avatar-small ${selectedUser?.id === admin.id ? 'active' : ''}`}
+                onClick={() => {
+                  setSelectedUser(admin);
+                  setIsDetailVisible(true);
+                  setSelectedCategoryId(null);
+                  setSelectedSalesId(null);
+                }}
+              >
+                {buildAvatar(admin)}
+              </button>
+            ))}
+            </div>
+          </div>
+
+          <div className="org-col cm-col">
+          <div className="org-title">
+            category manager <span className="title-badge">{categoryManagers.length}</span>
+          </div>
+            <div className="cm-stack">
+            {categoryManagers.map((manager) => {
+              const initials = buildAvatar(manager);
+              const isActive = selectedCategory?.id === manager.id;
+                return (
+                <button
+                  key={manager.id}
+                  type="button"
+                    className={`cm-circle ${isActive ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedCategoryId(manager.id);
+                    const firstSales = salesUsers.find((sales) => sales.managerId === manager.id);
+                    setSelectedSalesId(firstSales?.id ?? null);
+                    setSelectedUser(manager);
+                    setIsDetailVisible(true);
+                  }}
+                  >
+                    <div className="cm-circle-inner">
+                      <div className="cm-avatar">{initials}</div>
+                    <div className="cm-name">
+                      {[manager.firstName, manager.lastName].filter(Boolean).join(' ') || manager.email}
+                    </div>
+                  </div>
+                </button>
+              );
+              })}
+            </div>
+          </div>
+
+          <div className="org-col sales-col">
+          <div className="column-title">
+            sales <span className="title-badge">{salesForSelectedCategory.length}</span>
+          </div>
+          {!selectedCategory ? (
+              <div className="placeholder-msg">Select Category Manager</div>
+          ) : salesForSelectedCategory.length === 0 ? (
+            <div className="placeholder-msg">No sales reps for this manager</div>
+          ) : (
+            <div className="column-list with-sales-connectors">
+              {salesForSelectedCategory.map((sales) => (
+                <button
+                  key={sales.id}
+                  type="button"
+                  className={`board-pill sales ${selectedSales?.id === sales.id ? 'is-active' : ''}`}
+                  onClick={() => {
+                    setSelectedSalesId(sales.id);
+                    setSelectedUser(sales);
+                    setIsDetailVisible(true);
+                  }}
+                >
+                  <div className="board-pill-avatar">{buildAvatar(sales)}</div>
+                    <div className="board-pill-info">
+                    <div className="board-pill-name">
+                      {[sales.firstName, sales.lastName].filter(Boolean).join(' ') || sales.email}
+                    </div>
+                    <div className="board-pill-role">Sales Rep</div>
+                    <div className="board-pill-email">{sales.email}</div>
+                  </div>
+                  <span className="row-badge">
+                    {preSalesUsers.filter((pre) => pre.managerId === sales.id).length}
+                  </span>
+                </button>
+              ))}
+            </div>
+            )}
+          </div>
+
+          <div className="org-col presales-col">
+          <div className="column-title">
+            pre sales <span className="title-badge">{preSalesForSelectedSales.length}</span>
+          </div>
+          {!selectedSales ? (
+              <div className="placeholder-msg">Select Sales Rep</div>
+          ) : preSalesForSelectedSales.length === 0 ? (
+            <div className="placeholder-msg">No pre-sales for this rep</div>
+          ) : (
+            <div className="column-list with-presales-connectors">
+              {preSalesForSelectedSales.map((member) => (
+                <button
+                  key={member.id}
+                  type="button"
+                  className={`board-pill small presales ${selectedUser?.id === member.id ? 'is-active' : ''}`}
+                  onClick={() => {
+                    setSelectedUser(member);
+                    setIsDetailVisible(true);
+                  }}
+                >
+                  <div className="board-pill-avatar">{buildAvatar(member)}</div>
+                    <div className="board-pill-info">
+                    <div className="board-pill-name">
+                      {[member.firstName, member.lastName].filter(Boolean).join(' ') || member.email}
+                    </div>
+                    <div className="board-pill-role">Pre Sales</div>
+                    <div className="board-pill-email">{member.email}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            )}
+          {renderDetailPanel()}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="users-page">
       <header className="users-header">
         <div>
           <h1>Users</h1>
           <p>Review account access, roles, and activity across your team.</p>
-        </div>
+              </div>
         <div className="users-actions">
           <button
             className="users-refresh"
@@ -336,11 +637,11 @@ const filteredUsers = useMemo(() => {
             disabled={refreshing || loading}
           >
             {refreshing ? 'Refreshing…' : 'Refresh'}
-          </button>
+                </button>
           <button className="users-add" onClick={openInviteModal}>
             + Invite user
-          </button>
-        </div>
+                    </button>
+                  </div>
       </header>
 
       <section className="users-filters">
@@ -367,7 +668,7 @@ const filteredUsers = useMemo(() => {
               </option>
             ))}
           </select>
-        </div>
+              </div>
         <div className="users-filter-group">
           <label htmlFor="users-status-filter">Status</label>
           <select
@@ -379,6 +680,17 @@ const filteredUsers = useMemo(() => {
             <option value="ACTIVE">Active</option>
             <option value="INACTIVE">Inactive</option>
           </select>
+                    </div>
+        <div className="users-filter-group">
+          <label htmlFor="users-layout-filter">Layout</label>
+          <select
+            id="users-layout-filter"
+            value={viewMode}
+            onChange={(event) => setViewMode(event.target.value as typeof viewMode)}
+          >
+            <option value="table">Table view</option>
+            <option value="tree">Tree view</option>
+          </select>
         </div>
       </section>
 
@@ -386,8 +698,8 @@ const filteredUsers = useMemo(() => {
         <div className="users-error">
           <span>{error}</span>
           <button onClick={() => void loadUsers()}>Try again</button>
-        </div>
-      )}
+            </div>
+            )}
 
       {inviteSuccess && (
         <div className="users-success">
@@ -395,8 +707,8 @@ const filteredUsers = useMemo(() => {
           <button type="button" onClick={() => setInviteSuccess(null)}>
             Dismiss
           </button>
-        </div>
-      )}
+            </div>
+            )}
 
       {loading && !refreshing ? (
         <div className="users-loading">Loading users…</div>
@@ -405,11 +717,12 @@ const filteredUsers = useMemo(() => {
           <h2>No users found</h2>
           <p>Adjust your filters or invite new team members.</p>
         </div>
-      ) : (
-        <div className="users-table-wrapper">
+        ) : viewMode === 'table' ? (
+        <div className="users-content">
+          <div className="users-table-wrapper">
           <table className="users-table">
-            <thead>
-              <tr>
+              <thead>
+                <tr>
                 <th data-sortable onClick={() => handleSort('name')}>
                   User {sortIndicator('name')}
                 </th>
@@ -429,11 +742,20 @@ const filteredUsers = useMemo(() => {
                   Last login {sortIndicator('lastLoginAt')}
                 </th>
                 {showActionsColumn && <th className="users-actions-heading">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUsers.map((user) => (
-                <tr key={user.id}>
+                </tr>
+              </thead>
+              <tbody>
+              {filteredUsers.map((user) => {
+                const isSelected = selectedUser?.id === user.id;
+                    return (
+        <tr
+                  key={user.id}
+                  className={isSelected ? 'selected' : undefined}
+                  onClick={() => {
+                    setSelectedUser(user);
+                    setIsDetailVisible(true);
+                  }}
+                >
                   <td data-label="User">
                     <div className="users-user-cell">
                       <div className="users-avatar">{buildAvatar(user)}</div>
@@ -470,7 +792,10 @@ const filteredUsers = useMemo(() => {
                         <button
                           type="button"
                           className="users-delete"
-                          onClick={() => void handleDeleteUser(user)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDeleteUser(user);
+                          }}
                           disabled={deleteLoadingId === user.id}
                         >
                           {deleteLoadingId === user.id ? 'Deleting…' : 'Delete'}
@@ -478,20 +803,23 @@ const filteredUsers = useMemo(() => {
                       )}
                     </td>
                   )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      </tr>
+              )})}
+              </tbody>
+            </table>
           {showActionsColumn && deleteError && (
             <div className="users-inline-error">
               <span>{deleteError}</span>
               <button type="button" onClick={() => setDeleteError(null)}>
                 Dismiss
               </button>
+          </div>
+        )}
+              </div>
             </div>
-          )}
-        </div>
-      )}
+        ) : (
+          renderTreeView()
+        )}
 
       {inviteOpen && (
         <div className="users-modal-overlay" onClick={() => closeInviteModal(false)}>
@@ -612,11 +940,13 @@ const filteredUsers = useMemo(() => {
                     'Send invite'
                   )}
                 </button>
-              </div>
+                    </div>
             </form>
+            </div>
           </div>
+        )}
+
         </div>
-      )}
-    </div>
   );
 }
+

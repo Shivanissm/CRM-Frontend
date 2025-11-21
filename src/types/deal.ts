@@ -16,6 +16,7 @@ export interface Deal {
   createdAt: string;
   updatedAt?: string | null;
   venue?: string | null;
+  googleCalendarEventId?: string | null;
   phoneNumber?: string | null;
   email?: string | null;
   finalThankYouSent?: boolean | null;
