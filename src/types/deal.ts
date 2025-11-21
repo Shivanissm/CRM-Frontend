@@ -23,6 +23,11 @@ export interface Deal {
   contactNumberAsked?: boolean | null;
   venueAsked?: boolean | null;
   eventDate?: string | null;
+  label?: string | null;
+  source?: string | null;
+  isDiverted?: boolean | null;
+  referencedDealId?: number | null;
+  referencedPipelineId?: number | null;
 }
 
 export interface DealCreateRequest {
@@ -45,6 +50,9 @@ export interface DealCreateRequest {
   contactNumberAsked?: boolean | null;
   venueAsked?: boolean | null;
   eventDate?: string | null;
+  label?: string | null;
+  source?: string | null;
+  referencedDealId?: number | null;
 }
 
 export interface DealStageUpdateRequest {

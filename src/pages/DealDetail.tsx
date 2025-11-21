@@ -63,6 +63,8 @@ export default function DealDetail() {
     email?: string;
     eventDate?: string;
     commissionAmount?: string;
+    probability?: number | null;
+    expectedCloseDate?: string | null;
   }>({
     name: '',
     value: '',
@@ -78,6 +80,8 @@ export default function DealDetail() {
     email: '',
     eventDate: '',
     commissionAmount: '',
+    probability: null,
+    expectedCloseDate: null,
   });
 
   useEffect(() => {
@@ -229,10 +233,10 @@ export default function DealDetail() {
   };
 
   const formatCurrency = (value: number | null | undefined): string => {
-    if (value === null || value === undefined) return '$0.00';
-    return new Intl.NumberFormat('en-US', {
+    if (value === null || value === undefined) return '₹0.00';
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'INR',
       minimumFractionDigits: 2,
     }).format(value);
   };
@@ -551,11 +555,29 @@ export default function DealDetail() {
     return selectedPipeline.stages?.find((s) => s.id === formData.stageId) || null;
   }, [formData.stageId, selectedPipeline]);
 
-  const statusColors: Record<string, string> = {
-    WON: '#10b981',
-    LOST: '#ef4444',
-    IN_PROGRESS: '#8b5cf6',
+  // Handle status update (WON/LOST/Reopen)
+  const handleStatusUpdate = async (newStatus: 'WON' | 'LOST' | 'IN_PROGRESS') => {
+    if (!id || isNewDeal) return;
+    
+    try {
+      const updatedDeal = await dealsApi.updateStatus(Number(id), { status: newStatus });
+      setDeal(updatedDeal);
+      setFormData((prev) => ({ ...prev, status: newStatus }));
+      // Reload deal data to get latest state
+      await loadDealData(Number(id));
+    } catch (error: any) {
+      console.error('Failed to update status:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to update status.';
+      alert(errorMessage);
+    }
   };
+
+  // Unused - kept for potential future use
+  // const statusColors: Record<string, string> = {
+  //   WON: '#10b981',
+  //   LOST: '#ef4444',
+  //   IN_PROGRESS: '#8b5cf6',
+  // };
 
   if (loading) {
     return (
@@ -585,8 +607,48 @@ export default function DealDetail() {
             onChange={(e) => handleFieldChange('name', e.target.value)}
             placeholder="Deal Name"
           />
+          {!isNewDeal && selectedStage && (
+            <div className="deal-header-stage-info">
+              <span className="deal-header-pipeline-name">{selectedPipeline?.name || '—'}</span>
+              <span className="deal-header-arrow">→</span>
+              <span className="deal-header-stage-name">{selectedStage.name}</span>
+            </div>
+          )}
         </div>
         <div className="deal-header-right">
+          {!isNewDeal && (
+            <div className="deal-header-status-actions">
+              {formData.status === 'IN_PROGRESS' && (
+                <>
+                  <button
+                    className="deal-status-btn deal-status-btn-won"
+                    onClick={() => handleStatusUpdate('WON')}
+                  >
+                    WON
+                  </button>
+                  <button
+                    className="deal-status-btn deal-status-btn-lost"
+                    onClick={() => handleStatusUpdate('LOST')}
+                  >
+                    LOST
+                  </button>
+                </>
+              )}
+              {(formData.status === 'WON' || formData.status === 'LOST') && (
+                <>
+                  <span className={`deal-status-badge deal-status-badge-${formData.status.toLowerCase()}`}>
+                    {formData.status}
+                  </span>
+                  <button
+                    className="deal-status-btn deal-status-btn-reopen"
+                    onClick={() => handleStatusUpdate('IN_PROGRESS')}
+                  >
+                    Reopen
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           <button className="deal-close-button" onClick={() => {
             if (isNewDeal && personIdFromQuery) {
               navigate(`/persons/${personIdFromQuery}`);
@@ -612,143 +674,145 @@ export default function DealDetail() {
             </div>
             {summaryExpanded && (
               <div className="deal-section-content">
-                <div className="deal-field-row">
-                  {editingField === 'name' ? (
-                    <div className="deal-field-with-icon-input">
-                      <span className="deal-field-icon">👤</span>
-                    <input
-                      type="text"
-                      className="deal-field-input"
-                      value={formData.name}
-                      onChange={(e) => handleFieldChange('name', e.target.value)}
-                      onBlur={() => setEditingField(null)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          setEditingField(null);
-                        }
-                      }}
-                      autoFocus
-                    />
-                    </div>
-                  ) : (
-                    <div className="deal-field-display" onClick={() => setEditingField('name')}>
-                      <span className="deal-field-icon">👤</span>
-                      <span className="deal-field-text">{formData.name || ''}</span>
-                    </div>
-                  )}
-                </div>
+                {/* Deal Value */}
                 <div className="deal-field-row">
                   {editingField === 'value' ? (
                     <div className="deal-field-with-icon-input">
-                      <span className="deal-field-icon">$</span>
-                    <input
-                      type="number"
-                      className="deal-field-input"
-                      value={formData.value}
-                      onChange={(e) => handleFieldChange('value', e.target.value)}
-                      onBlur={() => setEditingField(null)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          setEditingField(null);
-                        }
-                      }}
-                      autoFocus
-                    />
+                      <span className="deal-field-icon">₹</span>
+                      <input
+                        type="number"
+                        className="deal-field-input"
+                        value={formData.value}
+                        onChange={(e) => handleFieldChange('value', e.target.value)}
+                        onBlur={() => setEditingField(null)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setEditingField(null);
+                          }
+                        }}
+                        autoFocus
+                      />
                     </div>
                   ) : (
                     <div className="deal-field-display" onClick={() => setEditingField('value')}>
-                      <span className="deal-field-icon">$</span>
+                      <span className="deal-field-icon">₹</span>
                       <span className="deal-field-text">{formatCurrency(parseFloat(formData.value || '0'))}</span>
                     </div>
                   )}
                 </div>
+
+                {/* Associated Person - Clickable */}
                 <div className="deal-field-row">
-                  {editingField === 'status' ? (
-                    <div className="deal-field-with-icon-input">
-                      <span className="deal-field-icon">🏷️</span>
-                    <select
-                      className="deal-field-input"
-                      value={formData.status}
-                      onChange={(e) => handleFieldChange('status', e.target.value)}
-                      onBlur={() => setEditingField(null)}
-                      autoFocus
+                  {person ? (
+                    <div 
+                      className="deal-field-display" 
+                      style={{ cursor: 'pointer', color: '#2563eb' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (formData.personId) {
+                          navigate(`/persons/${formData.personId}`);
+                        }
+                      }}
                     >
-                      <option value="IN_PROGRESS">In Progress</option>
-                      <option value="WON">Won</option>
-                      <option value="LOST">Lost</option>
-                    </select>
+                      <span className="deal-field-icon">👤</span>
+                      <span className="deal-field-text" style={{ textDecoration: 'underline' }}>{person.name}</span>
                     </div>
                   ) : (
-                    <div className="deal-field-display" onClick={() => setEditingField('status')}>
-                      <span className="deal-field-icon">🏷️</span>
-                      <span 
-                        className="deal-field-text" 
-                        style={{ 
-                          display: 'inline-block',
-                          padding: '4px 12px',
-                          borderRadius: '4px',
-                          backgroundColor: statusColors[formData.status] || '#6b7280',
-                          color: 'white',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          cursor: 'pointer'
+                    <div className="deal-field-display">
+                      <span className="deal-field-icon">👤</span>
+                      <span className="deal-field-text">—</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Set Deal Probability */}
+                <div className="deal-field-row">
+                  {editingField === 'probability' ? (
+                    <div className="deal-field-with-icon-input">
+                      <span className="deal-field-icon">⚖️</span>
+                      <input
+                        type="number"
+                        className="deal-field-input"
+                        min="0"
+                        max="100"
+                        value={formData.probability ?? ''}
+                        onChange={(e) => handleFieldChange('probability', e.target.value ? Number(e.target.value) : null)}
+                        onBlur={() => setEditingField(null)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setEditingField(null);
+                          }
                         }}
-                      >
-                        {formData.status.replace('_', ' ')}
+                        autoFocus
+                        placeholder="0-100"
+                      />
+                    </div>
+                  ) : (
+                    <div 
+                      className="deal-field-display" 
+                      onClick={() => setEditingField('probability')}
+                      style={{ cursor: 'pointer', color: '#2563eb' }}
+                    >
+                      <span className="deal-field-icon">⚖️</span>
+                      <span className="deal-field-text">
+                        {formData.probability !== null && formData.probability !== undefined 
+                          ? `${formData.probability}%` 
+                          : 'Set deal probability'}
                       </span>
                     </div>
                   )}
                 </div>
-                      <div className="deal-field-row">
-                  {editingField === 'email' ? (
+
+                {/* Set Expected Close Date */}
+                <div className="deal-field-row">
+                  {editingField === 'expectedCloseDate' ? (
                     <div className="deal-field-with-icon-input">
-                          <span className="deal-field-icon">✉️</span>
+                      <span className="deal-field-icon">📅</span>
                       <input
-                        type="email"
+                        type="date"
                         className="deal-field-input"
-                        value={formData.email || ''}
-                        onChange={(e) => handleFieldChange('email', e.target.value)}
+                        value={formData.expectedCloseDate || ''}
+                        onChange={(e) => handleFieldChange('expectedCloseDate', e.target.value || null)}
                         onBlur={() => setEditingField(null)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            setEditingField(null);
-                          }
-                        }}
                         autoFocus
                       />
-                        </div>
+                    </div>
                   ) : (
-                    <div className="deal-field-display" onClick={() => setEditingField('email')}>
-                      <span className="deal-field-icon">✉️</span>
-                      <span className="deal-field-text">{formData.email || person?.email || ''}</span>
-                      </div>
-                    )}
+                    <div 
+                      className="deal-field-display" 
+                      onClick={() => setEditingField('expectedCloseDate')}
+                      style={{ cursor: 'pointer', color: '#2563eb' }}
+                    >
+                      <span className="deal-field-icon">📅</span>
+                      <span className="deal-field-text">
+                        {formData.expectedCloseDate 
+                          ? new Date(formData.expectedCloseDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                          : 'Set expected close date'}
+                      </span>
+                    </div>
+                  )}
                 </div>
-                      <div className="deal-field-row">
-                  {editingField === 'phoneNumber' ? (
-                      <div className="deal-field-with-icon-input">
-                          <span className="deal-field-icon">📞</span>
-                      <input
-                        type="text"
-                        className="deal-field-input"
-                        value={formData.phoneNumber || ''}
-                        onChange={(e) => handleFieldChange('phoneNumber', e.target.value)}
-                        onBlur={() => setEditingField(null)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            setEditingField(null);
-                          }
-                        }}
-                        autoFocus
-                        style={{ pointerEvents: 'auto', userSelect: 'text' }}
-                      />
-                        </div>
+
+                {/* Associate Organization - Clickable */}
+                <div className="deal-field-row">
+                  {selectedOrganization ? (
+                    <div 
+                      className="deal-field-display" 
+                      style={{ cursor: 'pointer', color: '#2563eb' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/organizations');
+                      }}
+                    >
+                      <span className="deal-field-icon">🏢</span>
+                      <span className="deal-field-text" style={{ textDecoration: 'underline' }}>{selectedOrganization.name}</span>
+                    </div>
                   ) : (
-                    <div className="deal-field-display" onClick={() => setEditingField('phoneNumber')}>
-                      <span className="deal-field-icon">📞</span>
-                      <span className="deal-field-text">{formData.phoneNumber || person?.phone || ''}</span>
-                      </div>
-                )}
+                    <div className="deal-field-display">
+                      <span className="deal-field-icon">🏢</span>
+                      <span className="deal-field-text">—</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1117,7 +1181,7 @@ export default function DealDetail() {
                             <>
                               <span className="deal-activity-separator">·</span>
                               <span className="deal-activity-deal">
-                                <span className="deal-activity-deal-icon">$</span>
+                                <span className="deal-activity-deal-icon">₹</span>
                                 {deal.name}
                               </span>
                             </>
@@ -1237,7 +1301,7 @@ export default function DealDetail() {
                               <>
                                 <span className="deal-history-separator">·</span>
                                 <span className="deal-history-deal">
-                                  <span className="deal-history-deal-icon">$</span>
+                                  <span className="deal-history-deal-icon">₹</span>
                                   {deal.name}
                                 </span>
                               </>

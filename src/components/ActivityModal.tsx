@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import './ActivityModal.css';
 import { activitiesApi, type Activity } from '../services/activities';
 import { dealsApi } from '../services/deals';
@@ -177,6 +178,7 @@ export default function ActivityModal({
       }
       setServiceCategory(initialServiceCategory || 'PHOTOGRAPHY');
       void loadCategories();
+      void loadOrganizations();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialOrganization, initialCategory, initialActivity, initialServiceCategory, personOptions, dealOptions]);
@@ -213,6 +215,41 @@ export default function ActivityModal({
     };
   }, [isOpen]);
 
+  // Filter organizations based on input
+  useEffect(() => {
+    const orgInput = values.organization || '';
+    if (orgInput.trim().length > 0) {
+      const filtered = organizations.filter(org =>
+        org.name.toLowerCase().includes(orgInput.toLowerCase())
+      );
+      setFilteredOrganizations(filtered);
+    } else {
+      // Show all organizations when input is empty
+      setFilteredOrganizations(organizations);
+    }
+  }, [values.organization, organizations]);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        orgInputRef.current &&
+        orgSuggestionsRef.current &&
+        !orgInputRef.current.contains(event.target as Node) &&
+        !orgSuggestionsRef.current.contains(event.target as Node)
+      ) {
+        setShowOrgSuggestions(false);
+      }
+    };
+
+    if (showOrgSuggestions) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showOrgSuggestions]);
+
   if (!isOpen) return null;
 
   const mapActivityTypeToCategory = (activityType?: string): string | undefined => {
@@ -248,9 +285,9 @@ export default function ActivityModal({
     if (!dateStr) return undefined;
     // Convert yyyy-MM-dd to dd/MM/yyyy for backend
     if (dateStr.includes('-')) {
-      const parts = dateStr.split('-');
-      if (parts.length === 3) {
-        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
       }
     }
     return dateStr;
@@ -382,7 +419,9 @@ export default function ActivityModal({
     setServiceCategory(initialServiceCategory || 'PHOTOGRAPHY');
   };
 
-  return (
+  if (!isOpen) return null;
+
+  const modalContent = (
     <div className="am-overlay" onClick={onClose}>
       <div className="am-modal" onClick={(e) => e.stopPropagation()}>
         <div className="am-header">
@@ -553,5 +592,7 @@ export default function ActivityModal({
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
 
