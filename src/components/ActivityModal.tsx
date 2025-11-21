@@ -94,6 +94,8 @@ export default function ActivityModal({
   const [dealInput, setDealInput] = useState('');
   const [personInput, setPersonInput] = useState('');
   const [serviceCategory, setServiceCategory] = useState<string>(initialServiceCategory);
+  const [showNotesInfo, setShowNotesInfo] = useState(false);
+  const infoIconRef = useRef<HTMLButtonElement>(null);
 
   const getUserDisplayName = (user: User) => {
     const first = (user.firstName || '').trim();
@@ -178,7 +180,6 @@ export default function ActivityModal({
       }
       setServiceCategory(initialServiceCategory || 'PHOTOGRAPHY');
       void loadCategories();
-      void loadOrganizations();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialOrganization, initialCategory, initialActivity, initialServiceCategory, personOptions, dealOptions]);
@@ -215,40 +216,21 @@ export default function ActivityModal({
     };
   }, [isOpen]);
 
-  // Filter organizations based on input
-  useEffect(() => {
-    const orgInput = values.organization || '';
-    if (orgInput.trim().length > 0) {
-      const filtered = organizations.filter(org =>
-        org.name.toLowerCase().includes(orgInput.toLowerCase())
-      );
-      setFilteredOrganizations(filtered);
-    } else {
-      // Show all organizations when input is empty
-      setFilteredOrganizations(organizations);
-    }
-  }, [values.organization, organizations]);
-
-  // Close suggestions when clicking outside
+  // Close info popup when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        orgInputRef.current &&
-        orgSuggestionsRef.current &&
-        !orgInputRef.current.contains(event.target as Node) &&
-        !orgSuggestionsRef.current.contains(event.target as Node)
-      ) {
-        setShowOrgSuggestions(false);
+      if (infoIconRef.current && !infoIconRef.current.contains(event.target as Node)) {
+        setShowNotesInfo(false);
       }
     };
 
-    if (showOrgSuggestions) {
+    if (showNotesInfo) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-  }, [showOrgSuggestions]);
+  }, [showNotesInfo]);
 
   if (!isOpen) return null;
 
@@ -549,7 +531,28 @@ export default function ActivityModal({
             </label>
 
             <label className="am-field full">
-              <span>Notes (not visible to event guests)</span>
+              <span className="am-label-with-info">
+                Notes (not visible to event guests)
+                <button
+                  type="button"
+                  ref={infoIconRef}
+                  className="am-info-icon"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setShowNotesInfo(!showNotesInfo);
+                  }}
+                  aria-label="Information about notes"
+                >
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                  </svg>
+                  {showNotesInfo && (
+                    <div className="am-info-popup">
+                      Notes added here are not visible to event guests. This is for internal team use only.
+                    </div>
+                  )}
+                </button>
+              </span>
               <textarea className="am-textarea" value={values.notes || ''} onChange={(e) => update('notes', e.target.value)} />
             </label>
 

@@ -72,11 +72,23 @@ const Deals = () => {
   const [managers, setManagers] = useState<PersonOwner[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<DealFilterStatus>('IN_PROGRESS');
-  const [filterOrganization, setFilterOrganization] = useState<number | null>(null);
-  const [filterCategory, setFilterCategory] = useState<number | null>(null);
-  const [filterManager, setFilterManager] = useState<number | null>(null);
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<DealFilterStatus>(() => {
+    const saved = localStorage.getItem('dealsFilterStatus');
+    return (saved as DealFilterStatus) || 'IN_PROGRESS';
+  });
+  const [filterOrganization, _setFilterOrganization] = useState<number | null>(() => {
+    const saved = localStorage.getItem('dealsFilterOrganization');
+    return saved ? Number(saved) : null;
+  });
+  const [filterCategory, setFilterCategory] = useState<string | null>(() => {
+    const saved = localStorage.getItem('dealsFilterCategory');
+    return saved || null;
+  });
+  const [filterManager, setFilterManager] = useState<number | null>(() => {
+    const saved = localStorage.getItem('dealsFilterManager');
+    return saved ? Number(saved) : null;
+  });
+  const [searchQuery, _setSearchQuery] = useState<string>('');
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'pipeline' | 'list'>('pipeline');
@@ -88,10 +100,10 @@ const Deals = () => {
   const [isPipelineDropdownOpen, setIsPipelineDropdownOpen] = useState<boolean>(false);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState<boolean>(false);
   const [isSummaryOpen, setIsSummaryOpen] = useState<boolean>(false);
+  const infoIconRef = useRef<HTMLSpanElement>(null);
   const viewDropdownRef = useRef<HTMLDivElement>(null);
   const pipelineDropdownRef = useRef<HTMLDivElement>(null);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
-  const summaryRef = useRef<HTMLDivElement>(null);
   const [formData, setFormData] = useState<DealFormState>(initialFormState);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [modalError, setModalError] = useState<string | null>(null);
@@ -339,7 +351,7 @@ const Deals = () => {
       if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node)) {
         setIsFilterDropdownOpen(false);
       }
-      if (summaryRef.current && !summaryRef.current.contains(event.target as Node)) {
+      if (infoIconRef.current && !infoIconRef.current.contains(event.target as Node)) {
         setIsSummaryOpen(false);
       }
     };
@@ -712,13 +724,218 @@ const Deals = () => {
     return map;
   }, [categoryOptions]);
 
+  // Filter managers based on selected category
+  const filteredManagers = useMemo(() => {
+    if (!filterCategory) {
+      return managers;
+    }
+    // Get the category label for comparison
+    const categoryLabel = categoryLabelById.get(String(filterCategory));
+    if (!categoryLabel) {
+      console.warn('Category label not found for filterCategory:', filterCategory);
+      return managers;
+    }
+    
+    // Find managers who have deals with the selected category
+    const managerIds = new Set<number>();
+    let matchedDealsCount = 0;
+    
+    deals.forEach((deal) => {
+      // Check if deal category matches (either from deal.categoryId or from pipeline.category)
+      let categoryMatches = false;
+      
+      // First check if deal has categoryId that matches
+      if (deal.categoryId != null && String(deal.categoryId) === filterCategory) {
+        categoryMatches = true;
+      } else if (deal.pipelineId) {
+        // If not, check if the deal's pipeline has the matching category
+        const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+        if (pipeline?.category === categoryLabel) {
+          categoryMatches = true;
+        }
+      }
+      
+      if (categoryMatches) {
+        matchedDealsCount++;
+        if (deal.personId) {
+          const person = persons.find(p => p.id === deal.personId);
+          if (person?.ownerId) {
+            managerIds.add(person.ownerId);
+          }
+        }
+      }
+    });
+    
+    console.log('Filtered Managers Debug:', {
+      filterCategory,
+      categoryLabel,
+      totalDeals: deals.length,
+      matchedDealsCount,
+      managerIdsFound: Array.from(managerIds),
+      totalManagers: managers.length,
+      filteredManagersCount: managerIds.size
+    });
+    
+    return managers.filter(manager => managerIds.has(manager.id));
+  }, [managers, deals, persons, filterCategory, categoryLabelById, pipelines]);
+
+  // Filter pipelines based on selected category and manager
+  const filteredPipelines = useMemo(() => {
+    let result = pipelines;
+    
+    // Filter by category if selected
+    if (filterCategory) {
+      const categoryLabel = categoryLabelById.get(String(filterCategory));
+      if (categoryLabel) {
+        result = result.filter(pipeline => pipeline.category === categoryLabel);
+      }
+    }
+    
+    // Further filter by manager if selected
+    if (filterManager) {
+      // Find pipeline IDs that have deals with the selected manager and category
+      const pipelineIds = new Set<number>();
+      const categoryLabel = filterCategory ? categoryLabelById.get(String(filterCategory)) : null;
+      
+      deals.forEach((deal) => {
+        if (deal.pipelineId) {
+          // Check if deal matches category filter (either from deal.categoryId or pipeline.category)
+          let categoryMatch = true;
+          if (filterCategory && categoryLabel) {
+            categoryMatch = false;
+            // Check if deal has categoryId that matches
+            if (deal.categoryId != null && String(deal.categoryId) === filterCategory) {
+              categoryMatch = true;
+            } else {
+              // Check if the deal's pipeline has the matching category
+              const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+              if (pipeline?.category === categoryLabel) {
+                categoryMatch = true;
+              }
+            }
+          }
+          
+          // Check if deal matches manager filter
+          const managerMatch = (() => {
+            if (!deal.personId) return false;
+            const person = persons.find(p => p.id === deal.personId);
+            return person?.ownerId === filterManager;
+          })();
+          
+          if (categoryMatch && managerMatch) {
+            pipelineIds.add(deal.pipelineId);
+          }
+        }
+      });
+      result = result.filter(pipeline => pipelineIds.has(pipeline.id));
+    }
+    
+    return result;
+  }, [pipelines, deals, persons, filterCategory, filterManager, categoryLabelById]);
+
+  // Reset manager filter if selected manager is not in filtered list when category changes
+  // Only validate after data is loaded (managers array has items)
+  useEffect(() => {
+    if (!loading && managers.length > 0 && filterCategory && filterManager) {
+      const isManagerValid = filteredManagers.some(m => m.id === filterManager);
+      if (!isManagerValid) {
+        setFilterManager(null);
+      }
+    }
+  }, [loading, managers.length, filterCategory, filteredManagers, filterManager]);
+
+  // Reset pipeline filter if selected pipeline is not in filtered list when category or manager changes
+  // Only validate after all data is loaded (pipelines, deals, and persons arrays have items)
+  useEffect(() => {
+    // Only validate if we have all the necessary data loaded
+    if (!loading && pipelines.length > 0 && deals.length > 0 && persons.length > 0 && selectedPipelineId) {
+      // First check if the pipeline exists in all pipelines (not just filtered)
+      const pipelineExists = pipelines.some(p => p.id === selectedPipelineId);
+      if (!pipelineExists) {
+        // Pipeline doesn't exist at all, clear it
+        setSelectedPipelineId(null);
+        localStorage.removeItem('selectedPipelineId');
+        return;
+      }
+      
+      // If filters are active, check if pipeline is in filtered list
+      // If no filters are active, the pipeline is valid
+      if (filterCategory || filterManager) {
+        const isPipelineValid = filteredPipelines.some(p => p.id === selectedPipelineId);
+        if (!isPipelineValid) {
+          // Pipeline exists but doesn't match current filters - clear it
+          setSelectedPipelineId(null);
+          localStorage.removeItem('selectedPipelineId');
+        }
+      }
+    }
+  }, [loading, pipelines.length, deals.length, persons.length, filterCategory, filterManager, filteredPipelines, selectedPipelineId]);
+
+  // Auto-select first pipeline if none is selected
+  // Only auto-select after all data is loaded and no saved selection exists
+  useEffect(() => {
+    if (!loading && pipelines.length > 0 && deals.length > 0 && persons.length > 0 && selectedPipelineId === null && filteredPipelines.length > 0) {
+      const firstPipeline = filteredPipelines[0];
+      if (firstPipeline?.id) {
+        setSelectedPipelineId(firstPipeline.id);
+        localStorage.setItem('selectedPipelineId', firstPipeline.id.toString());
+      }
+    }
+  }, [loading, pipelines.length, deals.length, persons.length, selectedPipelineId, filteredPipelines]);
+
+  // Save selectedPipelineId to localStorage whenever it changes
+  useEffect(() => {
+    if (selectedPipelineId !== null) {
+      localStorage.setItem('selectedPipelineId', selectedPipelineId.toString());
+    } else {
+      localStorage.removeItem('selectedPipelineId');
+    }
+  }, [selectedPipelineId]);
+
+  // Save filterStatus to localStorage
+  useEffect(() => {
+    localStorage.setItem('dealsFilterStatus', filterStatus);
+  }, [filterStatus]);
+
+  // Save filterCategory to localStorage
+  useEffect(() => {
+    if (filterCategory) {
+      localStorage.setItem('dealsFilterCategory', filterCategory);
+    } else {
+      localStorage.removeItem('dealsFilterCategory');
+    }
+  }, [filterCategory]);
+
+  // Save filterManager to localStorage
+  useEffect(() => {
+    if (filterManager) {
+      localStorage.setItem('dealsFilterManager', filterManager.toString());
+    } else {
+      localStorage.removeItem('dealsFilterManager');
+    }
+  }, [filterManager]);
+
   const filteredDeals = useMemo(() => {
     return deals.filter((deal) => {
       // Filter by status
       const statusMatch = filterStatus === 'all' || deal.status === filterStatus;
       
       const organizationMatch = filterOrganization === null || deal.organizationId === filterOrganization;
-      const categoryMatch = filterCategory === null || deal.categoryId === filterCategory;
+      // Check category match - either from deal.categoryId or pipeline.category
+      let categoryMatch = filterCategory === null;
+      if (filterCategory !== null) {
+        const categoryLabel = categoryLabelById.get(String(filterCategory));
+        // Check if deal has categoryId that matches
+        if (deal.categoryId != null && String(deal.categoryId) === filterCategory) {
+          categoryMatch = true;
+        } else if (deal.pipelineId && categoryLabel) {
+          // Check if the deal's pipeline has the matching category
+          const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+          if (pipeline?.category === categoryLabel) {
+            categoryMatch = true;
+          }
+        }
+      }
       
       // Filter by manager: check if the deal's person has the selected manager (ownerId)
       const managerMatch = filterManager === null || (() => {
@@ -763,15 +980,37 @@ const Deals = () => {
       return pipelineMatch && statusMatch;
     });
 
+    // Create a map of stageId -> probability for quick lookup
+    const stageProbabilityMap = new Map<number, number>();
+    if (selectedPipeline) {
+      selectedPipeline.stages?.forEach(stage => {
+        if (stage.id && stage.probability != null) {
+          stageProbabilityMap.set(stage.id, stage.probability);
+        }
+      });
+    }
+
     const totalValue = relevantDeals.reduce((sum, deal) => sum + (deal.value || 0), 0);
     const weightedValue = relevantDeals.reduce((sum, deal) => {
-      const probability = (deal as any).probability || 0;
-      return sum + ((deal.value || 0) * probability / 100);
+      const dealValue = deal.value || 0;
+      
+      // Get probability: first from deal, then from stage, default to 100% if not set
+      let probability = (deal as any).probability;
+      if (probability == null && deal.stageId) {
+        probability = stageProbabilityMap.get(deal.stageId) ?? null;
+      }
+      // If probability is still not set, default to 100% (fully certain)
+      if (probability == null) {
+        probability = 100;
+      }
+
+      // Calculate weighted value: deal_value × (probability / 100)
+      return sum + (dealValue * probability / 100);
     }, 0);
     const dealCount = relevantDeals.length;
 
     return { totalValue, weightedValue, dealCount };
-  }, [deals, selectedPipelineId, filterStatus]);
+  }, [deals, selectedPipelineId, filterStatus, selectedPipeline]);
 
   // Get stages for selected pipeline, sorted by order
   const pipelineStages = useMemo(() => {
@@ -962,13 +1201,22 @@ const Deals = () => {
       }
     }
 
+    // For diverted deals, use the pipeline's organization instead of the form's organizationId
+    let organizationId = formData.organizationId ? Number(formData.organizationId) : undefined;
+    if (formData.label === 'DIVERT' && formData.pipelineId) {
+      const selectedPipeline = pipelines.find(p => p.id === Number(formData.pipelineId));
+      if (selectedPipeline?.organization?.id) {
+        organizationId = selectedPipeline.organization.id;
+      }
+    }
+
     const payload: any = {
       name: formData.name.trim(),
       status: formData.status,
       personId: personId,
       pipelineId: formData.pipelineId ? Number(formData.pipelineId) : undefined,
       stageId: formData.stageId ? Number(formData.stageId) : undefined,
-      organizationId: formData.organizationId ? Number(formData.organizationId) : undefined,
+      organizationId: organizationId,
       categoryId: resolvedCategory,
       label: formData.label ? formData.label : undefined,
       source: formData.source ? formData.source : undefined,
@@ -1191,26 +1439,20 @@ const Deals = () => {
             {selectedPipelineId && (
               <div className="deals-total-count">
                 {dealsInSelectedPipeline} {dealsInSelectedPipeline === 1 ? 'deal' : 'deals'}
-                <span className="deals-info-icon" title="Total deals in selected pipeline and status">ℹ️</span>
-              </div>
-            )}
-            {viewMode === 'pipeline' && (
-              <>
-                <div className="deals-summary-icon-container" ref={summaryRef}>
-                  <button
-                    className="deals-summary-icon-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
+                <span 
+                  ref={infoIconRef}
+                  className={`deals-info-icon ${isSummaryOpen ? 'summary-open' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (viewMode === 'pipeline') {
                       setIsSummaryOpen(!isSummaryOpen);
-                    }}
-                    title="View summary"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <rect x="4" y="1.5" width="8" height="6.5" rx="1.5" fill="#3b82f6"/>
-                      <line x1="8" y1="8" x2="8" y2="14.5" stroke="#3b82f6" strokeWidth="1.2" strokeLinecap="round"/>
-                    </svg>
-                  </button>
-                  {isSummaryOpen && (
+                    }
+                  }}
+                  title={viewMode === 'pipeline' ? 'View summary' : 'Total deals in selected pipeline and status'}
+                  style={{ cursor: viewMode === 'pipeline' ? 'pointer' : 'help' }}
+                >
+                  ℹ️
+                  {viewMode === 'pipeline' && isSummaryOpen && (
                     <div className="deals-summary-card">
                       <div className="deals-summary-section">
                         <div className="deals-summary-label">Total:</div>
@@ -1223,20 +1465,13 @@ const Deals = () => {
                           <span className="deals-summary-count">{financialSummary.dealCount} deals</span>
                         </div>
                       </div>
-                      <div className="deals-summary-section">
-                        <div className="deals-summary-label">By currency:</div>
-                        <div className="deals-summary-values">
-                          <span className="deals-summary-value">{formatCurrency(financialSummary.totalValue)}</span>
-                          <span className="deals-summary-weighted">
-                            <span className="deals-summary-icon">⚖️</span>
-                            {formatCurrency(financialSummary.weightedValue)}
-                          </span>
-                          <span className="deals-summary-count">{financialSummary.dealCount} deals</span>
-                        </div>
-                      </div>
                     </div>
                   )}
-                </div>
+                </span>
+              </div>
+            )}
+            {viewMode === 'pipeline' && (
+              <>
                 <div className="deals-pipeline-selector" ref={pipelineDropdownRef}>
                   <button 
                     className="deals-pipeline-btn"
@@ -1256,22 +1491,28 @@ const Deals = () => {
                   </button>
                   {isPipelineDropdownOpen && (
                     <div className="deals-pipeline-dropdown">
-                      {allPipelines.map((pipeline) => (
-                        <button
-                          key={pipeline.id}
-                          className={`deals-pipeline-option ${selectedPipelineId === pipeline.id ? 'active' : ''}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedPipelineId(pipeline.id);
-                            if (pipeline.id !== null) {
-                              localStorage.setItem('selectedPipelineId', pipeline.id.toString());
-                            }
-                            setIsPipelineDropdownOpen(false);
-                          }}
-                        >
-                          {pipeline.name}
-                        </button>
-                      ))}
+                      {filteredPipelines.length === 0 ? (
+                        <div className="deals-pipeline-option" style={{ cursor: 'default', opacity: 0.6 }}>
+                          No pipelines match the selected filters
+                        </div>
+                      ) : (
+                        filteredPipelines.map((pipeline) => (
+                          <button
+                            key={pipeline.id}
+                            className={`deals-pipeline-option ${selectedPipelineId === pipeline.id ? 'active' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedPipelineId(pipeline.id);
+                              if (pipeline.id !== null) {
+                                localStorage.setItem('selectedPipelineId', pipeline.id.toString());
+                              }
+                              setIsPipelineDropdownOpen(false);
+                            }}
+                          >
+                            {pipeline.name}
+                          </button>
+                        ))
+                      )}
                     </div>
                   )}
                 </div>
@@ -1365,51 +1606,16 @@ const Deals = () => {
           </div>
         </div>
         <div className="deals-header-bottom">
-          <div className="deals-sort-container">
-            <span className="deals-sort-icon">↑</span>
-            <span className="deals-sort-label">Sort by:</span>
-            <button className="deals-sort-btn">
-              Next activity
-              <span style={{ marginLeft: '6px' }}>▾</span>
-            </button>
-          </div>
-          <div className="deals-filters">
-            <button
-              className={`filter-btn ${filterStatus === 'all' ? 'active' : ''}`}
-              onClick={() => setFilterStatus('all')}
-            >
-              All
-            </button>
-            <button
-              className={`filter-btn ${filterStatus === 'WON' ? 'active' : ''}`}
-              onClick={() => setFilterStatus('WON')}
-            >
-              Won
-            </button>
-            <button
-              className={`filter-btn ${filterStatus === 'LOST' ? 'active' : ''}`}
-              onClick={() => setFilterStatus('LOST')}
-            >
-              Lost
-            </button>
-            <button
-              className={`filter-btn ${filterStatus === 'IN_PROGRESS' ? 'active' : ''}`}
-              onClick={() => setFilterStatus('IN_PROGRESS')}
-            >
-              In Progress
-            </button>
-          </div>
           <select
             className="filter-select"
-            value={filterCategory != null ? String(filterCategory) : ''}
+            value={filterCategory ?? ''}
             onChange={(event) => {
               const { value } = event.target;
               if (value === '') {
                 setFilterCategory(null);
                 return;
               }
-              const numValue = Number(value);
-              setFilterCategory(Number.isNaN(numValue) ? null : numValue);
+              setFilterCategory(value);
             }}
           >
             <option value="">All Categories</option>
@@ -1425,12 +1631,20 @@ const Deals = () => {
             onChange={(event) => setFilterManager(event.target.value === '' ? null : Number(event.target.value))}
           >
             <option value="">All Manager</option>
-            {managers.map((manager) => (
+            {filteredManagers.map((manager) => (
               <option key={manager.id} value={manager.id}>
                 {manager.displayName || manager.email}
               </option>
             ))}
           </select>
+          <div className="deals-sort-container">
+            <span className="deals-sort-icon">↑</span>
+            <span className="deals-sort-label">Sort by:</span>
+            <button className="deals-sort-btn">
+              Next activity
+              <span style={{ marginLeft: '6px' }}>▾</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1501,79 +1715,91 @@ const Deals = () => {
                   </div>
                 </div>
 
-                {/* WON Zone - Middle */}
-                <div
-                  className={`kanban-status-zone kanban-won-zone ${isDragOverWonZone ? 'drag-over' : ''}`}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragPosition({ x: e.clientX, y: e.clientY });
-                    setIsDragOverWonZone(true);
-                    setIsDragOverDeleteZone(false);
-                    setIsDragOverLostZone(false);
-                  }}
-                  onDragLeave={(e) => {
-                    e.preventDefault();
-                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                      setIsDragOverWonZone(false);
-                    }
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setIsDragOverWonZone(false);
-                    if (draggedDealId) {
-                      const deal = deals.find(d => d.id === draggedDealId);
-                      if (deal && deal.status !== 'WON') {
-                        void handleStatusUpdate(draggedDealId, 'WON');
-                      }
-                    }
-                    setDraggedDealId(null);
-                    setDragPosition(null);
-                  }}
-                >
-                  <div className="kanban-status-zone-content">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    <p className="kanban-status-zone-text">Mark as WON</p>
-                  </div>
-                </div>
+                {/* WON Zone - Middle - Only show if dragged deal is not already WON */}
+                {(() => {
+                  const draggedDeal = draggedDealId ? deals.find(d => d.id === draggedDealId) : null;
+                  const isDraggedDealWon = draggedDeal?.status === 'WON';
+                  return !isDraggedDealWon ? (
+                    <div
+                      className={`kanban-status-zone kanban-won-zone ${isDragOverWonZone ? 'drag-over' : ''}`}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragPosition({ x: e.clientX, y: e.clientY });
+                        setIsDragOverWonZone(true);
+                        setIsDragOverDeleteZone(false);
+                        setIsDragOverLostZone(false);
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                          setIsDragOverWonZone(false);
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDragOverWonZone(false);
+                        if (draggedDealId) {
+                          const deal = deals.find(d => d.id === draggedDealId);
+                          if (deal && deal.status !== 'WON') {
+                            void handleStatusUpdate(draggedDealId, 'WON');
+                          }
+                        }
+                        setDraggedDealId(null);
+                        setDragPosition(null);
+                      }}
+                    >
+                      <div className="kanban-status-zone-content">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <p className="kanban-status-zone-text">Mark as WON</p>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
 
-                {/* LOST Zone - Rightmost */}
-                <div
-                  className={`kanban-status-zone kanban-lost-zone ${isDragOverLostZone ? 'drag-over' : ''}`}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragPosition({ x: e.clientX, y: e.clientY });
-                    setIsDragOverLostZone(true);
-                    setIsDragOverDeleteZone(false);
-                    setIsDragOverWonZone(false);
-                  }}
-                  onDragLeave={(e) => {
-                    e.preventDefault();
-                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                      setIsDragOverLostZone(false);
-                    }
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setIsDragOverLostZone(false);
-                    if (draggedDealId) {
-                      const deal = deals.find(d => d.id === draggedDealId);
-                      if (deal && deal.status !== 'LOST') {
-                        void handleStatusUpdate(draggedDealId, 'LOST');
-                      }
-                    }
-                    setDraggedDealId(null);
-                    setDragPosition(null);
-                  }}
-                >
-                  <div className="kanban-status-zone-content">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    <p className="kanban-status-zone-text">Mark as LOST</p>
-                  </div>
-                </div>
+                {/* LOST Zone - Rightmost - Only show if dragged deal is not already LOST */}
+                {(() => {
+                  const draggedDeal = draggedDealId ? deals.find(d => d.id === draggedDealId) : null;
+                  const isDraggedDealLost = draggedDeal?.status === 'LOST';
+                  return !isDraggedDealLost ? (
+                    <div
+                      className={`kanban-status-zone kanban-lost-zone ${isDragOverLostZone ? 'drag-over' : ''}`}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDragPosition({ x: e.clientX, y: e.clientY });
+                        setIsDragOverLostZone(true);
+                        setIsDragOverDeleteZone(false);
+                        setIsDragOverWonZone(false);
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                          setIsDragOverLostZone(false);
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDragOverLostZone(false);
+                        if (draggedDealId) {
+                          const deal = deals.find(d => d.id === draggedDealId);
+                          if (deal && deal.status !== 'LOST') {
+                            void handleStatusUpdate(draggedDealId, 'LOST');
+                          }
+                        }
+                        setDraggedDealId(null);
+                        setDragPosition(null);
+                      }}
+                    >
+                      <div className="kanban-status-zone-content">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <p className="kanban-status-zone-text">Mark as LOST</p>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
               </>
             )}
             <div className="deals-kanban-board" ref={kanbanBoardRef}>
@@ -1590,8 +1816,9 @@ const Deals = () => {
                 {pipelineStages.map((stage) => {
                   const stageDeals = dealsByStage.get(stage.id) || [];
                   const totals = stageTotals.get(stage.id) || { total: 0, count: 0 };
+                  const isDiversionStage = stage.name?.toLowerCase() === 'diversion';
                   return (
-                    <div key={stage.id} className="kanban-column">
+                    <div key={stage.id} className={`kanban-column ${isDiversionStage ? 'diversion-stage' : ''}`}>
                       <div className="kanban-column-header">
                         <h3 className="kanban-column-title">{stage.name}</h3>
                         <div className="kanban-column-summary">
@@ -1630,10 +1857,10 @@ const Deals = () => {
                             const personName = deal.personId
                               ? personsById.get(deal.personId)?.name ?? `Person ${deal.personId}`
                               : null;
-                            const rspLabel = personName ? `RSP, ${personName}` : null;
                             const organizationName = deal.organizationId
                               ? organizationsById.get(deal.organizationId)?.name ?? `Organization ${deal.organizationId}`
                               : null;
+                            const rspLabel = organizationName && personName ? `${organizationName}, ${personName}` : organizationName || personName;
                             return (
                 <div
                   key={deal.id}
@@ -1709,7 +1936,39 @@ const Deals = () => {
                                     className="kanban-card-action-btn"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setOpenDropdownDealId(openDropdownDealId === deal.id ? null : deal.id);
+                                      if (openDropdownDealId === deal.id) {
+                                        setOpenDropdownDealId(null);
+                                        setDropdownPosition(null);
+                                      } else {
+                                        const buttonRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                        const dropdownWidth = 200;
+                                        const dropdownHeight = 100;
+                                        const viewportMargin = 8;
+                                        
+                                        let left = buttonRect.right + 8;
+                                        let top = buttonRect.top;
+                                        
+                                        // Adjust if dropdown would go off right edge
+                                        if (left + dropdownWidth > window.innerWidth - viewportMargin) {
+                                          left = buttonRect.left - dropdownWidth - 8;
+                                        }
+                                        
+                                        // Adjust if dropdown would go off bottom edge
+                                        if (top + dropdownHeight > window.innerHeight - viewportMargin) {
+                                          top = window.innerHeight - dropdownHeight - viewportMargin;
+                                        }
+                                        
+                                        // Ensure dropdown doesn't go off top
+                                        if (top < viewportMargin) {
+                                          top = viewportMargin;
+                                        }
+                                        
+                                        setDropdownPosition({
+                                          top,
+                                          left,
+                                        });
+                                        setOpenDropdownDealId(deal.id);
+                                      }
                                     }}
                                     aria-label="Deal actions"
                                   >
@@ -1718,30 +1977,6 @@ const Deals = () => {
                                     </svg>
                                   </button>
                                 </div>
-                                {openDropdownDealId === deal.id && (
-                                  <div className="kanban-card-dropdown" onClick={(e) => e.stopPropagation()}>
-                                    <button
-                                      className="kanban-card-dropdown-item"
-                                      onClick={() => {
-                                        setActivityDealId(deal.id);
-                                        setIsActivityModalOpen(true);
-                                        setOpenDropdownDealId(null);
-                                      }}
-                                    >
-                                      Schedule an Activity
-                                    </button>
-                                    <button
-                                      className="kanban-card-dropdown-item"
-                                      onClick={() => {
-                                        setDivertDealId(deal.id);
-                                        setIsDivertModalOpen(true);
-                                        setOpenDropdownDealId(null);
-                                      }}
-                                    >
-                                      Divert the deal
-                                    </button>
-                      </div>
-                    )}
                       </div>
                             );
                           })
@@ -1795,10 +2030,10 @@ const Deals = () => {
                             const personName = deal.personId
                               ? personsById.get(deal.personId)?.name ?? `Person ${deal.personId}`
                               : null;
-                            const rspLabel = personName ? `RSP, ${personName}` : null;
                             const organizationName = deal.organizationId
                               ? organizationsById.get(deal.organizationId)?.name ?? `Organization ${deal.organizationId}`
                               : null;
+                            const rspLabel = organizationName && personName ? `${organizationName}, ${personName}` : organizationName || personName;
                             return (
                               <div
                                 key={deal.id}

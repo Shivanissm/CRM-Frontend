@@ -7,6 +7,12 @@
 .am-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px}
 .am-field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:#0f172a}
 .am-field span{font-weight:500;color:#475467}
+.am-label-with-info{display:flex;align-items:center;gap:6px;position:relative}
+.am-info-icon{background:none;border:none;cursor:pointer;padding:2px;display:flex;align-items:center;justify-content:center;color:#3b82f6;transition:color .2s;position:relative}
+.am-info-icon:hover{color:#2563eb}
+.am-info-icon svg{display:block}
+.am-info-popup{position:absolute;top:100%;left:0;margin-top:8px;background:#1e293b;color:#fff;padding:12px 16px;border-radius:8px;font-size:13px;line-height:1.5;white-space:nowrap;z-index:10000;box-shadow:0 4px 12px rgba(0,0,0,.25);min-width:250px;max-width:300px}
+.am-info-popup::before{content:'';position:absolute;bottom:100%;left:12px;border:6px solid transparent;border-bottom-color:#1e293b}
 .am-field.full{grid-column:1/-1}
 .am-quick-subjects{
   grid-column:1/-1;
