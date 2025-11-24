@@ -37,9 +37,9 @@ export default function PersonDetail() {
   const [showOnlyFilledFields, setShowOnlyFilledFields] = useState(false);
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null); // Keep for date pickers
-  const [weddingDatePickerOpen, setWeddingDatePickerOpen] = useState(false);
+  const [_weddingDatePickerOpen, _setWeddingDatePickerOpen] = useState(false);
   const [leadDatePickerOpen, setLeadDatePickerOpen] = useState(false);
-  const [weddingDateCalendarMonth, setWeddingDateCalendarMonth] = useState(new Date());
+  const [_weddingDateCalendarMonth, _setWeddingDateCalendarMonth] = useState(new Date());
   const [leadDateCalendarMonth, setLeadDateCalendarMonth] = useState(new Date());
   const [labelsDropdownOpen, setLabelsDropdownOpen] = useState(false);
   const [orgLabelsDropdownOpen, setOrgLabelsDropdownOpen] = useState(false);
