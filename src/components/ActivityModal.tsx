@@ -75,6 +75,7 @@ export default function ActivityModal({
   initialActivity,
   initialServiceCategory = 'PHOTOGRAPHY',
   userOptions = [],
+  dealData,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -84,10 +85,20 @@ export default function ActivityModal({
   initialActivity?: Activity | null;
   initialServiceCategory?: string;
   userOptions?: User[];
+  dealData?: {
+    dealName?: string;
+    personName?: string;
+    organization?: string;
+    phone?: string;
+    instagramId?: string;
+    dealId?: number;
+    personId?: number;
+  };
 }) {
   const [values, setValues] = useState<ActivityFormValues>({ subject: '' });
   const [_categories, setCategories] = useState<Array<{ id: string; label: string }>>([]);
   const [categoryLoading, setCategoryLoading] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const [dealOptions, setDealOptions] = useState<Deal[]>([]);
   const [personOptions, setPersonOptions] = useState<Person[]>([]);
   const [organizationLookup, setOrganizationLookup] = useState<Record<number, string>>({});
@@ -154,9 +165,19 @@ export default function ActivityModal({
       const baseType = initialActivity?.type || deriveTypeFromCategory(initialCategory);
       const baseCategory =
         mapActivityTypeToCategory(initialActivity?.type || baseType) || 'ACTIVITY';
+      
+      // If dealData is provided (opened from deals), pre-fill with deal information
+      const dealName = dealData?.dealName || initialActivity?.dealName || '';
+      const personName = dealData?.personName || '';
+      const organization = dealData?.organization || initialActivity?.organization || initialOrganization || '';
+      const phone = dealData?.phone || initialActivity?.phone || undefined;
+      const instagramId = dealData?.instagramId || initialActivity?.instagramId || undefined;
+      const dealId = dealData?.dealId || initialActivity?.dealId || undefined;
+      const personId = dealData?.personId || initialActivity?.personId || undefined;
+      
       setValues({
         subject: initialActivity?.subject || '',
-        organization: initialActivity?.organization || initialOrganization || '',
+        organization: organization,
         type: baseType,
         category: baseCategory,
         date: toInputDate(initialActivity?.date),
@@ -164,25 +185,20 @@ export default function ActivityModal({
         endTime: initialActivity?.endTime || undefined,
         priority: initialActivity?.priority || undefined,
         assignedUser: initialActivity?.assignedUser || undefined,
-        phone: initialActivity?.phone || undefined,
-        instagramId: initialActivity?.instagramId || undefined,
+        phone: phone,
+        instagramId: instagramId,
         notes: initialActivity?.notes || undefined,
-        personId: initialActivity?.personId || undefined,
-        dealId: initialActivity?.dealId || undefined,
-        dealName: initialActivity?.dealName || undefined,
+        personId: personId,
+        dealId: dealId,
+        dealName: dealName,
       });
-      setDealInput(initialActivity?.dealName || '');
-      if (initialActivity?.personId) {
-        const person = personOptions.find((p) => p.id === initialActivity.personId);
-        setPersonInput(person?.name || '');
-      } else {
-        setPersonInput('');
-      }
+      setDealInput(dealName);
+      setPersonInput(personName);
       setServiceCategory(initialServiceCategory || 'PHOTOGRAPHY');
       void loadCategories();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, initialOrganization, initialCategory, initialActivity, initialServiceCategory, personOptions, dealOptions]);
+  }, [isOpen, initialOrganization, initialCategory, initialActivity, initialServiceCategory, personOptions, dealOptions, dealData]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -377,33 +393,48 @@ export default function ActivityModal({
   };
 
   const handleSave = async () => {
-    const isoDate = toIsoDate(values.date);
-    const activityType = values.type || values.category;
-    const parentCategory = mapActivityTypeToCategory(activityType);
-    const formattedValues = {
-      ...values,
-      date: formatDateForBackend(values.date),
-      dueDate: formatDateForBackend(values.date),
-      dateTime: isoDate ? `${isoDate}T${values.startTime || '00:00'}:00` : undefined,
-      // Convert priority to uppercase to match backend enum values
-      priority: values.priority ? values.priority.toUpperCase() : undefined,
-      type: activityType,
-      category: parentCategory,
-      serviceCategory,
-      dealName: values.dealName?.trim() || undefined,
-      phone: values.phone || undefined,
-      instagramId: values.instagramId || undefined,
-    };
-    await onSave({ ...formattedValues, id: initialActivity?.id });
-    setValues({ subject: '' }); // Reset after save
+    try {
+      const isoDate = toIsoDate(values.date);
+      const activityType = values.type || values.category;
+      const parentCategory = mapActivityTypeToCategory(activityType);
+      const formattedValues = {
+        ...values,
+        date: formatDateForBackend(values.date),
+        dueDate: formatDateForBackend(values.date),
+        dateTime: isoDate ? `${isoDate}T${values.startTime || '00:00'}:00` : undefined,
+        // Convert priority to uppercase to match backend enum values
+        priority: values.priority ? values.priority.toUpperCase() : undefined,
+        type: activityType,
+        category: parentCategory,
+        serviceCategory,
+        dealName: values.dealName?.trim() || undefined,
+        phone: values.phone || undefined,
+        instagramId: values.instagramId || undefined,
+      };
+      await onSave({ ...formattedValues, id: initialActivity?.id });
+      // Show confirmation pop-up - don't reset form or close modal yet
+      // The confirmation handler will handle closing
+      setShowConfirmation(true);
+    } catch (error) {
+      console.error('Error saving activity:', error);
+      // Don't show confirmation on error
+    }
+  };
+
+  const handleConfirmationClose = () => {
+    setShowConfirmation(false);
+    // Reset form and close modal
+    setValues({ subject: '' });
     setDealInput('');
     setPersonInput('');
     setServiceCategory(initialServiceCategory || 'PHOTOGRAPHY');
+    onClose();
   };
 
-  if (!isOpen) return null;
+  // Show confirmation pop-up even if modal is closed (but was just open)
+  if (!isOpen && !showConfirmation) return null;
 
-  const modalContent = (
+  const modalContent = isOpen ? (
     <div className="am-overlay" onClick={onClose}>
       <div className="am-modal" onClick={(e) => e.stopPropagation()}>
         <div className="am-header">
@@ -434,82 +465,136 @@ export default function ActivityModal({
                   aria-label={option.label}
                 >
                   <span className="am-quick-icon">{option.icon}</span>
+                  <div className="am-quick-tooltip">{option.label}</div>
                 </button>
               ))}
             </div>
 
             <label className="am-field">
               <span>Date</span>
-              <input className="am-input" type="date" value={values.date || ''} onChange={(e) => update('date', e.target.value)} />
+              <input 
+                className="am-input" 
+                type="date" 
+                value={values.date || ''} 
+                onChange={(e) => update('date', e.target.value)}
+                onClick={(e) => {
+                  (e.currentTarget as HTMLInputElement).showPicker?.();
+                }}
+                style={{ cursor: 'pointer' }}
+              />
             </label>
             <label className="am-field">
               <span>Start time</span>
-              <input className="am-input" type="time" value={values.startTime || ''} onChange={(e) => update('startTime', e.target.value)} />
+              <input 
+                className="am-input" 
+                type="time" 
+                value={values.startTime || ''} 
+                onChange={(e) => update('startTime', e.target.value)}
+                onClick={(e) => {
+                  (e.currentTarget as HTMLInputElement).showPicker?.();
+                }}
+                style={{ cursor: 'pointer' }}
+              />
             </label>
             <label className="am-field">
               <span>End time</span>
-              <input className="am-input" type="time" value={values.endTime || ''} onChange={(e) => update('endTime', e.target.value)} />
+              <input 
+                className="am-input" 
+                type="time" 
+                value={values.endTime || ''} 
+                onChange={(e) => update('endTime', e.target.value)}
+                onClick={(e) => {
+                  (e.currentTarget as HTMLInputElement).showPicker?.();
+                }}
+                style={{ cursor: 'pointer' }}
+              />
             </label>
 
             <label className="am-field">
               <span>Activity type</span>
-              <select
-                className="am-input"
-                value={values.type || 'ACTIVITY'}
-                onChange={(e) => {
-                  const { value } = e.target;
-                  setValues(prev => ({
-                    ...prev,
-                    type: value || 'ACTIVITY',
-                    category: value === 'CALL' ? 'CALL' : value === 'MEETING' ? 'MEETING_SCHEDULER' : 'ACTIVITY',
-                  }));
-                }}
-              >
-                <option value="ACTIVITY">Activity</option>
-                <option value="CALL">Call</option>
-                <option value="MEETING">Meeting</option>
-              </select>
+              <div style={{ position: 'relative' }}>
+                <select
+                  className="am-input"
+                  value={values.type || 'ACTIVITY'}
+                  onChange={(e) => {
+                    const { value } = e.target;
+                    setValues(prev => ({
+                      ...prev,
+                      type: value || 'ACTIVITY',
+                      category: value === 'CALL' ? 'CALL' : value === 'MEETING' ? 'MEETING_SCHEDULER' : 'ACTIVITY',
+                    }));
+                  }}
+                >
+                  <option value="ACTIVITY">Activity</option>
+                  <option value="CALL">Call</option>
+                  <option value="MEETING">Meeting</option>
+                </select>
+                <div className="am-input-tooltip" data-tooltip={values.type === 'CALL' ? 'Call' : values.type === 'MEETING' ? 'Meeting' : 'Activity'}>
+                  {values.type === 'CALL' ? 'Call' : values.type === 'MEETING' ? 'Meeting' : 'Activity'}
+                </div>
+              </div>
             </label>
-            <label className="am-field">
-              <span>Category</span>
-              <select
-                className="am-input"
-                value={serviceCategory}
-                onChange={(e) => setServiceCategory(e.target.value)}
-              >
-                {SERVICE_CATEGORY_OPTIONS.map((option) => (
-                  <option key={option.code} value={option.code}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {!dealData && (
+              <label className="am-field">
+                <span>Category</span>
+                <div style={{ position: 'relative' }}>
+                  <select
+                    className="am-input"
+                    value={serviceCategory}
+                    onChange={(e) => setServiceCategory(e.target.value)}
+                  >
+                    {SERVICE_CATEGORY_OPTIONS.map((option) => (
+                      <option key={option.code} value={option.code}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="am-input-tooltip" data-tooltip={SERVICE_CATEGORY_OPTIONS.find(opt => opt.code === serviceCategory)?.label || 'Category'}>
+                    {SERVICE_CATEGORY_OPTIONS.find(opt => opt.code === serviceCategory)?.label || 'Category'}
+                  </div>
+                </div>
+              </label>
+            )}
             <label className="am-field">
               <span>Priority</span>
-              <select className="am-input" value={values.priority || ''} onChange={(e) => update('priority', e.target.value)}>
-                <option value="">Select priority</option>
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-              </select>
+              <div style={{ position: 'relative' }}>
+                <select 
+                  className="am-input" 
+                  value={values.priority || ''} 
+                  onChange={(e) => update('priority', e.target.value)}
+                >
+                  <option value="">Select priority</option>
+                  <option value="LOW">Low</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HIGH">High</option>
+                </select>
+                <div className="am-input-tooltip" data-tooltip={values.priority ? (values.priority === 'LOW' ? 'Low' : values.priority === 'MEDIUM' ? 'Medium' : values.priority === 'HIGH' ? 'High' : values.priority) : 'Select priority'}>
+                  {values.priority ? (values.priority === 'LOW' ? 'Low' : values.priority === 'MEDIUM' ? 'Medium' : values.priority === 'HIGH' ? 'High' : values.priority) : 'Select priority'}
+                </div>
+              </div>
             </label>
             <label className="am-field">
               <span>Assigned user</span>
-              <select
-                className="am-input"
-                value={values.assignedUser || ''}
-                onChange={(e) => update('assignedUser', e.target.value)}
-              >
-                <option value="">All Users</option>
-                {userOptions.map((user) => {
-                  const label = getUserDisplayName(user);
-                  return (
-                    <option key={user.id} value={label}>
-                      {label}
-                    </option>
-                  );
-                })}
-              </select>
+              <div style={{ position: 'relative' }}>
+                <select
+                  className="am-input"
+                  value={values.assignedUser || ''}
+                  onChange={(e) => update('assignedUser', e.target.value)}
+                >
+                  <option value="">All Users</option>
+                  {userOptions.map((user) => {
+                    const label = getUserDisplayName(user);
+                    return (
+                      <option key={user.id} value={label}>
+                        {label}
+                      </option>
+                    );
+                  })}
+                </select>
+                <div className="am-input-tooltip" data-tooltip={values.assignedUser || 'All Users'}>
+                  {values.assignedUser || 'All Users'}
+                </div>
+              </div>
             </label>
             <label className="am-field">
               <span>Phone</span>
@@ -518,6 +603,8 @@ export default function ActivityModal({
                 placeholder="Phone number"
                 value={values.phone || ''}
                 onChange={(e) => update('phone', e.target.value)}
+                disabled={!!dealData}
+                readOnly={!!dealData}
               />
             </label>
             <label className="am-field">
@@ -527,6 +614,8 @@ export default function ActivityModal({
                 placeholder="Instagram ID"
                 value={values.instagramId || ''}
                 onChange={(e) => update('instagramId', e.target.value)}
+                disabled={!!dealData}
+                readOnly={!!dealData}
               />
             </label>
 
@@ -563,6 +652,8 @@ export default function ActivityModal({
                 placeholder="Deal name"
                 value={dealInput}
                 onChange={(e) => handleDealInputChange(e.target.value)}
+                disabled={!!dealData}
+                readOnly={!!dealData}
               />
             </label>
 
@@ -573,6 +664,8 @@ export default function ActivityModal({
                 placeholder="Person name"
                 value={personInput}
                 onChange={(e) => handlePersonInputChange(e.target.value)}
+                disabled={!!dealData}
+                readOnly={!!dealData}
               />
             </label>
 
@@ -583,6 +676,8 @@ export default function ActivityModal({
                 value={values.organization || ''}
                 onChange={(e) => update('organization', e.target.value)}
                 placeholder="Organization name"
+                disabled={!!dealData}
+                readOnly={!!dealData}
               />
             </label>
           </div>
@@ -594,8 +689,31 @@ export default function ActivityModal({
         </div>
       </div>
     </div>
-  );
+  ) : null;
 
-  return createPortal(modalContent, document.body);
+  return (
+    <>
+      {modalContent && createPortal(modalContent, document.body)}
+      {showConfirmation && createPortal(
+        <div className="am-confirmation-overlay" onClick={handleConfirmationClose}>
+          <div className="am-confirmation-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="am-confirmation-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" fill="#10b981" opacity="0.1"/>
+                <path d="M9 12l2 2 4-4" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="#10b981" strokeWidth="2"/>
+              </svg>
+            </div>
+            <h3 className="am-confirmation-title">Activity Scheduled Successfully!</h3>
+            <p className="am-confirmation-message">Your activity has been scheduled and saved.</p>
+            <button className="am-confirmation-button" onClick={handleConfirmationClose}>
+              OK
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
 }
 

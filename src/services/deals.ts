@@ -6,6 +6,7 @@ import {
   type DealStageUpdateRequest,
   type DealStatus,
   type DealStatusUpdateRequest,
+  type DealUpdateRequest,
 } from '../types/deal';
 import type { Pipeline } from '../types/pipeline';
 import { getStoredToken, logoutAndRedirect } from '../utils/authToken';
@@ -29,8 +30,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error?.response?.status === 401) {
-      console.warn('Unauthorized (401) when calling deals API. Logging out.');
+    if (error?.response?.status === 401 || error?.response?.status === 403) {
+      console.warn(`Unauthorized (${error?.response?.status}) when calling deals API. Logging out.`);
       logoutAndRedirect();
     }
     return Promise.reject(error);
@@ -50,9 +51,34 @@ const statusEndpointMap: Record<DealStatus, string> = {
   IN_PROGRESS: '/inprogress',
 };
 
+export type DealSortField = 
+  | 'nextActivity'
+  | 'name'
+  | 'value'
+  | 'personName'
+  | 'organizationName'
+  | 'eventDate'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'completedActivitiesCount'
+  | 'pendingActivitiesCount'
+  | 'productsCount'
+  | 'ownerName';
+
+export type SortDirection = 'asc' | 'desc';
+
+export interface DealListParams {
+  sort?: DealSortField;
+  direction?: SortDirection;
+}
+
 export const dealsApi = {
-  list: async (): Promise<Deal[]> => {
-    const response = await api.get('');
+  list: async (params?: DealListParams): Promise<Deal[]> => {
+    const queryParams: Record<string, string> = {};
+    if (params?.sort) {
+      queryParams.sort = `${params.sort},${params.direction || 'asc'}`;
+    }
+    const response = await api.get('', { params: queryParams });
     return unwrap<Deal[]>(response.data);
   },
 
@@ -87,11 +113,7 @@ export const dealsApi = {
     return unwrap<Deal>(response.data);
   },
 
-  update: async (id: number, payload: Partial<DealCreateRequest>): Promise<Deal> => {
-    // TODO: Backend needs to implement PATCH /api/deals/:id endpoint
-    // Currently backend doesn't support PUT or PATCH for general deal updates
-    // See BACKEND_DEAL_UPDATE_REQUIREMENT.md for details
-    // Using PATCH as standard - backend developer needs to implement this endpoint
+  update: async (id: number, payload: DealUpdateRequest): Promise<Deal> => {
     const response = await api.patch(`/${id}`, payload);
     return unwrap<Deal>(response.data);
   },

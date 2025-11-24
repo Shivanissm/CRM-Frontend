@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, type ChangeEvent, ty
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import './Deals.css';
-import { dealsApi } from '../services/deals';
+import { dealsApi, type DealSortField, type SortDirection } from '../services/deals';
 import type { Deal, DealStatus } from '../types/deal';
 import type { OrganizationCategory } from '../types/organization';
 import { organizationsApi } from '../services/organizations';
@@ -14,6 +14,14 @@ import type { Person, PersonOwner } from '../types/person';
 import ActivityModal, { type ActivityFormValues } from '../components/ActivityModal';
 import { activitiesApi } from '../services/activities';
 import DivertDealModal from '../components/DivertDealModal';
+import MarkAsLostModal from '../components/MarkAsLostModal';
+import PipelineModal from '../components/PipelineModal';
+import ReorderPipelinesModal from '../components/ReorderPipelinesModal';
+import type { PipelineRequest, PipelineUpdateRequest } from '../types/pipeline';
+import { usersApi } from '../services/users';
+import type { User } from '../types/user';
+import { teamsApi } from '../services/teams';
+import type { Team } from '../types/team';
 
 type DealFilterStatus = 'all' | DealStatus;
 
@@ -31,7 +39,6 @@ interface DealFormState {
   source: string;
   eventType: string;
   venue: string;
-  phoneNumber: string;
   eventDate: string;
   referencedDealId: string; // For diverted deals
 }
@@ -50,7 +57,6 @@ const initialFormState: DealFormState = {
   source: '',
   eventType: '',
   venue: '',
-  phoneNumber: '',
   eventDate: '',
   referencedDealId: '',
 };
@@ -70,11 +76,18 @@ const Deals = () => {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [persons, setPersons] = useState<Person[]>([]);
   const [managers, setManagers] = useState<PersonOwner[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [showErrorToast, setShowErrorToast] = useState(false);
   const [filterStatus, setFilterStatus] = useState<DealFilterStatus>(() => {
     const saved = localStorage.getItem('dealsFilterStatus');
-    return (saved as DealFilterStatus) || 'IN_PROGRESS';
+    // Default to 'IN_PROGRESS' (Open Deals) if nothing is saved or if 'all' is saved
+    if (!saved || saved === 'all') {
+      return 'IN_PROGRESS';
+    }
+    return (saved as DealFilterStatus);
   });
   const [filterOrganization, _setFilterOrganization] = useState<number | null>(() => {
     const saved = localStorage.getItem('dealsFilterOrganization');
@@ -98,6 +111,66 @@ const Deals = () => {
   });
   const [isViewDropdownOpen, setIsViewDropdownOpen] = useState<boolean>(false);
   const [isPipelineDropdownOpen, setIsPipelineDropdownOpen] = useState<boolean>(false);
+  const [pipelineSearchQuery, setPipelineSearchQuery] = useState<string>('');
+  const [isPipelineModalOpen, setIsPipelineModalOpen] = useState<boolean>(false);
+  const [isReorderPipelinesModalOpen, setIsReorderPipelinesModalOpen] = useState<boolean>(false);
+  const pipelineSearchInputRef = useRef<HTMLInputElement>(null);
+  const [sortField, setSortField] = useState<DealSortField>(() => {
+    const saved = localStorage.getItem('dealsSortField');
+    return (saved as DealSortField) || 'nextActivity';
+  });
+  const [sortDirection, setSortDirection] = useState<SortDirection>(() => {
+    const saved = localStorage.getItem('dealsSortDirection');
+    return (saved as SortDirection) || 'asc';
+  });
+  const [isSortDropdownOpen, setIsSortDropdownOpen] = useState<boolean>(false);
+  const sortDropdownRef = useRef<HTMLDivElement>(null);
+  const [isDateRangeModalOpen, setIsDateRangeModalOpen] = useState(false);
+  const [dateRange, setDateRange] = useState<{ start: string; end: string }>(() => {
+    // Default to current month
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today);
+    monthEnd.setHours(23, 59, 59, 999);
+    return {
+      start: `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}-${String(monthStart.getDate()).padStart(2, '0')}`,
+      end: `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, '0')}-${String(monthEnd.getDate()).padStart(2, '0')}`,
+    };
+  });
+  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('This month');
+  const [isDateRangeDropdownOpen, setIsDateRangeDropdownOpen] = useState(false);
+  const dateRangeDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Handler for creating a new pipeline
+  const handleCreatePipeline = useCallback(async (payload: PipelineRequest | PipelineUpdateRequest) => {
+    try {
+      await pipelinesApi.create(payload as PipelineRequest);
+      // Reload pipelines
+      const pipelineData = await pipelinesApi.list({ includeStages: true });
+      setPipelines(pipelineData);
+      setIsPipelineModalOpen(false);
+      // Navigate to pipelines page to see the created pipeline details
+      navigate('/pipelines');
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'Failed to create pipeline.';
+      setError(message);
+      throw err;
+    }
+  }, [navigate]);
+
+  // Handler for reordering pipelines - open modal
+  const handleReorderPipelines = useCallback(() => {
+    setIsPipelineDropdownOpen(false);
+    setIsReorderPipelinesModalOpen(true);
+  }, []);
+
+  // Handler for successful pipeline reorder
+  const handlePipelinesReordered = useCallback(() => {
+    // The order is stored in localStorage, so we just need to trigger a re-render
+    // by updating the pipelines state (even with the same data, it will reorder)
+    setPipelines([...pipelines]);
+  }, [pipelines]);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState<boolean>(false);
   const [isSummaryOpen, setIsSummaryOpen] = useState<boolean>(false);
   const infoIconRef = useRef<HTMLSpanElement>(null);
@@ -126,6 +199,7 @@ const Deals = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [isDivertModalOpen, setIsDivertModalOpen] = useState(false);
   const [divertDealId, setDivertDealId] = useState<number | null>(null);
+  const [markAsLostDealId, setMarkAsLostDealId] = useState<number | null>(null);
   const [showPersonSuggestions, setShowPersonSuggestions] = useState(false);
   const [filteredPersons, setFilteredPersons] = useState<Person[]>([]);
   const personInputRef = useRef<HTMLInputElement>(null);
@@ -210,8 +284,11 @@ const Deals = () => {
   const loadDeals = useCallback(async (preserveDealId?: number | null) => {
     setLoading(true);
     try {
-      // Always load all deals for kanban board view
-      const data = await dealsApi.list();
+      // Always load all deals for kanban board view with sorting
+      const data = await dealsApi.list({
+        sort: sortField,
+        direction: sortDirection,
+      });
       setDeals(data);
       setSelectedDealIds((prev) => {
         if (prev.size === 0) return prev;
@@ -242,7 +319,7 @@ const Deals = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sortField, sortDirection]);
 
   // Initial load
   useEffect(() => {
@@ -256,13 +333,26 @@ const Deals = () => {
     const shouldOpenModal = (location.state as any)?.openModal;
     
     if (shouldOpenModal && personNameFromState) {
-      const initialData = { ...initialFormState, personName: personNameFromState };
+      let initialData = { ...initialFormState, personName: personNameFromState };
+      
+      // Auto-select the first pipeline (or RSP if available) if no pipeline is selected
+      if (!initialData.pipelineId && pipelines.length > 0) {
+        // Try to find RSP pipeline first
+        const rspPipeline = pipelines.find(p => p.name.toLowerCase() === 'rsp');
+        if (rspPipeline) {
+          initialData.pipelineId = String(rspPipeline.id);
+        } else {
+          // Otherwise, select the first pipeline
+          initialData.pipelineId = String(pipelines[0].id);
+        }
+      }
+      
       setFormData(initialData);
       setIsModalOpen(true);
       // Clear the state after using it
       window.history.replaceState({}, document.title);
     }
-  }, [location.state]);
+  }, [location.state, pipelines]);
 
   const fetchCategories = async (force = false) => {
     if (categoryLoading) return;
@@ -333,12 +423,310 @@ const Deals = () => {
       } catch (err) {
         console.error('Failed to load managers', err);
       }
+
+      try {
+        const allUsers = await usersApi.list();
+        // Filter users to only include SALES and PRESALES roles
+        const salesAndPresalesUsers = allUsers.filter(user => 
+          user.role === 'SALES' || user.role === 'PRESALES'
+        );
+        setUsers(salesAndPresalesUsers);
+      } catch (err) {
+        console.error('Failed to load users', err);
+      }
+
+      try {
+        const teamsData = await teamsApi.list();
+        setTeams(teamsData);
+      } catch (err) {
+        console.error('Failed to load teams', err);
+      }
     };
 
     fetchReferenceData();
     void fetchCategories(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Function to get team manager from pipeline
+  const getTeamManagerFromPipeline = useCallback((pipeline: Pipeline): number | null => {
+    if (!pipeline.teamId) return null;
+    
+    // Find the team in the teams list
+    const team = teams.find(t => t.id === pipeline.teamId);
+    if (!team || !team.manager) return null;
+    
+    return team.manager.id;
+  }, [teams]);
+
+  // Function to create activities when deal is moved to Qualified stage
+  const createQualifiedStageActivities = useCallback(async (deal: Deal) => {
+    if (!deal.pipelineId) return;
+
+    const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+    if (!pipeline) return;
+
+    // Get team manager from pipeline
+    const teamManagerId = getTeamManagerFromPipeline(pipeline);
+    if (!teamManagerId) {
+      console.warn(`No team manager found for pipeline ${pipeline.id}`);
+      return;
+    }
+
+    // Find the team manager user to get their display name for assignedUser
+    const teamManager = users.find(u => u.id === teamManagerId);
+    if (!teamManager) {
+      console.warn(`Team manager user ${teamManagerId} not found`);
+      return;
+    }
+
+    // Get user display name (first name + last name, fallback to email)
+    const getUserDisplayName = (user: User) => {
+      const first = (user.firstName || '').trim();
+      const last = (user.lastName || '').trim();
+      const fullName = [first, last].filter(Boolean).join(' ');
+      return fullName || user.email || `User ${user.id}`;
+    };
+    const assignedUserName = getUserDisplayName(teamManager);
+
+    // Get today's date in YYYY-MM-DD format
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    // Get person details for the activities
+    const person = persons.find(p => p.id === deal.personId);
+    const organization = organizations.find(o => o.id === deal.organizationId);
+
+    try {
+      // Create "Make the 1st call" activity
+      await activitiesApi.create({
+        subject: 'Make the 1st call',
+        type: 'CALL',
+        category: 'CALL',
+        priority: 'MEDIUM',
+        assignedUser: assignedUserName,
+        date: todayStr,
+        dueDate: todayStr,
+        personId: deal.personId || null,
+        dealId: deal.id,
+        organization: organization?.name || null,
+        phone: person?.phone || null,
+        instagramId: person?.instagramId || null,
+      });
+
+      // Create "Send the quote" activity
+      await activitiesApi.create({
+        subject: 'Send the quote',
+        type: 'ACTIVITY',
+        category: 'ACTIVITY',
+        priority: 'MEDIUM',
+        assignedUser: assignedUserName,
+        date: todayStr,
+        dueDate: todayStr,
+        personId: deal.personId || null,
+        dealId: deal.id,
+        organization: organization?.name || null,
+        phone: person?.phone || null,
+        instagramId: person?.instagramId || null,
+      });
+
+      console.log(`Created activities for deal ${deal.id} in Qualified stage`);
+    } catch (err) {
+      console.error(`Failed to create activities for deal ${deal.id}:`, err);
+    }
+  }, [pipelines, teams, persons, organizations, users, getTeamManagerFromPipeline]);
+
+  // Function to check if a deal has incomplete required activities
+  const checkIncompleteActivities = useCallback(async (deal: Deal): Promise<boolean> => {
+    if (!deal.pipelineId || !deal.stageId) return false;
+
+    const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+    if (!pipeline) return false;
+
+    // Check if deal is in "Qualified" stage
+    const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+    if (!currentStage) return false;
+
+    const stageName = currentStage.name.toLowerCase().trim();
+    const isQualified = stageName === 'qualified';
+    
+    // Only check for deals in Qualified stage
+    if (!isQualified) return false;
+
+    try {
+      // Get all activities - we'll filter by dealId in the response
+      const activitiesResponse = await activitiesApi.list({ page: 0, size: 1000 });
+      const allActivities = activitiesResponse.content || [];
+      // Filter activities for this deal
+      const dealActivities = allActivities.filter(activity => activity.dealId === deal.id);
+
+      // Check for the two required activities
+      const requiredActivities = ['Make the 1st call', 'Send the quote'];
+      const incompleteActivities = dealActivities.filter(activity => 
+        requiredActivities.includes(activity.subject || '') && !activity.done
+      );
+
+      return incompleteActivities.length > 0;
+    } catch (err) {
+      console.error(`Failed to check activities for deal ${deal.id}:`, err);
+      // If we can't check, allow the operation (fail open)
+      return false;
+    }
+  }, [pipelines]);
+
+  // Monitor person updates and move deals from "Lead In" to "Qualified" when phone is added
+  const processingMovesRef = useRef(false);
+  const lastPersonsHashRef = useRef<string>('');
+  
+  // Function to check and move deals
+  const checkAndMoveDeals = useCallback(async () => {
+    if (!deals.length || !persons.length || !pipelines.length || loading) return;
+    if (processingMovesRef.current) return; // Prevent concurrent executions
+
+    processingMovesRef.current = true;
+    let needsReload = false;
+
+    try {
+      for (const person of persons) {
+        // Only process persons that have a phone number
+        if (!person.phone || person.phone.trim().length === 0) continue;
+
+        // Find all deals for this person that are in "Lead In" stage
+        const personDeals = deals.filter(deal => deal.personId === person.id);
+        
+        for (const deal of personDeals) {
+          if (!deal.pipelineId || !deal.stageId) continue;
+
+          const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+          if (!pipeline) continue;
+
+          // Find the current stage
+          const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+          if (!currentStage) continue;
+
+          // Check if deal is in "Lead In" stage
+          const stageName = currentStage.name.toLowerCase().trim();
+          const isLeadIn = stageName === 'lead in' || stageName === 'leadin' || stageName === 'lead-in';
+          
+          if (isLeadIn) {
+            // Find "Qualified" stage in the same pipeline
+            const qualifiedStage = pipeline.stages.find(s => {
+              const sName = s.name.toLowerCase().trim();
+              return sName === 'qualified';
+            });
+
+            if (qualifiedStage && qualifiedStage.id !== deal.stageId) {
+              try {
+                // Move deal to "Qualified" stage
+                const updatedDeal = await dealsApi.moveToStage(deal.id, { stageId: qualifiedStage.id });
+                needsReload = true;
+                
+                // Create activities for the deal in Qualified stage
+                await createQualifiedStageActivities(updatedDeal);
+              } catch (err) {
+                console.error(`Failed to move deal ${deal.id} to Qualified stage:`, err);
+              }
+            }
+          }
+        }
+      }
+
+      // Reload deals only if we made changes
+      if (needsReload) {
+        await loadDeals();
+      }
+    } finally {
+      processingMovesRef.current = false;
+    }
+  }, [deals, persons, pipelines, loading, loadDeals]);
+
+  // Monitor persons array for changes and trigger deal movement
+  useEffect(() => {
+    if (!deals.length || !persons.length || !pipelines.length || loading) return;
+    
+    // Create a hash of person IDs and phone numbers to detect changes
+    const personsHash = persons.map(p => `${p.id}:${p.phone || ''}`).join('|');
+    
+    // Only check if persons have actually changed
+    if (personsHash === lastPersonsHashRef.current) return;
+    lastPersonsHashRef.current = personsHash;
+
+    // Debounce the check with a shorter delay for faster response
+    const timeoutId = setTimeout(() => {
+      void checkAndMoveDeals();
+    }, 100); // Reduced to 100ms for faster response
+
+    return () => clearTimeout(timeoutId);
+  }, [persons, deals, pipelines, loading, checkAndMoveDeals]);
+
+  // Refresh persons when window becomes active (in case person was updated in another tab/page)
+  useEffect(() => {
+    const handleFocus = async () => {
+      try {
+        const personsPage = await personsApi.list({ page: 0, size: 200, sort: 'name,asc' });
+        setPersons(personsPage.content ?? []);
+      } catch (err) {
+        console.error('Failed to refresh persons on focus:', err);
+      }
+    };
+
+    // Listen for custom event when a person is updated
+    const handlePersonUpdated = async () => {
+      try {
+        console.log('Person updated event received, refreshing persons and deals...');
+        // Reload both persons and deals to ensure we have the latest data
+        const [personsPage, dealsData] = await Promise.all([
+          personsApi.list({ page: 0, size: 200, sort: 'name,asc' }),
+          dealsApi.list()
+        ]);
+        
+        setPersons(personsPage.content ?? []);
+        setDeals(dealsData);
+        
+        // Wait a bit for state to update, then check and move deals immediately
+        setTimeout(() => {
+          void checkAndMoveDeals();
+        }, 200);
+      } catch (err) {
+        console.error('Failed to refresh persons after update:', err);
+      }
+    };
+
+    // Listen for storage events (for cross-tab communication)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'personUpdated') {
+        void handlePersonUpdated();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('personUpdated', handlePersonUpdated);
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('personUpdated', handlePersonUpdated);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [checkAndMoveDeals]);
+
+  // Reload deals when sort changes
+  useEffect(() => {
+    // Skip initial render (handled by initial load effect)
+    if (loading && deals.length === 0) return;
+    void loadDeals();
+  }, [sortField, sortDirection, loadDeals]);
+
+  // Focus search input when pipeline dropdown opens
+  useEffect(() => {
+    if (isPipelineDropdownOpen && pipelineSearchInputRef.current) {
+      setTimeout(() => {
+        pipelineSearchInputRef.current?.focus();
+      }, 0);
+    } else {
+      setPipelineSearchQuery('');
+    }
+  }, [isPipelineDropdownOpen]);
 
   useEffect(() => {
     const handleClickOutside = (event: Event) => {
@@ -364,7 +752,7 @@ const Deals = () => {
       };
     }
     return undefined;
-  }, [isViewDropdownOpen, isPipelineDropdownOpen, isFilterDropdownOpen, isSummaryOpen]);
+  }, [isViewDropdownOpen, isPipelineDropdownOpen, isFilterDropdownOpen, isSummaryOpen, isSortDropdownOpen]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -631,6 +1019,27 @@ const Deals = () => {
     };
   }, [draggedDealId]);
 
+  // Sort options configuration
+  const sortOptions: Array<{ value: DealSortField; label: string }> = [
+    { value: 'nextActivity', label: 'Next activity' },
+    { value: 'name', label: 'Deal title' },
+    { value: 'value', label: 'Deal value' },
+    { value: 'personName', label: 'Linked person' },
+    { value: 'organizationName', label: 'Linked organization' },
+    { value: 'eventDate', label: 'Expected close date' },
+    { value: 'createdAt', label: 'Deal created' },
+    { value: 'updatedAt', label: 'Deal update time' },
+    { value: 'completedActivitiesCount', label: 'Done activities' },
+    { value: 'pendingActivitiesCount', label: 'Activities to do' },
+    { value: 'productsCount', label: 'Number of products' },
+    { value: 'ownerName', label: 'Owner name' },
+  ];
+
+  const getSortFieldLabel = (field: DealSortField): string => {
+    const option = sortOptions.find(opt => opt.value === field);
+    return option?.label || 'Next activity';
+  };
+
   const formatCurrency = useCallback((value: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -651,6 +1060,24 @@ const Deals = () => {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
+    });
+  }, []);
+
+  const formatDateTime = useCallback((dateString?: string | null) => {
+    if (!dateString) {
+      return '—';
+    }
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) {
+      return dateString;
+    }
+    return date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
     });
   }, []);
 
@@ -785,9 +1212,49 @@ const Deals = () => {
     return managers.filter(manager => managerIds.has(manager.id));
   }, [managers, deals, persons, filterCategory, categoryLabelById, pipelines]);
 
-  // Filter pipelines based on selected category and manager
+  // Get custom pipeline order from localStorage
+  const getOrderedPipelines = useCallback((pipelineList: Pipeline[]): Pipeline[] => {
+    try {
+      const savedOrder = localStorage.getItem('pipelineOrder');
+      if (savedOrder) {
+        const orderedIds = JSON.parse(savedOrder) as number[];
+        // Create a map for quick lookup
+        const pipelineMap = new Map(pipelineList.map(p => [p.id, p]));
+        // Reorder based on saved order, then append any pipelines not in the saved order
+        const ordered: Pipeline[] = [];
+        const unordered: Pipeline[] = [];
+        
+        orderedIds.forEach(id => {
+          const pipeline = pipelineMap.get(id);
+          if (pipeline) {
+            ordered.push(pipeline);
+            pipelineMap.delete(id);
+          }
+        });
+        
+        // Add any pipelines not in the saved order
+        pipelineMap.forEach(pipeline => unordered.push(pipeline));
+        
+        return [...ordered, ...unordered];
+      }
+    } catch (err) {
+      console.error('Failed to parse pipeline order from localStorage:', err);
+    }
+    return pipelineList;
+  }, []);
+
+  // Filter pipelines based on selected category and manager, and search query
   const filteredPipelines = useMemo(() => {
-    let result = pipelines;
+    // First apply custom order
+    let result = getOrderedPipelines(pipelines);
+    
+    // Filter by search query if provided
+    if (pipelineSearchQuery.trim()) {
+      const query = pipelineSearchQuery.toLowerCase().trim();
+      result = result.filter(pipeline => 
+        pipeline.name?.toLowerCase().includes(query)
+      );
+    }
     
     // Filter by category if selected
     if (filterCategory) {
@@ -837,7 +1304,7 @@ const Deals = () => {
     }
     
     return result;
-  }, [pipelines, deals, persons, filterCategory, filterManager, categoryLabelById]);
+  }, [pipelines, deals, persons, filterCategory, filterManager, categoryLabelById, pipelineSearchQuery, getOrderedPipelines]);
 
   // Reset manager filter if selected manager is not in filtered list when category changes
   // Only validate after data is loaded (managers array has items)
@@ -921,6 +1388,113 @@ const Deals = () => {
     }
   }, [filterManager]);
 
+  // Helper function to format date as YYYY-MM-DD
+  const formatDateYYYYMMDD = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Handle date range option selection
+  const handleDateRangeOption = (option: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let startDate: Date;
+    let endDate: Date = new Date(today);
+    endDate.setHours(23, 59, 59, 999);
+
+    switch (option) {
+      case 'today':
+        startDate = new Date(today);
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('Today');
+        break;
+      case 'yesterday':
+        startDate = new Date(today);
+        startDate.setDate(startDate.getDate() - 1);
+        endDate = new Date(startDate);
+        endDate.setHours(23, 59, 59, 999);
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('Yesterday');
+        break;
+      case 'thisWeek':
+        startDate = new Date(today);
+        startDate.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('This week');
+        break;
+      case 'lastWeek':
+        startDate = new Date(today);
+        startDate.setDate(today.getDate() - today.getDay() - 7); // Start of last week
+        endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 6); // End of last week
+        endDate.setHours(23, 59, 59, 999);
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('Last week');
+        break;
+      case 'thisMonth':
+        startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('This month');
+        break;
+      case 'lastMonth':
+        startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+        endDate.setHours(23, 59, 59, 999);
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('Last month');
+        break;
+      case 'last30Days':
+        startDate = new Date(today);
+        startDate.setDate(startDate.getDate() - 30);
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('Last 30 days');
+        break;
+      case 'custom':
+        setIsDateRangeModalOpen(true);
+        setIsDateRangeDropdownOpen(false);
+        return;
+      default:
+        return;
+    }
+    setIsDateRangeDropdownOpen(false);
+  };
+
+  const getDateRangeDisplayText = () => {
+    if (selectedDateRangeOption) {
+      return selectedDateRangeOption;
+    }
+    if (dateRange.start && dateRange.end) {
+      const start = new Date(dateRange.start).toLocaleDateString();
+      const end = new Date(dateRange.end).toLocaleDateString();
+      return `${start} - ${end}`;
+    }
+    return 'Select Date Range';
+  };
+
   const filteredDeals = useMemo(() => {
     return deals.filter((deal) => {
       // Filter by status
@@ -950,14 +1524,24 @@ const Deals = () => {
         return person?.ownerId === filterManager;
       })();
       
+      // Filter by date range
+      let dateMatch = true;
+      if (dateRange.start && dateRange.end) {
+        const startDate = new Date(dateRange.start);
+        const endDate = new Date(dateRange.end);
+        endDate.setHours(23, 59, 59, 999); // Include the entire end date
+        const dealDate = new Date(deal.createdAt);
+        dateMatch = dealDate >= startDate && dealDate <= endDate;
+      }
+      
       const query = searchQuery.trim().toLowerCase();
       const searchMatch =
         query.length === 0 ||
         (deal.name && deal.name.toLowerCase().includes(query)) ||
         (deal.venue && deal.venue.toLowerCase().includes(query));
-      return statusMatch && organizationMatch && categoryMatch && managerMatch && searchMatch;
+      return statusMatch && organizationMatch && categoryMatch && managerMatch && dateMatch && searchMatch;
     });
-  }, [deals, filterStatus, filterOrganization, filterCategory, filterManager, searchQuery, persons]);
+  }, [deals, filterStatus, filterOrganization, filterCategory, filterManager, searchQuery, persons, dateRange]);
 
 
   // Get selected pipeline
@@ -1089,28 +1673,57 @@ const Deals = () => {
 
   const stageOptionsForForm = useMemo(() => {
     // If no pipeline is selected, return empty array
-    if (!formData.pipelineId) {
+    if (!formData.pipelineId || formData.pipelineId === '') {
       return [];
     }
     
     // Get stages from the selected pipeline
     const selectedPipelineId = Number(formData.pipelineId);
-    const selectedPipeline = pipelinesById.get(selectedPipelineId);
     
-    if (!selectedPipeline || !selectedPipeline.stages) {
+    // Check if conversion was successful
+    if (isNaN(selectedPipelineId)) {
+      return [];
+    }
+    
+    // Try to find pipeline in pipelinesById first, then in allPipelines
+    let selectedPipeline = pipelinesById.get(selectedPipelineId);
+    
+    // If not found in pipelinesById, try allPipelines (for diverted deals)
+    if (!selectedPipeline) {
+      selectedPipeline = allPipelines.find(p => p.id === selectedPipelineId);
+    }
+    
+    if (!selectedPipeline) {
+      return [];
+    }
+    
+    // Check if stages exist and are loaded
+    if (!selectedPipeline.stages || selectedPipeline.stages.length === 0) {
       return [];
     }
     
     // Return stages from the selected pipeline, sorted by order
     return [...selectedPipeline.stages].sort((a, b) => a.order - b.order);
-  }, [formData.pipelineId, pipelinesById]);
+  }, [formData.pipelineId, pipelinesById, allPipelines]);
 
   const handleOpenModal = () => {
     // Check if person name was passed from Person page
     const personNameFromState = (location.state as any)?.personName;
-    const initialData = personNameFromState 
+    let initialData = personNameFromState 
       ? { ...initialFormState, personName: personNameFromState }
       : initialFormState;
+    
+    // Auto-select the first pipeline (or RSP if available) if no pipeline is selected
+    if (!initialData.pipelineId && pipelines.length > 0) {
+      // Try to find RSP pipeline first
+      const rspPipeline = pipelines.find(p => p.name.toLowerCase() === 'rsp');
+      if (rspPipeline) {
+        initialData.pipelineId = String(rspPipeline.id);
+      } else {
+        // Otherwise, select the first pipeline
+        initialData.pipelineId = String(pipelines[0].id);
+      }
+    }
     
     setFormData(initialData);
     setModalError(null);
@@ -1171,12 +1784,24 @@ const Deals = () => {
 
     // Try to find person by name if personName is provided, or create a new person
     let personId: number | undefined = undefined;
+    let personHasPhone = false;
     if (formData.personName.trim()) {
       const foundPerson = persons.find(
         (p) => p.name.toLowerCase().trim() === formData.personName.toLowerCase().trim()
       );
       if (foundPerson) {
         personId = foundPerson.id;
+        // Fetch the latest person data to ensure we have the most up-to-date phone number
+        try {
+          const latestPerson = await personsApi.get(foundPerson.id);
+          personHasPhone = !!(latestPerson.phone && latestPerson.phone.trim().length > 0);
+          console.log(`Fetched latest person data for ${foundPerson.name}: phone=${latestPerson.phone}, personHasPhone=${personHasPhone}`);
+        } catch (err) {
+          // If fetching fails, fall back to cached data
+          console.warn('Failed to fetch latest person data, using cached data:', err);
+          personHasPhone = !!(foundPerson.phone && foundPerson.phone.trim().length > 0);
+          console.log(`Using cached person data for ${foundPerson.name}: phone=${foundPerson.phone}, personHasPhone=${personHasPhone}`);
+        }
       } else {
         // Person doesn't exist, create a new one
         try {
@@ -1184,6 +1809,7 @@ const Deals = () => {
             name: formData.personName.trim(),
           });
           personId = newPerson.id;
+          personHasPhone = !!(newPerson.phone && newPerson.phone.trim().length > 0);
           // Reload persons list to include the new person
           const personsPage = await personsApi.list({ page: 0, size: 200, sort: 'name,asc' });
           setPersons(personsPage.content ?? []);
@@ -1216,12 +1842,52 @@ const Deals = () => {
       }
     }
 
+    // Determine stage based on person's phone number - ALWAYS set based on phone, not manual selection
+    let stageId: number | undefined = undefined;
+    if (personId && formData.pipelineId) {
+      const selectedPipeline = pipelines.find(p => p.id === Number(formData.pipelineId));
+      if (selectedPipeline) {
+        // Find stages by name (case-insensitive, flexible matching)
+        const leadInStage = selectedPipeline.stages.find(s => {
+          const stageName = s.name.toLowerCase().trim();
+          return stageName === 'lead in' || stageName === 'leadin' || stageName === 'lead-in';
+        });
+        const qualifiedStage = selectedPipeline.stages.find(s => {
+          const stageName = s.name.toLowerCase().trim();
+          return stageName === 'qualified';
+        });
+        
+        // ALWAYS auto-assign stage based on phone number
+        // If person has phone, use Qualified stage; otherwise use Lead In stage
+        if (personHasPhone && qualifiedStage) {
+          stageId = qualifiedStage.id;
+          console.log(`Person has phone (${personHasPhone}), setting stage to Qualified (${qualifiedStage.id})`);
+        } else if (!personHasPhone && leadInStage) {
+          stageId = leadInStage.id;
+          console.log(`Person has no phone, setting stage to Lead In (${leadInStage.id})`);
+        } else {
+          // Fallback: use manually selected stage if available, or first stage
+          if (formData.stageId) {
+            stageId = Number(formData.stageId);
+            console.log(`Using manually selected stage: ${stageId}`);
+          } else if (selectedPipeline.stages.length > 0) {
+            // Use first stage as fallback
+            stageId = selectedPipeline.stages[0].id;
+            console.log(`Using first stage as fallback: ${stageId}`);
+          }
+        }
+      }
+    } else if (formData.stageId) {
+      // If no person or pipeline, use manually selected stage
+      stageId = Number(formData.stageId);
+    }
+
     const payload: any = {
       name: formData.name.trim(),
       status: formData.status,
       personId: personId,
       pipelineId: formData.pipelineId ? Number(formData.pipelineId) : undefined,
-      stageId: formData.stageId ? Number(formData.stageId) : undefined,
+      stageId: stageId,
       organizationId: organizationId,
       categoryId: resolvedCategory,
       label: formData.label ? formData.label : undefined,
@@ -1229,7 +1895,6 @@ const Deals = () => {
       referencedDealId: formData.referencedDealId ? Number(formData.referencedDealId) : undefined,
       eventType: formData.eventType ? formData.eventType : undefined,
       venue: formData.venue ? formData.venue : undefined,
-      phoneNumber: formData.phoneNumber ? formData.phoneNumber : undefined,
       eventDate: formData.eventDate ? formData.eventDate : undefined,
     };
 
@@ -1244,6 +1909,22 @@ const Deals = () => {
     try {
       const createdDeal = await dealsApi.create(payload);
       await loadDeals(createdDeal.id);
+      
+      // Check if deal was created in Qualified stage and create activities
+      if (createdDeal.pipelineId && createdDeal.stageId) {
+        const pipeline = pipelines.find(p => p.id === createdDeal.pipelineId);
+        if (pipeline) {
+          const currentStage = pipeline.stages.find(s => s.id === createdDeal.stageId);
+          if (currentStage) {
+            const stageName = currentStage.name.toLowerCase().trim();
+            const isQualified = stageName === 'qualified';
+            if (isQualified) {
+              await createQualifiedStageActivities(createdDeal);
+            }
+          }
+        }
+      }
+      
       setIsModalOpen(false);
       setFormData(initialFormState);
       setSelectedDeal(createdDeal);
@@ -1256,6 +1937,64 @@ const Deals = () => {
   };
 
   const handleStatusUpdate = async (dealId: number, nextStatus: DealStatus) => {
+    // Find the deal
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal) {
+      setError('Deal not found');
+      return;
+    }
+
+    // If marking as LOST, show the modal to select a reason
+    if (nextStatus === 'LOST') {
+      setMarkAsLostDealId(dealId);
+      return;
+    }
+
+    // Check if deal is in Qualified stage (only validate for deals in Qualified stage)
+    const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+    if (pipeline) {
+      const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+      if (currentStage) {
+        const currentStageName = currentStage.name.toLowerCase().trim();
+        const isCurrentlyQualified = currentStageName === 'qualified';
+        
+        // Only validate if deal is in Qualified stage
+        if (isCurrentlyQualified) {
+          // Check if deal has incomplete activities
+          const hasIncompleteActivities = await checkIncompleteActivities(deal);
+          
+          // Check if deal has a value (value should be > 0)
+          const hasDealValue = deal.value != null && deal.value > 0;
+          
+          // Build error messages based on what's missing
+          const errorMessages: string[] = [];
+          
+          if (hasIncompleteActivities) {
+            const actionText = nextStatus === 'WON' ? 'mark the deal as WON' : 'mark the deal as LOST';
+            errorMessages.push(`Please complete the assigned activities first to ${actionText}.`);
+          }
+          
+          if (!hasDealValue) {
+            const actionText = nextStatus === 'WON' ? 'mark the deal as WON' : 'mark the deal as LOST';
+            errorMessages.push(`Please add the deal value to ${actionText}.`);
+          }
+          
+          // If there are any validation errors, show them
+          if (errorMessages.length > 0) {
+            const errorMessage = errorMessages.join(' ');
+            setError(errorMessage);
+            setShowErrorToast(true);
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+              setShowErrorToast(false);
+              setError(null);
+            }, 5000);
+            return;
+          }
+        }
+      }
+    }
+
     setActionInFlight({ dealId, type: 'status' });
     try {
       const updatedDeal = await dealsApi.updateStatus(dealId, { status: nextStatus });
@@ -1269,12 +2008,200 @@ const Deals = () => {
     }
   };
 
+  const handleMarkAsLost = async (dealId: number, lostReason: string) => {
+    // Find the deal
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal) {
+      throw new Error('Deal not found');
+    }
+
+    // Check if deal is in Qualified stage (only validate for deals in Qualified stage)
+    const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+    if (pipeline) {
+      const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+      if (currentStage) {
+        const currentStageName = currentStage.name.toLowerCase().trim();
+        const isCurrentlyQualified = currentStageName === 'qualified';
+        
+        // Only validate if deal is in Qualified stage
+        if (isCurrentlyQualified) {
+          // Check if deal has incomplete activities
+          const hasIncompleteActivities = await checkIncompleteActivities(deal);
+          
+          // Check if deal has a value (value should be > 0) - only required if lost reason is "Budget"
+          const hasDealValue = deal.value != null && deal.value > 0;
+          const isBudgetReason = lostReason === 'Budget';
+          
+          // Build error messages based on what's missing
+          const errorMessages: string[] = [];
+          
+          if (hasIncompleteActivities) {
+            errorMessages.push('Please complete the assigned activities first to mark the deal as LOST.');
+          }
+          
+          // Only check deal value if the lost reason is "Budget"
+          if (isBudgetReason && !hasDealValue) {
+            errorMessages.push('Please add the deal value to mark the deal as LOST.');
+          }
+          
+          // If there are any validation errors, throw them
+          if (errorMessages.length > 0) {
+            throw new Error(errorMessages.join(' '));
+          }
+        }
+      }
+    }
+
+    setActionInFlight({ dealId, type: 'status' });
+    try {
+      const updatedDeal = await dealsApi.updateStatus(dealId, { status: 'LOST', lostReason });
+      setDeals((prev) => prev.map((deal) => (deal.id === dealId ? updatedDeal : deal)));
+      setSelectedDeal((prev) => (prev && prev.id === dealId ? updatedDeal : prev));
+      setMarkAsLostDealId(null);
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'Failed to mark deal as lost.';
+      throw new Error(message);
+    } finally {
+      setActionInFlight(null);
+    }
+  };
+
   const handleStageUpdate = async (dealId: number, stageId: number) => {
+    // Find the deal
+    const deal = deals.find(d => d.id === dealId);
+    if (!deal) {
+      setError('Deal not found');
+      return;
+    }
+
+    // Check if moving from Lead In stage - require contact number
+    const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+    if (pipeline) {
+      const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+      const targetStage = pipeline.stages.find(s => s.id === stageId);
+      
+      if (currentStage && targetStage) {
+        const currentStageName = currentStage.name.toLowerCase().trim();
+        const isCurrentlyLeadIn = currentStageName === 'lead in' || currentStageName === 'leadin' || currentStageName === 'lead-in';
+        
+        // If currently in Lead In and trying to move forward to a different stage
+        if (isCurrentlyLeadIn && currentStage.id !== targetStage.id) {
+          const isMovingForward = targetStage.order > currentStage.order;
+          
+          // Only validate when moving forward (not backward)
+          if (isMovingForward) {
+            // Check if the associated person has a contact number
+            if (deal.personId) {
+              const person = persons.find(p => p.id === deal.personId);
+              const hasContactNumber = person && person.phone && person.phone.trim() !== '';
+              
+              if (!hasContactNumber) {
+                const errorMessage = 'Please add the contact number for moving the deal to the next stage.';
+                setError(errorMessage);
+                setShowErrorToast(true);
+                // Auto-hide after 5 seconds
+                setTimeout(() => {
+                  setShowErrorToast(false);
+                  setError(null);
+                }, 5000);
+                return;
+              }
+            }
+          }
+        }
+        
+        const isCurrentlyQualified = currentStageName === 'qualified';
+        
+        // If currently in Qualified and trying to move to a different stage
+        if (isCurrentlyQualified && currentStage.id !== targetStage.id) {
+          // Check if moving forward (to a next stage)
+          const isMovingForward = targetStage.order > currentStage.order;
+          
+          // Only validate when moving forward (not backward)
+          if (isMovingForward) {
+            // Check if deal has incomplete activities
+            const hasIncompleteActivities = await checkIncompleteActivities(deal);
+            
+            // Check if deal has a value (value should be > 0)
+            const hasDealValue = deal.value != null && deal.value > 0;
+            
+            // Build error messages based on what's missing
+            const errorMessages: string[] = [];
+            
+            if (hasIncompleteActivities) {
+              errorMessages.push('Please complete the assigned activities first to shift the deal to next stage.');
+            }
+            
+            if (!hasDealValue) {
+              errorMessages.push('Please add the deal value to move the deal to the next stage.');
+            }
+            
+            // If there are any validation errors, show them
+            if (errorMessages.length > 0) {
+              const errorMessage = errorMessages.join(' ');
+              setError(errorMessage);
+              setShowErrorToast(true);
+              // Auto-hide after 5 seconds
+              setTimeout(() => {
+                setShowErrorToast(false);
+                setError(null);
+              }, 5000);
+              return;
+            }
+          } else {
+            // Moving backward - only check activities
+            const hasIncompleteActivities = await checkIncompleteActivities(deal);
+            if (hasIncompleteActivities) {
+              const errorMessage = "Can't go back to the previous stage, please finish your assigned activities to move to the next stage.";
+              setError(errorMessage);
+              setShowErrorToast(true);
+              // Auto-hide after 5 seconds
+              setTimeout(() => {
+                setShowErrorToast(false);
+                setError(null);
+              }, 5000);
+              return;
+            }
+          }
+        }
+      }
+    }
+
     setActionInFlight({ dealId, type: 'stage' });
     try {
+      // Store the original stage before moving to check if we're moving back to Qualified
+      const originalStage = pipeline?.stages.find(s => s.id === deal.stageId);
+      const qualifiedStage = pipeline?.stages.find(s => {
+        const sName = s.name.toLowerCase().trim();
+        return sName === 'qualified';
+      });
+      
       const updatedDeal = await dealsApi.moveToStage(dealId, { stageId });
       setDeals((prev) => prev.map((deal) => (deal.id === dealId ? updatedDeal : deal)));
       setSelectedDeal((prev) => (prev && prev.id === dealId ? updatedDeal : prev));
+      
+      // Check if deal was moved to Qualified stage and create activities
+      // Only create activities if:
+      // 1. The deal was NOT previously in a stage after Qualified (i.e., not moving back)
+      // 2. This means: original stage order should be <= qualified stage order (or original stage is null/undefined)
+      if (updatedDeal.pipelineId && updatedDeal.stageId) {
+        const pipeline = pipelines.find(p => p.id === updatedDeal.pipelineId);
+        if (pipeline) {
+          const currentStage = pipeline.stages.find(s => s.id === updatedDeal.stageId);
+          if (currentStage) {
+            const stageName = currentStage.name.toLowerCase().trim();
+            const isQualified = stageName === 'qualified';
+            if (isQualified && qualifiedStage) {
+              // Only create activities if we're NOT moving back from a later stage
+              // If originalStage exists and its order is greater than qualified stage order, skip activity creation
+              const isMovingBackToQualified = originalStage && originalStage.order > qualifiedStage.order;
+              if (!isMovingBackToQualified) {
+                await createQualifiedStageActivities(updatedDeal);
+              }
+            }
+          }
+        }
+      }
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Failed to update stage.';
       setError(message);
@@ -1399,16 +2326,34 @@ const Deals = () => {
     );
   }
 
-  if (error) {
     return (
       <div className="deals-page">
-        <div className="deals-error">{error}</div>
+      {/* Toast Notification for Errors */}
+      {showErrorToast && error && createPortal(
+        <div className="deals-toast-overlay" onClick={() => { setShowErrorToast(false); setError(null); }}>
+          <div className="deals-toast" onClick={(e) => e.stopPropagation()}>
+            <div className="deals-toast-icon-wrapper">
+              <svg className="deals-toast-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L1 21H23L12 2Z" fill="#FCD34D" stroke="#F59E0B" strokeWidth="1.5"/>
+                <path d="M12 9V13M12 17H12.01" stroke="#92400E" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
       </div>
-    );
-  }
-
-  return (
-    <div className="deals-page">
+            <div className="deals-toast-content">
+              <div className="deals-toast-message">{error}</div>
+            </div>
+            <button 
+              className="deals-toast-close" 
+              onClick={() => { setShowErrorToast(false); setError(null); }}
+              aria-label="Close"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
       <h1 className="deals-page-title">Deals</h1>
       <div className="deals-header">
         <div className="deals-header-top">
@@ -1451,8 +2396,8 @@ const Deals = () => {
                 <span 
                   ref={infoIconRef}
                   className={`deals-info-icon ${isSummaryOpen ? 'summary-open' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
+                    onClick={(e) => {
+                      e.stopPropagation();
                     if (viewMode === 'pipeline') {
                       setIsSummaryOpen(!isSummaryOpen);
                     }
@@ -1477,7 +2422,7 @@ const Deals = () => {
                     </div>
                   )}
                 </span>
-              </div>
+                </div>
             )}
             {viewMode === 'pipeline' && (
               <>
@@ -1500,28 +2445,111 @@ const Deals = () => {
                   </button>
                   {isPipelineDropdownOpen && (
                     <div className="deals-pipeline-dropdown">
+                      {/* Search input */}
+                      <div className="deals-pipeline-search-container">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="deals-pipeline-search-icon">
+                          <path d="M6.41667 11.0833C8.99405 11.0833 11.0833 8.99405 11.0833 6.41667C11.0833 3.83929 8.99405 1.75 6.41667 1.75C3.83929 1.75 1.75 3.83929 1.75 6.41667C1.75 8.99405 3.83929 11.0833 6.41667 11.0833Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M12.25 12.25L9.71252 9.71252" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <input
+                          ref={pipelineSearchInputRef}
+                          type="text"
+                          className="deals-pipeline-search-input"
+                          placeholder="Search for pipelines"
+                          value={pipelineSearchQuery}
+                          onChange={(e) => setPipelineSearchQuery(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') {
+                              setIsPipelineDropdownOpen(false);
+                            }
+                          }}
+                        />
+                      </div>
+                      
+                      {/* Pipeline list */}
+                      <div className="deals-pipeline-list">
                       {filteredPipelines.length === 0 ? (
                         <div className="deals-pipeline-option" style={{ cursor: 'default', opacity: 0.6 }}>
-                          No pipelines match the selected filters
+                            {pipelineSearchQuery.trim() ? 'No pipelines found' : 'No pipelines match the selected filters'}
                         </div>
                       ) : (
                         filteredPipelines.map((pipeline) => (
-                          <button
-                            key={pipeline.id}
-                            className={`deals-pipeline-option ${selectedPipelineId === pipeline.id ? 'active' : ''}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedPipelineId(pipeline.id);
-                              if (pipeline.id !== null) {
-                                localStorage.setItem('selectedPipelineId', pipeline.id.toString());
-                              }
-                              setIsPipelineDropdownOpen(false);
-                            }}
-                          >
-                            {pipeline.name}
-                          </button>
+                        <button
+                          key={pipeline.id}
+                          className={`deals-pipeline-option ${selectedPipelineId === pipeline.id ? 'active' : ''}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedPipelineId(pipeline.id);
+                            if (pipeline.id !== null) {
+                              localStorage.setItem('selectedPipelineId', pipeline.id.toString());
+                            }
+                            setIsPipelineDropdownOpen(false);
+                                setPipelineSearchQuery('');
+                              }}
+                            >
+                              <span className="deals-pipeline-option-name">{pipeline.name}</span>
+                              {selectedPipelineId === pipeline.id && (
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="deals-pipeline-checkmark">
+                                  <path d="M13.3333 4L6 11.3333L2.66667 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                        </button>
                         ))
                       )}
+                      </div>
+
+                      {/* Divider */}
+                      <div className="deals-pipeline-divider"></div>
+
+                      {/* Actions */}
+                      <div className="deals-pipeline-actions">
+                        <button
+                          className="deals-pipeline-action-option"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsPipelineDropdownOpen(false);
+                            setPipelineSearchQuery('');
+                            navigate('/pipelines');
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="deals-pipeline-action-icon">
+                            <path d="M2 4H14M2 8H14M2 12H10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          <span>Manage pipelines</span>
+                        </button>
+                        <button
+                          className="deals-pipeline-action-option"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleReorderPipelines();
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="deals-pipeline-action-icon">
+                            <path d="M4 6H12M4 10H12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                          </svg>
+                          <span>Reorder pipelines</span>
+                        </button>
+                      </div>
+
+                      {/* Divider */}
+                      <div className="deals-pipeline-divider"></div>
+
+                      {/* New pipeline option */}
+                      <button
+                        className="deals-pipeline-new-option"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsPipelineModalOpen(true);
+                          setIsPipelineDropdownOpen(false);
+                          setPipelineSearchQuery('');
+                        }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="deals-pipeline-plus-icon">
+                          <path d="M8 3.33334V12.6667M3.33334 8H12.6667" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                        <span>New pipeline</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1561,7 +2589,7 @@ const Deals = () => {
                       setIsFilterDropdownOpen(false);
                     }}
                   >
-                    In Progress
+                    Open deals
                   </button>
                   <button
                     className={`deals-filter-option ${filterStatus === 'WON' ? 'active' : ''}`}
@@ -1615,6 +2643,192 @@ const Deals = () => {
           </div>
         </div>
         <div className="deals-header-bottom">
+          <div style={{ position: 'relative' }} ref={dateRangeDropdownRef}>
+            <button 
+              className="filter-select"
+              onClick={() => setIsDateRangeDropdownOpen(!isDateRangeDropdownOpen)}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                background: '#fff',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: '#374151',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                minWidth: '180px',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span>{getDateRangeDisplayText()}</span>
+              <span style={{ fontSize: '10px' }}>▾</span>
+            </button>
+            {isDateRangeDropdownOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  left: 0,
+                  backgroundColor: '#fff',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                  minWidth: '200px',
+                  zIndex: 1000,
+                  overflow: 'hidden',
+                }}
+              >
+                <button
+                  onClick={() => handleDateRangeOption('today')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  Today
+                </button>
+                <button
+                  onClick={() => handleDateRangeOption('yesterday')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  Yesterday
+                </button>
+                <button
+                  onClick={() => handleDateRangeOption('thisWeek')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  This week
+                </button>
+                <button
+                  onClick={() => handleDateRangeOption('lastWeek')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  Last week
+                </button>
+                <button
+                  onClick={() => handleDateRangeOption('thisMonth')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  This month
+                </button>
+                <button
+                  onClick={() => handleDateRangeOption('lastMonth')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  Last month
+                </button>
+                <button
+                  onClick={() => handleDateRangeOption('last30Days')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  Last 30 days
+                </button>
+                <div style={{ height: '1px', background: '#e5e7eb', margin: '4px 0' }}></div>
+                <button
+                  onClick={() => handleDateRangeOption('custom')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  Select date range
+                </button>
+              </div>
+            )}
+          </div>
           <select
             className="filter-select"
             value={filterCategory ?? ''}
@@ -1646,13 +2860,92 @@ const Deals = () => {
               </option>
             ))}
           </select>
-          <div className="deals-sort-container">
-            <span className="deals-sort-icon">↑</span>
+          <div className="deals-sort-container" ref={sortDropdownRef}>
+            <button
+              className="deals-sort-icon-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                const newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+                setSortDirection(newDirection);
+                localStorage.setItem('dealsSortDirection', newDirection);
+              }}
+              aria-label={sortDirection === 'asc' ? 'Sort ascending - Click to change to descending' : 'Sort descending - Click to change to ascending'}
+              onMouseEnter={(e) => {
+                const button = e.currentTarget;
+                const rect = button.getBoundingClientRect();
+                const tooltip = document.querySelector('.deals-sort-tooltip') as HTMLElement;
+                if (tooltip) {
+                  const tooltipText = sortDirection === 'asc' ? 'Ascending order - Click to sort descending' : 'Descending order - Click to sort ascending';
+                  tooltip.textContent = tooltipText;
+                  tooltip.style.display = 'block';
+                  // Force reflow to get accurate dimensions
+                  void tooltip.offsetWidth;
+                  const tooltipHeight = tooltip.offsetHeight;
+                  const left = rect.left + rect.width / 2;
+                  const top = rect.top - tooltipHeight - 10;
+                  
+                  tooltip.style.left = `${left}px`;
+                  tooltip.style.top = `${Math.max(10, top)}px`;
+                  tooltip.classList.add('show');
+                }
+              }}
+              onMouseLeave={() => {
+                const tooltip = document.querySelector('.deals-sort-tooltip') as HTMLElement;
+                if (tooltip) {
+                  tooltip.classList.remove('show');
+                  setTimeout(() => {
+                    if (!tooltip.classList.contains('show')) {
+                      tooltip.style.display = 'none';
+                    }
+                  }, 200);
+                }
+              }}
+            >
+              {sortDirection === 'asc' ? (
+                <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M8 12L3 7H7V3H9V7H13L8 12Z" fill="currentColor"/>
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M8 4L13 9H9V13H7V9H3L8 4Z" fill="currentColor"/>
+                </svg>
+              )}
+            </button>
             <span className="deals-sort-label">Sort by:</span>
-            <button className="deals-sort-btn">
-              Next activity
+            <button 
+              className="deals-sort-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsSortDropdownOpen(!isSortDropdownOpen);
+              }}
+            >
+              {getSortFieldLabel(sortField)}
               <span style={{ marginLeft: '6px' }}>▾</span>
             </button>
+            {isSortDropdownOpen && (
+              <div className="deals-sort-dropdown">
+                <div className="deals-sort-dropdown-title">SORT BY</div>
+                {sortOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    className={`deals-sort-option ${sortField === option.value ? 'active' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSortField(option.value);
+                      localStorage.setItem('dealsSortField', option.value);
+                      setIsSortDropdownOpen(false);
+                    }}
+                  >
+                    <span>{option.label}</span>
+                    {sortField === option.value && (
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="deals-sort-checkmark">
+                        <path d="M13.3333 4L6 11.3333L2.66667 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1729,41 +3022,41 @@ const Deals = () => {
                   const draggedDeal = draggedDealId ? deals.find(d => d.id === draggedDealId) : null;
                   const isDraggedDealWon = draggedDeal?.status === 'WON';
                   return !isDraggedDealWon ? (
-                    <div
-                      className={`kanban-status-zone kanban-won-zone ${isDragOverWonZone ? 'drag-over' : ''}`}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setDragPosition({ x: e.clientX, y: e.clientY });
-                        setIsDragOverWonZone(true);
-                        setIsDragOverDeleteZone(false);
-                        setIsDragOverLostZone(false);
-                      }}
-                      onDragLeave={(e) => {
-                        e.preventDefault();
-                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                          setIsDragOverWonZone(false);
-                        }
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        setIsDragOverWonZone(false);
-                        if (draggedDealId) {
-                          const deal = deals.find(d => d.id === draggedDealId);
-                          if (deal && deal.status !== 'WON') {
-                            void handleStatusUpdate(draggedDealId, 'WON');
-                          }
-                        }
-                        setDraggedDealId(null);
-                        setDragPosition(null);
-                      }}
-                    >
-                      <div className="kanban-status-zone-content">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        <p className="kanban-status-zone-text">Mark as WON</p>
-                      </div>
-                    </div>
+                <div
+                  className={`kanban-status-zone kanban-won-zone ${isDragOverWonZone ? 'drag-over' : ''}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragPosition({ x: e.clientX, y: e.clientY });
+                    setIsDragOverWonZone(true);
+                    setIsDragOverDeleteZone(false);
+                    setIsDragOverLostZone(false);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setIsDragOverWonZone(false);
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragOverWonZone(false);
+                    if (draggedDealId) {
+                      const deal = deals.find(d => d.id === draggedDealId);
+                      if (deal && deal.status !== 'WON') {
+                        void handleStatusUpdate(draggedDealId, 'WON');
+                      }
+                    }
+                    setDraggedDealId(null);
+                    setDragPosition(null);
+                  }}
+                >
+                  <div className="kanban-status-zone-content">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <p className="kanban-status-zone-text">Mark as WON</p>
+                  </div>
+                </div>
                   ) : null;
                 })()}
 
@@ -1772,41 +3065,41 @@ const Deals = () => {
                   const draggedDeal = draggedDealId ? deals.find(d => d.id === draggedDealId) : null;
                   const isDraggedDealLost = draggedDeal?.status === 'LOST';
                   return !isDraggedDealLost ? (
-                    <div
-                      className={`kanban-status-zone kanban-lost-zone ${isDragOverLostZone ? 'drag-over' : ''}`}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setDragPosition({ x: e.clientX, y: e.clientY });
-                        setIsDragOverLostZone(true);
-                        setIsDragOverDeleteZone(false);
-                        setIsDragOverWonZone(false);
-                      }}
-                      onDragLeave={(e) => {
-                        e.preventDefault();
-                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                          setIsDragOverLostZone(false);
-                        }
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        setIsDragOverLostZone(false);
-                        if (draggedDealId) {
-                          const deal = deals.find(d => d.id === draggedDealId);
-                          if (deal && deal.status !== 'LOST') {
-                            void handleStatusUpdate(draggedDealId, 'LOST');
-                          }
-                        }
-                        setDraggedDealId(null);
-                        setDragPosition(null);
-                      }}
-                    >
-                      <div className="kanban-status-zone-content">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        <p className="kanban-status-zone-text">Mark as LOST</p>
-                      </div>
-                    </div>
+                <div
+                  className={`kanban-status-zone kanban-lost-zone ${isDragOverLostZone ? 'drag-over' : ''}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragPosition({ x: e.clientX, y: e.clientY });
+                    setIsDragOverLostZone(true);
+                    setIsDragOverDeleteZone(false);
+                    setIsDragOverWonZone(false);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setIsDragOverLostZone(false);
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragOverLostZone(false);
+                    if (draggedDealId) {
+                      const deal = deals.find(d => d.id === draggedDealId);
+                      if (deal && deal.status !== 'LOST') {
+                        void handleStatusUpdate(draggedDealId, 'LOST');
+                      }
+                    }
+                    setDraggedDealId(null);
+                    setDragPosition(null);
+                  }}
+                >
+                  <div className="kanban-status-zone-content">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <p className="kanban-status-zone-text">Mark as LOST</p>
+                  </div>
+                </div>
                   ) : null;
                 })()}
               </>
@@ -1939,6 +3232,11 @@ const Deals = () => {
                                         </span>
                                       )}
                                     </div>
+                                    {deal.createdAt && (
+                                      <div className="kanban-card-date">
+                                        {formatDateTime(deal.createdAt)}
+                                      </div>
+                                    )}
                                     <div className="kanban-card-value">{formatCurrency(deal.value || 0)}</div>
                   </div>
                                   <button
@@ -2111,6 +3409,11 @@ const Deals = () => {
                                         </span>
                                       )}
                                     </div>
+                                    {deal.createdAt && (
+                                      <div className="kanban-card-date">
+                                        {formatDateTime(deal.createdAt)}
+                                      </div>
+                                    )}
                                     <div className="kanban-card-value">{formatCurrency(deal.value || 0)}</div>
                   </div>
                                   <button
@@ -2362,7 +3665,7 @@ const Deals = () => {
                 <div className="deal-detail-row">
                   <span className="deal-detail-label">Status:</span>
                   <span className={`deal-detail-status-badge status-${selectedDeal.status.toLowerCase()}`}>
-                    {selectedDeal.status === 'IN_PROGRESS' ? 'In Progress' : selectedDeal.status}
+                    {selectedDeal.status === 'IN_PROGRESS' ? 'Open deals' : selectedDeal.status}
                   </span>
                 </div>
                 <div className="deal-detail-status-actions">
@@ -2552,7 +3855,7 @@ const Deals = () => {
                     required
                     disabled={isSubmitting}
                   >
-                    <option value="IN_PROGRESS">In Progress</option>
+                    <option value="IN_PROGRESS">Open deals</option>
                     <option value="WON">Won</option>
                     <option value="LOST">Lost</option>
                   </select>
@@ -2658,11 +3961,14 @@ const Deals = () => {
                         No available pipelines (deal already diverted to all pipelines)
                       </option>
                     ) : (
-                      allPipelines.map((pipeline) => (
+                      <>
+                        <option value="">Select Pipeline</option>
+                        {allPipelines.map((pipeline) => (
                         <option key={pipeline.id} value={pipeline.id}>
                           {pipeline.name}
                         </option>
-                      ))
+                        ))}
+                      </>
                     )}
                   </select>
                 </div>
@@ -2879,17 +4185,6 @@ const Deals = () => {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Phone Number</label>
-                <input
-                  type="tel"
-                  name="phoneNumber"
-                  className="form-input"
-                  value={formData.phoneNumber}
-                  onChange={handleInputChange}
-                  disabled={isSubmitting}
-                />
-              </div>
 
               {modalError && <div className="modal-error">{modalError}</div>}
 
@@ -2970,6 +4265,22 @@ const Deals = () => {
           setIsActivityModalOpen(false);
           setActivityDealId(null);
         }}
+        userOptions={users}
+        dealData={activityDealId ? (() => {
+          const deal = deals.find(d => d.id === activityDealId);
+          if (!deal) return undefined;
+          const person = deal.personId ? persons.find(p => p.id === deal.personId) : null;
+          const organization = deal.organizationId ? organizationsById.get(deal.organizationId) : null;
+          return {
+            dealId: deal.id,
+            dealName: deal.name || undefined,
+            personId: deal.personId || undefined,
+            personName: person?.name || undefined,
+            organization: organization?.name || undefined,
+            phone: person?.phone || undefined,
+            instagramId: person?.instagramId || undefined,
+          };
+        })() : undefined}
         onSave={async (values: ActivityFormValues) => {
           try {
             const activityData = {
@@ -2988,8 +4299,9 @@ const Deals = () => {
               dateTime: values.dateTime,
             };
             await activitiesApi.create(activityData);
-            setIsActivityModalOpen(false);
-            setActivityDealId(null);
+            // Don't close modal here - let ActivityModal handle it after showing confirmation
+            // setIsActivityModalOpen(false);
+            // setActivityDealId(null);
           } catch (err: any) {
             console.error('Failed to create activity:', err);
             throw err;
@@ -2998,6 +4310,150 @@ const Deals = () => {
       />
 
       {/* Divert Deal Modal */}
+      {markAsLostDealId && (
+        <MarkAsLostModal
+          isOpen={true}
+          onClose={() => setMarkAsLostDealId(null)}
+          onConfirm={(lostReason) => handleMarkAsLost(markAsLostDealId, lostReason)}
+          dealName={deals.find(d => d.id === markAsLostDealId)?.name}
+        />
+      )}
+      {isPipelineModalOpen && (
+        <PipelineModal
+          isOpen={true}
+          mode="create"
+          onClose={() => setIsPipelineModalOpen(false)}
+          onSubmit={handleCreatePipeline}
+          categoryOptions={Array.from(categoryLabelById.values())}
+        />
+      )}
+
+      {isReorderPipelinesModalOpen && (
+        <ReorderPipelinesModal
+          isOpen={true}
+          pipelines={pipelines}
+          onClose={() => setIsReorderPipelinesModalOpen(false)}
+          onSuccess={handlePipelinesReordered}
+        />
+      )}
+
+      {/* Global tooltip for sort direction - rendered via portal */}
+      {createPortal(
+        <div className="deals-sort-tooltip">
+          {sortDirection === 'asc' ? 'Ascending order - Click to sort descending' : 'Descending order - Click to sort ascending'}
+        </div>,
+        document.body
+      )}
+
+      {/* Date Range Modal */}
+      {isDateRangeModalOpen && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setIsDateRangeModalOpen(false)}
+        >
+          <div 
+            style={{
+              backgroundColor: 'white',
+              padding: '24px',
+              borderRadius: '8px',
+              minWidth: '400px',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: 600 }}>Select Date Range</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: 500 }}>
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  value={dateRange.start}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: 500 }}>
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  value={dateRange.end}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                  min={dateRange.start || undefined}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                  }}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '20px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setIsDateRangeModalOpen(false);
+                  setDateRange({ start: '', end: '' });
+                  setSelectedDateRangeOption('');
+                }}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  backgroundColor: 'white',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                }}
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => {
+                  if (dateRange.start && dateRange.end) {
+                    setIsDateRangeModalOpen(false);
+                    setSelectedDateRangeOption(''); // Clear preset option when using custom range
+                  }
+                }}
+                disabled={!dateRange.start || !dateRange.end}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderRadius: '4px',
+                  backgroundColor: (!dateRange.start || !dateRange.end) ? '#ccc' : '#2563eb',
+                  color: 'white',
+                  cursor: (!dateRange.start || !dateRange.end) ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                }}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {divertDealId && (
         <DivertDealModal
           isOpen={isDivertModalOpen}

@@ -2102,7 +2102,8 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
             // Load activities without category filter to show the new activity
             loadActivities(newFilters);
             loadCounts(newFilters);
-            setIsAddOpen(false);
+            // Don't close modal here - let ActivityModal handle it after showing confirmation
+            // setIsAddOpen(false);
           } catch (error: any) {
             console.error('Failed to create activity:', error);
             alert(`Failed to create activity: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);

@@ -62,7 +62,7 @@ function App() {
           )}
         >
           {/* Root redirect */}
-          <Route path="/" element={<Navigate to="/persons" replace />} />
+          <Route path="/" element={<Navigate to="/deals" replace />} />
           
           {/* Individual page routes */}
           <Route path="/persons" element={<PersonsList />} />
@@ -76,8 +76,8 @@ function App() {
           <Route path="/deals/:id" element={<DealDetail />} />
           <Route path="/users" element={<Users />} />
           
-          {/* Catch all for protected routes - redirect to persons if route not found */}
-          <Route path="*" element={<Navigate to="/persons" replace />} />
+          {/* Catch all for protected routes - redirect to deals if route not found */}
+          <Route path="*" element={<Navigate to="/deals" replace />} />
           <Route path="/dashboard/sales" element={<SalesDashboard />} />
           <Route path="/dashboard/category-manager" element={<CategoryManagerDashboard />} />
           <Route path="/dashboard/pre-sales" element={<PreSalesDashboard />} />

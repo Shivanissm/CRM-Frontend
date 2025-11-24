@@ -21,7 +21,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error?.response?.status === 401) {
+    if (error?.response?.status === 401 || error?.response?.status === 403) {
+      console.warn(`Unauthorized (${error?.response?.status}) when calling organizations API. Logging out.`);
       logoutAndRedirect();
     }
     return Promise.reject(error);

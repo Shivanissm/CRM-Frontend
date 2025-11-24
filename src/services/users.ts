@@ -21,12 +21,12 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Basic 401 handler
+// Basic 401/403 handler
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error?.response?.status === 401) {
-      console.warn('Unauthorized (401) when calling users API. Logging out.');
+    if (error?.response?.status === 401 || error?.response?.status === 403) {
+      console.warn(`Unauthorized (${error?.response?.status}) when calling users API. Logging out.`);
       logoutAndRedirect();
     }
     return Promise.reject(error);

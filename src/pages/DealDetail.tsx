@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { dealsApi } from '../services/deals';
 import { personsApi } from '../services/api';
@@ -6,11 +7,12 @@ import { organizationsApi } from '../services/organizations';
 import { pipelinesApi } from '../services/pipelines';
 import { activitiesApi, type Activity } from '../services/activities';
 import { clearAuthSession } from '../utils/authToken';
-import type { Deal, DealCreateRequest } from '../types/deal';
+import type { Deal, DealCreateRequest, DealUpdateRequest } from '../types/deal';
 import type { Person } from '../types/person';
 import type { Organization } from '../types/organization';
 import type { Pipeline } from '../types/pipeline';
 import ActivityModal, { type ActivityFormValues } from '../components/ActivityModal';
+import MarkAsLostModal from '../components/MarkAsLostModal';
 import './DealDetail.css';
 
 type ActiveTab = 'Activity' | 'Notes' | 'Meeting scheduler' | 'Call' | 'Email' | 'Send quote' | 'Send Contract' | 'Share Worklinks';
@@ -28,6 +30,9 @@ export default function DealDetail() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('Activity');
+  const [showErrorToast, setShowErrorToast] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showMarkAsLostModal, setShowMarkAsLostModal] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
@@ -228,7 +233,8 @@ export default function DealDetail() {
       month: 'short', 
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: true
     });
   };
 
@@ -482,12 +488,63 @@ export default function DealDetail() {
         // Navigate to deals page
         navigate('/deals');
       } else if (id) {
-        // Update existing deal
-        console.log('Updating deal ID:', id, 'with payload:', payload);
-        const updatedDeal = await dealsApi.update(Number(id), payload);
+        // Helper function to parse deal value - if empty, return 0 (not null) to clear the deal value
+        const parseDealValue = (value: string | null | undefined): number => {
+          if (value === null || value === undefined || value.trim() === '') return 0;
+          const parsed = parseFloat(value);
+          return isNaN(parsed) ? 0 : parsed;
+        };
+
+        // Helper function to parse commission amount - if empty, return null (optional field)
+        const parseCommissionAmount = (value: string | null | undefined): number | null => {
+          if (value === null || value === undefined || value.trim() === '') return null;
+          const parsed = parseFloat(value);
+          return isNaN(parsed) ? null : parsed;
+        };
+
+        // Update existing deal - use DealUpdateRequest (all fields optional)
+        const updatePayload: DealUpdateRequest = {
+          name: formData.name.trim(),
+          value: parseDealValue(formData.value),
+          status: formData.status as any,
+          personId: formData.personId || null,
+          organizationId: formData.organizationId !== undefined && formData.organizationId !== null ? formData.organizationId : null,
+          pipelineId: formData.pipelineId || null,
+          stageId: formData.stageId || null,
+          categoryId: formData.categoryId || null,
+          eventType: toNullIfEmpty(formData.eventType),
+          venue: toNullIfEmpty(formData.venue),
+          phoneNumber: toNullIfEmpty(formData.phoneNumber),
+          email: toNullIfEmpty(formData.email),
+          eventDate: toNullIfEmpty(formData.eventDate),
+          commissionAmount: parseCommissionAmount(formData.commissionAmount),
+        };
+        console.log('Updating deal ID:', id, 'with payload:', updatePayload);
+        const updatedDeal = await dealsApi.update(Number(id), updatePayload);
         console.log('Deal updated successfully:', updatedDeal);
-        // Reload deal data to reflect changes
-        await loadDealData(Number(id));
+        
+        // Update local state with the response from API to ensure UI reflects saved values
+        setDeal(updatedDeal);
+        
+        // Update formData with the response to keep form in sync
+        setFormData((prev) => ({
+          ...prev,
+          name: updatedDeal.name || prev.name,
+          value: updatedDeal.value?.toString() || '0',
+          status: updatedDeal.status || prev.status,
+          personId: updatedDeal.personId || null,
+          organizationId: updatedDeal.organizationId || null,
+          pipelineId: updatedDeal.pipelineId || null,
+          stageId: updatedDeal.stageId || null,
+          categoryId: typeof updatedDeal.categoryId === 'number' ? updatedDeal.categoryId : (typeof updatedDeal.categoryId === 'string' ? Number(updatedDeal.categoryId) || null : null),
+          eventType: updatedDeal.eventType || '',
+          venue: updatedDeal.venue || '',
+          phoneNumber: updatedDeal.phoneNumber || '',
+          email: updatedDeal.email || '',
+          eventDate: updatedDeal.eventDate ? formatDateForInput(updatedDeal.eventDate) : '',
+          commissionAmount: updatedDeal.commissionAmount?.toString() || '',
+        }));
+        
         alert('Deal updated successfully');
       }
     } catch (error: any) {
@@ -555,9 +612,99 @@ export default function DealDetail() {
     return selectedPipeline.stages?.find((s) => s.id === formData.stageId) || null;
   }, [formData.stageId, selectedPipeline]);
 
+  // Function to check if a deal has incomplete required activities
+  const checkIncompleteActivities = async (deal: Deal): Promise<boolean> => {
+    if (!deal.pipelineId || !deal.stageId) return false;
+
+    const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+    if (!pipeline) return false;
+
+    // Check if deal is in "Qualified" stage
+    const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+    if (!currentStage) return false;
+
+    const stageName = currentStage.name.toLowerCase().trim();
+    const isQualified = stageName === 'qualified';
+    
+    // Only check for deals in Qualified stage
+    if (!isQualified) return false;
+
+    try {
+      // Get all activities - we'll filter by dealId in the response
+      const activitiesResponse = await activitiesApi.list({ page: 0, size: 1000 });
+      const allActivities = activitiesResponse.content || [];
+      // Filter activities for this deal
+      const dealActivities = allActivities.filter(activity => activity.dealId === deal.id);
+
+      // Check for the two required activities
+      const requiredActivities = ['Make the 1st call', 'Send the quote'];
+      const incompleteActivities = dealActivities.filter(activity => 
+        requiredActivities.includes(activity.subject || '') && !activity.done
+      );
+
+      return incompleteActivities.length > 0;
+    } catch (err) {
+      console.error(`Failed to check activities for deal ${deal.id}:`, err);
+      // If we can't check, allow the operation (fail open)
+      return false;
+    }
+  };
+
   // Handle status update (WON/LOST/Reopen)
   const handleStatusUpdate = async (newStatus: 'WON' | 'LOST' | 'IN_PROGRESS') => {
-    if (!id || isNewDeal) return;
+    if (!id || isNewDeal || !deal) return;
+    
+    // If marking as LOST, show the modal to select a reason
+    if (newStatus === 'LOST') {
+      setShowMarkAsLostModal(true);
+      return;
+    }
+    
+    // Only validate when marking as WON (not when reopening)
+    if (newStatus === 'WON') {
+      // Check if deal is in Qualified stage (only validate for deals in Qualified stage)
+      const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+      if (pipeline) {
+        const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+        if (currentStage) {
+          const currentStageName = currentStage.name.toLowerCase().trim();
+          const isCurrentlyQualified = currentStageName === 'qualified';
+          
+          // Only validate if deal is in Qualified stage
+          if (isCurrentlyQualified) {
+            // Check if deal has incomplete activities
+            const hasIncompleteActivities = await checkIncompleteActivities(deal);
+            
+            // Check if deal has a value (value should be > 0)
+            const hasDealValue = deal.value != null && deal.value > 0;
+            
+            // Build error messages based on what's missing
+            const errorMessages: string[] = [];
+            
+            if (hasIncompleteActivities) {
+              errorMessages.push('Please complete the assigned activities first to mark the deal as WON.');
+            }
+            
+            if (!hasDealValue) {
+              errorMessages.push('Please add the deal value to mark the deal as WON.');
+            }
+            
+            // If there are any validation errors, show them
+            if (errorMessages.length > 0) {
+              const message = errorMessages.join(' ');
+              setErrorMessage(message);
+              setShowErrorToast(true);
+              // Auto-hide after 5 seconds
+              setTimeout(() => {
+                setShowErrorToast(false);
+                setErrorMessage(null);
+              }, 5000);
+              return;
+            }
+          }
+        }
+      }
+    }
     
     try {
       const updatedDeal = await dealsApi.updateStatus(Number(id), { status: newStatus });
@@ -568,7 +715,66 @@ export default function DealDetail() {
     } catch (error: any) {
       console.error('Failed to update status:', error);
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to update status.';
-      alert(errorMessage);
+      setErrorMessage(errorMessage);
+      setShowErrorToast(true);
+      setTimeout(() => {
+        setShowErrorToast(false);
+        setErrorMessage(null);
+      }, 5000);
+    }
+  };
+
+  const handleMarkAsLost = async (lostReason: string) => {
+    if (!id || isNewDeal || !deal) return;
+    
+    // Check if deal is in Qualified stage (only validate for deals in Qualified stage)
+    const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+    if (pipeline) {
+      const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+      if (currentStage) {
+        const currentStageName = currentStage.name.toLowerCase().trim();
+        const isCurrentlyQualified = currentStageName === 'qualified';
+        
+        // Only validate if deal is in Qualified stage
+        if (isCurrentlyQualified) {
+          // Check if deal has incomplete activities
+          const hasIncompleteActivities = await checkIncompleteActivities(deal);
+          
+          // Check if deal has a value (value should be > 0) - only required if lost reason is "Budget"
+          const hasDealValue = deal.value != null && deal.value > 0;
+          const isBudgetReason = lostReason === 'Budget';
+          
+          // Build error messages based on what's missing
+          const errorMessages: string[] = [];
+          
+          if (hasIncompleteActivities) {
+            errorMessages.push('Please complete the assigned activities first to mark the deal as LOST.');
+          }
+          
+          // Only check deal value if the lost reason is "Budget"
+          if (isBudgetReason && !hasDealValue) {
+            errorMessages.push('Please add the deal value to mark the deal as LOST.');
+          }
+          
+          // If there are any validation errors, throw them
+          if (errorMessages.length > 0) {
+            throw new Error(errorMessages.join(' '));
+          }
+        }
+      }
+    }
+    
+    try {
+      const updatedDeal = await dealsApi.updateStatus(Number(id), { status: 'LOST', lostReason });
+      setDeal(updatedDeal);
+      setFormData((prev) => ({ ...prev, status: 'LOST' }));
+      // Reload deal data to get latest state
+      await loadDealData(Number(id));
+      setShowMarkAsLostModal(false);
+    } catch (error: any) {
+      console.error('Failed to mark deal as lost:', error);
+      const errorMsg = error?.response?.data?.message || error?.message || 'Failed to mark deal as lost.';
+      throw new Error(errorMsg);
     }
   };
 
@@ -597,6 +803,32 @@ export default function DealDetail() {
 
   return (
     <div className="deal-detail-container">
+      {/* Toast Notification for Errors */}
+      {showErrorToast && errorMessage && createPortal(
+        <div className="deal-detail-toast-overlay" onClick={() => { setShowErrorToast(false); setErrorMessage(null); }}>
+          <div className="deal-detail-toast" onClick={(e) => e.stopPropagation()}>
+            <div className="deal-detail-toast-icon-wrapper">
+              <svg className="deal-detail-toast-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L1 21H23L12 2Z" fill="#FCD34D" stroke="#F59E0B" strokeWidth="1.5"/>
+                <path d="M12 9V13M12 17H12.01" stroke="#92400E" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div className="deal-detail-toast-content">
+              <div className="deal-detail-toast-message">{errorMessage}</div>
+            </div>
+            <button 
+              className="deal-detail-toast-close" 
+              onClick={() => { setShowErrorToast(false); setErrorMessage(null); }}
+              aria-label="Close"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
       {/* Top Header Bar - Full Width */}
       <div className="deal-detail-header-bar">
         <div className="deal-header-left">
@@ -1375,6 +1607,16 @@ export default function DealDetail() {
           {saving ? 'Saving...' : 'Save'}
         </button>
       </div>
+
+      {/* Mark as Lost Modal */}
+      {showMarkAsLostModal && (
+        <MarkAsLostModal
+          isOpen={true}
+          onClose={() => setShowMarkAsLostModal(false)}
+          onConfirm={handleMarkAsLost}
+          dealName={deal?.name}
+        />
+      )}
 
       {/* Activity Modal */}
       <ActivityModal

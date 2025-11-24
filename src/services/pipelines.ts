@@ -29,8 +29,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error?.response?.status === 401) {
-      console.warn('Unauthorized (401) when calling pipelines API. Logging out. ');
+    if (error?.response?.status === 401 || error?.response?.status === 403) {
+      console.warn(`Unauthorized (${error?.response?.status}) when calling pipelines API. Logging out.`);
       logoutAndRedirect();
     }
     return Promise.reject(error);
@@ -105,6 +105,10 @@ export const pipelinesApi = {
 
   reorderStages: async (pipelineId: number, request: StageOrderRequest): Promise<void> => {
     await api.post<void>(`/${pipelineId}/stages/reorder`, request);
+  },
+
+  reorderPipelines: async (request: { orderedPipelineIds: number[] }): Promise<void> => {
+    await api.post<void>('/reorder', request);
   },
 };
 

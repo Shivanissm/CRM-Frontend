@@ -207,6 +207,49 @@
   position: relative;
 }
 
+.person-section-edit-btn,
+.person-section-save-btn,
+.person-section-cancel-btn {
+  background: transparent;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.person-section-edit-btn:hover {
+  background: #f5f5f5;
+  border-color: #bbb;
+  color: #333;
+}
+
+.person-section-save-btn {
+  background: #4caf50;
+  border-color: #4caf50;
+  color: white;
+}
+
+.person-section-save-btn:hover {
+  background: #45a049;
+  border-color: #45a049;
+}
+
+.person-section-cancel-btn {
+  background: #f5f5f5;
+  border-color: #ddd;
+  color: #666;
+}
+
+.person-section-cancel-btn:hover {
+  background: #e0e0e0;
+  border-color: #bbb;
+}
+
 .person-section-menu-container {
   position: relative;
 }
@@ -232,6 +275,7 @@
   right: 0;
   bottom: 0;
   z-index: 998;
+  pointer-events: auto;
 }
 
 .person-section-menu {
@@ -277,6 +321,8 @@
   justify-content: space-between;
   gap: 12px;
   padding: 8px 0;
+  position: relative;
+  z-index: 1;
 }
 
 .person-field-label {
@@ -377,6 +423,8 @@
   text-align: left;
   flex: 1;
   min-width: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .person-field-row .person-field-icon {
@@ -395,11 +443,48 @@
   border: 1px solid transparent;
   min-height: 36px;
   box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
 }
 
 .person-field-clickable:hover {
   background: #f5f5f5;
   border-color: #ddd;
+}
+
+.person-field-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.person-field-edit-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 16px;
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.person-field-edit-btn:hover {
+  background: #f5f5f5;
+  color: #333;
+  opacity: 1;
+}
+
+.person-field-edit-btn:active {
+  transform: scale(0.95);
 }
 
 .person-field-placeholder {

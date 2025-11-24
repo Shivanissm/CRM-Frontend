@@ -282,15 +282,83 @@
   right: 0;
   background: #fff;
   border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 1000;
-  min-width: 200px;
+  min-width: 280px;
+  max-width: 320px;
+  max-height: 500px;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
+.deals-pipeline-search-container {
+  position: relative;
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.deals-pipeline-search-icon {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+
+.deals-pipeline-search-input {
+  width: 100%;
+  padding: 8px 12px 8px 36px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #111827;
+  background: #fff;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.deals-pipeline-search-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.deals-pipeline-search-input::placeholder {
+  color: #9ca3af;
+}
+
+.deals-pipeline-list {
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.deals-pipeline-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.deals-pipeline-list::-webkit-scrollbar-track {
+  background: #f9fafb;
+}
+
+.deals-pipeline-list::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.deals-pipeline-list::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
 .deals-pipeline-option {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
   padding: 10px 16px;
   text-align: left;
@@ -310,6 +378,82 @@
   background: #eff6ff;
   color: #3b82f6;
   font-weight: 500;
+}
+
+.deals-pipeline-option-name {
+  flex: 1;
+  text-align: left;
+}
+
+.deals-pipeline-checkmark {
+  width: 16px;
+  height: 16px;
+  color: #3b82f6;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.deals-pipeline-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 4px 0;
+}
+
+.deals-pipeline-actions {
+  padding: 4px 0;
+}
+
+.deals-pipeline-action-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  background: #fff;
+  border: none;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.deals-pipeline-action-option:hover {
+  background: #f9fafb;
+}
+
+.deals-pipeline-action-icon {
+  width: 16px;
+  height: 16px;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.deals-pipeline-new-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  background: #fff;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: #3b82f6;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.deals-pipeline-new-option:hover {
+  background: #eff6ff;
+}
+
+.deals-pipeline-plus-icon {
+  width: 16px;
+  height: 16px;
+  color: #3b82f6;
+  flex-shrink: 0;
 }
 
 .deals-filter-button-container {
@@ -378,11 +522,43 @@
   gap: 8px;
   font-size: 13px;
   color: #6b7280;
+  position: relative;
+  z-index: 100;
 }
 
-.deals-sort-icon {
-  font-size: 14px;
+.deals-sort-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  position: relative;
 }
+
+.deals-sort-icon-btn:hover {
+  color: #3b82f6;
+  border-color: #3b82f6;
+  background: #eff6ff;
+  transform: scale(1.05);
+}
+
+.deals-sort-icon-btn:active {
+  transform: scale(0.95);
+}
+
+.deals-sort-icon-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
 
 .deals-sort-label {
   font-weight: 500;
@@ -404,6 +580,93 @@
 .deals-sort-btn:hover {
   color: #3b82f6;
 }
+
+.deals-sort-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 220px;
+  max-width: 280px;
+  overflow: hidden;
+}
+
+.deals-sort-dropdown-title {
+  padding: 12px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.deals-sort-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+  background: #fff;
+  border: none;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.deals-sort-option:hover {
+  background: #f9fafb;
+}
+
+.deals-sort-option.active {
+  background: #eff6ff;
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.deals-sort-checkmark {
+  width: 16px;
+  height: 16px;
+  color: #3b82f6;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+/* Tooltip for sort direction */
+.deals-sort-tooltip {
+  position: fixed;
+  padding: 8px 12px;
+  background: #1f2937;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  border-radius: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+  z-index: 999999 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateX(-50%) translateY(-4px);
+  display: none;
+  top: 0;
+  left: 0;
+  max-width: 300px;
+}
+
+.deals-sort-tooltip.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  display: block;
+}
+
 
 .deals-header-bottom {
   display: flex;
@@ -766,6 +1029,16 @@
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid #f3f4f6;
+}
+
+.kanban-card-date {
+  font-size: 10px;
+  font-weight: 400;
+  color: #6b7280;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #f3f4f6;
+  white-space: nowrap;
 }
 
 .kanban-card-header {
@@ -1914,6 +2187,120 @@
 }
 
 .deals-loading,
+/* Toast Notification Styles */
+.deals-toast-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(17, 24, 39, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 100000;
+  padding-top: 100px;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.deals-toast {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.1);
+  padding: 0;
+  max-width: 520px;
+  width: 90%;
+  display: flex;
+  align-items: center;
+  position: relative;
+  animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border-left: 4px solid #DC2626;
+  overflow: hidden;
+  min-height: 72px;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.deals-toast-icon-wrapper {
+  flex-shrink: 0;
+  padding: 20px 16px 20px 20px;
+  display: flex;
+  align-items: center;
+}
+
+.deals-toast-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.deals-toast-content {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 16px 20px 0;
+  display: flex;
+  align-items: center;
+}
+
+.deals-toast-message {
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+}
+
+.deals-toast-close {
+  background: none;
+  border: none;
+  color: #6B7280;
+  cursor: pointer;
+  padding: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  margin: 0 12px 0 0;
+}
+
+.deals-toast-close:hover {
+  background: #F3F4F6;
+  color: #374151;
+}
+
+.deals-toast-close:active {
+  background: #E5E7EB;
+  transform: scale(0.95);
+}
+
+.deals-toast-close svg {
+  width: 16px;
+  height: 16px;
+}
+
 .deals-error,
 .deals-empty {
   grid-column: 1 / -1;

@@ -1899,6 +1899,120 @@
   background: #94a3b8;
 }
 
+/* Toast Notification Styles */
+.deal-detail-toast-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(17, 24, 39, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 100000;
+  padding-top: 100px;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.deal-detail-toast {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.1);
+  padding: 0;
+  max-width: 520px;
+  width: 90%;
+  display: flex;
+  align-items: center;
+  position: relative;
+  animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border-left: 4px solid #DC2626;
+  overflow: hidden;
+  min-height: 72px;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.deal-detail-toast-icon-wrapper {
+  flex-shrink: 0;
+  padding: 20px 16px 20px 20px;
+  display: flex;
+  align-items: center;
+}
+
+.deal-detail-toast-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.deal-detail-toast-content {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 16px 20px 0;
+  display: flex;
+  align-items: center;
+}
+
+.deal-detail-toast-message {
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+}
+
+.deal-detail-toast-close {
+  background: none;
+  border: none;
+  color: #6B7280;
+  cursor: pointer;
+  padding: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  margin: 0 12px 0 0;
+}
+
+.deal-detail-toast-close:hover {
+  background: #F3F4F6;
+  color: #374151;
+}
+
+.deal-detail-toast-close:active {
+  background: #E5E7EB;
+  transform: scale(0.95);
+}
+
+.deal-detail-toast-close svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .deal-detail-main {

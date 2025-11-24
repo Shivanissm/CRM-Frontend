@@ -42,7 +42,10 @@ export default function AppLayout() {
   return (
     <div className="app-shell">
       <aside className="app-shell-sidebar">
-        <div className="app-shell-brand">
+        <div 
+          className="app-shell-brand" 
+          onClick={() => navigate('/deals')}
+        >
           <span className="app-shell-logo">CRM</span>
           <span className="app-shell-title">Brideside</span>
         </div>
