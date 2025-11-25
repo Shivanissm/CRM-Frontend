@@ -15,6 +15,7 @@ import ActivityModal, { type ActivityFormValues } from '../components/ActivityMo
 import { activitiesApi } from '../services/activities';
 import DivertDealModal from '../components/DivertDealModal';
 import MarkAsLostModal from '../components/MarkAsLostModal';
+import DealValueModal from '../components/DealValueModal';
 import PipelineModal from '../components/PipelineModal';
 import ReorderPipelinesModal from '../components/ReorderPipelinesModal';
 import type { PipelineRequest, PipelineUpdateRequest } from '../types/pipeline';
@@ -114,6 +115,7 @@ const Deals = () => {
   const [pipelineSearchQuery, setPipelineSearchQuery] = useState<string>('');
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState<boolean>(false);
   const [isReorderPipelinesModalOpen, setIsReorderPipelinesModalOpen] = useState<boolean>(false);
+  const [dealValueModalDealId, setDealValueModalDealId] = useState<number | null>(null);
   const pipelineSearchInputRef = useRef<HTMLInputElement>(null);
   const [sortField, setSortField] = useState<DealSortField>(() => {
     const saved = localStorage.getItem('dealsSortField');
@@ -1950,48 +1952,45 @@ const Deals = () => {
       return;
     }
 
-    // Check if deal is in Qualified stage (only validate for deals in Qualified stage)
-    const pipeline = pipelines.find(p => p.id === deal.pipelineId);
-    if (pipeline) {
-      const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
-      if (currentStage) {
-        const currentStageName = currentStage.name.toLowerCase().trim();
-        const isCurrentlyQualified = currentStageName === 'qualified';
-        
-        // Only validate if deal is in Qualified stage
-        if (isCurrentlyQualified) {
-          // Check if deal has incomplete activities
-          const hasIncompleteActivities = await checkIncompleteActivities(deal);
+    // Validate when marking as WON - always require deal value
+    if (nextStatus === 'WON') {
+      // Check if deal has a value (value should be > 0) - REQUIRED for all deals
+      const hasDealValue = deal.value != null && deal.value > 0;
+      
+      // Check if deal is in Qualified stage (only validate activities for deals in Qualified stage)
+      const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+      let hasIncompleteActivities = false;
+      
+      if (pipeline) {
+        const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+        if (currentStage) {
+          const currentStageName = currentStage.name.toLowerCase().trim();
+          const isCurrentlyQualified = currentStageName === 'qualified';
           
-          // Check if deal has a value (value should be > 0)
-          const hasDealValue = deal.value != null && deal.value > 0;
-          
-          // Build error messages based on what's missing
-          const errorMessages: string[] = [];
-          
-          if (hasIncompleteActivities) {
-            const actionText = nextStatus === 'WON' ? 'mark the deal as WON' : 'mark the deal as LOST';
-            errorMessages.push(`Please complete the assigned activities first to ${actionText}.`);
-          }
-          
-          if (!hasDealValue) {
-            const actionText = nextStatus === 'WON' ? 'mark the deal as WON' : 'mark the deal as LOST';
-            errorMessages.push(`Please add the deal value to ${actionText}.`);
-          }
-          
-          // If there are any validation errors, show them
-          if (errorMessages.length > 0) {
-            const errorMessage = errorMessages.join(' ');
-            setError(errorMessage);
-            setShowErrorToast(true);
-            // Auto-hide after 5 seconds
-            setTimeout(() => {
-              setShowErrorToast(false);
-              setError(null);
-            }, 5000);
-            return;
+          // Only validate activities if deal is in Qualified stage
+          if (isCurrentlyQualified) {
+            // Check if deal has incomplete activities
+            hasIncompleteActivities = await checkIncompleteActivities(deal);
+            
+            if (hasIncompleteActivities) {
+              const errorMessage = 'Please complete the assigned activities first to mark the deal as WON.';
+              setError(errorMessage);
+              setShowErrorToast(true);
+              // Auto-hide after 5 seconds
+              setTimeout(() => {
+                setShowErrorToast(false);
+                setError(null);
+              }, 5000);
+              return;
+            }
           }
         }
+      }
+      
+      // If deal value is missing, open modal to enter it
+      if (!hasDealValue) {
+        setDealValueModalDealId(dealId);
+        return;
       }
     }
 
@@ -2003,6 +2002,30 @@ const Deals = () => {
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Failed to update status.';
       setError(message);
+    } finally {
+      setActionInFlight(null);
+    }
+  };
+
+  const handleDealValueUpdate = async (dealId: number, dealValue: number) => {
+    // Update the deal value first
+    setActionInFlight({ dealId, type: 'status' });
+    try {
+      // First update the deal value
+      const updatedDeal = await dealsApi.update(dealId, { value: dealValue });
+      setDeals((prev) => prev.map((deal) => (deal.id === dealId ? updatedDeal : deal)));
+      setSelectedDeal((prev) => (prev && prev.id === dealId ? updatedDeal : prev));
+      
+      // After updating value, directly mark as WON (skip validation since we just added the value)
+      const wonDeal = await dealsApi.updateStatus(dealId, { status: 'WON' });
+      setDeals((prev) => prev.map((deal) => (deal.id === dealId ? wonDeal : deal)));
+      setSelectedDeal((prev) => (prev && prev.id === dealId ? wonDeal : prev));
+      
+      setDealValueModalDealId(null);
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'Failed to update deal value.';
+      setError(message);
+      throw err;
     } finally {
       setActionInFlight(null);
     }
@@ -3238,7 +3261,7 @@ const Deals = () => {
                                       </div>
                                     )}
                                     <div className="kanban-card-value">{formatCurrency(deal.value || 0)}</div>
-                  </div>
+                                  </div>
                                   <button
                                     className="kanban-card-action-btn"
                                     onClick={(e) => {
@@ -3415,7 +3438,7 @@ const Deals = () => {
                                       </div>
                                     )}
                                     <div className="kanban-card-value">{formatCurrency(deal.value || 0)}</div>
-                  </div>
+                                  </div>
                                   <button
                                     className="kanban-card-action-btn"
                                     onClick={(e) => {
@@ -4316,6 +4339,15 @@ const Deals = () => {
           onClose={() => setMarkAsLostDealId(null)}
           onConfirm={(lostReason) => handleMarkAsLost(markAsLostDealId, lostReason)}
           dealName={deals.find(d => d.id === markAsLostDealId)?.name}
+        />
+      )}
+      {dealValueModalDealId && (
+        <DealValueModal
+          isOpen={true}
+          onClose={() => setDealValueModalDealId(null)}
+          onConfirm={(dealValue) => handleDealValueUpdate(dealValueModalDealId, dealValue)}
+          dealName={deals.find(d => d.id === dealValueModalDealId)?.name}
+          currentValue={deals.find(d => d.id === dealValueModalDealId)?.value}
         />
       )}
       {isPipelineModalOpen && (

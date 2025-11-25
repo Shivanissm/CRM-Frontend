@@ -13,6 +13,7 @@ import type { Organization } from '../types/organization';
 import type { Pipeline } from '../types/pipeline';
 import ActivityModal, { type ActivityFormValues } from '../components/ActivityModal';
 import MarkAsLostModal from '../components/MarkAsLostModal';
+import DealValueModal from '../components/DealValueModal';
 import './DealDetail.css';
 
 type ActiveTab = 'Activity' | 'Notes' | 'Meeting scheduler' | 'Call' | 'Email' | 'Send quote' | 'Send Contract' | 'Share Worklinks';
@@ -33,6 +34,7 @@ export default function DealDetail() {
   const [showErrorToast, setShowErrorToast] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showMarkAsLostModal, setShowMarkAsLostModal] = useState(false);
+  const [showDealValueModal, setShowDealValueModal] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
@@ -662,37 +664,27 @@ export default function DealDetail() {
     
     // Only validate when marking as WON (not when reopening)
     if (newStatus === 'WON') {
-      // Check if deal is in Qualified stage (only validate for deals in Qualified stage)
+      // Check if deal has a value (value should be > 0) - REQUIRED for all deals
+      const hasDealValue = deal.value != null && deal.value > 0;
+      
+      // Check if deal is in Qualified stage (only validate activities for deals in Qualified stage)
       const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+      let hasIncompleteActivities = false;
+      
       if (pipeline) {
         const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
         if (currentStage) {
           const currentStageName = currentStage.name.toLowerCase().trim();
           const isCurrentlyQualified = currentStageName === 'qualified';
           
-          // Only validate if deal is in Qualified stage
+          // Only validate activities if deal is in Qualified stage
           if (isCurrentlyQualified) {
             // Check if deal has incomplete activities
-            const hasIncompleteActivities = await checkIncompleteActivities(deal);
-            
-            // Check if deal has a value (value should be > 0)
-            const hasDealValue = deal.value != null && deal.value > 0;
-            
-            // Build error messages based on what's missing
-            const errorMessages: string[] = [];
+            hasIncompleteActivities = await checkIncompleteActivities(deal);
             
             if (hasIncompleteActivities) {
-              errorMessages.push('Please complete the assigned activities first to mark the deal as WON.');
-            }
-            
-            if (!hasDealValue) {
-              errorMessages.push('Please add the deal value to mark the deal as WON.');
-            }
-            
-            // If there are any validation errors, show them
-            if (errorMessages.length > 0) {
-              const message = errorMessages.join(' ');
-              setErrorMessage(message);
+              const errorMessage = 'Please complete the assigned activities first to mark the deal as WON.';
+              setErrorMessage(errorMessage);
               setShowErrorToast(true);
               // Auto-hide after 5 seconds
               setTimeout(() => {
@@ -703,6 +695,12 @@ export default function DealDetail() {
             }
           }
         }
+      }
+      
+      // If deal value is missing, open modal to enter it
+      if (!hasDealValue) {
+        setShowDealValueModal(true);
+        return;
       }
     }
     
@@ -1615,6 +1613,39 @@ export default function DealDetail() {
           onClose={() => setShowMarkAsLostModal(false)}
           onConfirm={handleMarkAsLost}
           dealName={deal?.name}
+        />
+      )}
+      {showDealValueModal && deal && (
+        <DealValueModal
+          isOpen={true}
+          onClose={() => setShowDealValueModal(false)}
+          onConfirm={async (dealValue) => {
+            try {
+              // Update the deal value first
+              const updatedDeal = await dealsApi.update(Number(id), { value: dealValue });
+              setDeal(updatedDeal);
+              setFormData((prev) => ({ ...prev, value: dealValue.toString() }));
+              
+              // After updating value, mark as WON
+              const wonDeal = await dealsApi.updateStatus(Number(id), { status: 'WON' });
+              setDeal(wonDeal);
+              setFormData((prev) => ({ ...prev, status: 'WON' }));
+              
+              setShowDealValueModal(false);
+            } catch (error: any) {
+              console.error('Failed to update deal value:', error);
+              const errorMsg = error?.response?.data?.message || error?.message || 'Failed to update deal value.';
+              setErrorMessage(errorMsg);
+              setShowErrorToast(true);
+              setTimeout(() => {
+                setShowErrorToast(false);
+                setErrorMessage(null);
+              }, 5000);
+              throw error;
+            }
+          }}
+          dealName={deal.name}
+          currentValue={deal.value}
         />
       )}
 
