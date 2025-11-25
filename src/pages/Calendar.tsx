@@ -173,6 +173,15 @@ export default function CalendarPage() {
     return ids;
   }, [filteredDeals]);
 
+  const dealCalendarDateKeys = useMemo(() => {
+    const keys = new Set<string>();
+    filteredDeals.forEach((deal) => {
+      if (!deal.eventDate || !deal.organizationId) return;
+      keys.add(`${deal.organizationId}:${deal.eventDate}`);
+    });
+    return keys;
+  }, [filteredDeals]);
+
   const filteredVendorEvents = useMemo(() => {
     const query = search.trim().toLowerCase();
     const deduped: VendorCalendarEvent[] = [];
@@ -196,6 +205,11 @@ export default function CalendarPage() {
       }
 
       if (event.googleEventId && dealGoogleEventIds.has(event.googleEventId)) {
+        return;
+      }
+
+      const dateKey = formatIsoDateKey(event.startAt);
+      if (dateKey && event.organizationId && dealCalendarDateKeys.has(`${event.organizationId}:${dateKey}`)) {
         return;
       }
 
@@ -223,7 +237,16 @@ export default function CalendarPage() {
       deduped.push(event);
     });
     return deduped;
-  }, [calendarOnly, dealGoogleEventIds, organizationFilter, organizationsById, ownerFilter, search, vendorEvents]);
+  }, [
+    calendarOnly,
+    dealCalendarDateKeys,
+    dealGoogleEventIds,
+    organizationFilter,
+    organizationsById,
+    ownerFilter,
+    search,
+    vendorEvents,
+  ]);
 
   const calendarDays = useMemo(() => buildCalendarDays(currentMonth), [currentMonth]);
 
