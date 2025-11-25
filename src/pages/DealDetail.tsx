@@ -7,7 +7,7 @@ import { organizationsApi } from '../services/organizations';
 import { pipelinesApi } from '../services/pipelines';
 import { activitiesApi, type Activity } from '../services/activities';
 import { clearAuthSession } from '../utils/authToken';
-import type { Deal, DealCreateRequest, DealUpdateRequest } from '../types/deal';
+import type { Deal, DealCreateRequest, DealUpdateRequest, DealSource, DealSubSource } from '../types/deal';
 import type { Person } from '../types/person';
 import type { Organization } from '../types/organization';
 import type { Pipeline } from '../types/pipeline';
@@ -17,6 +17,21 @@ import DealValueModal from '../components/DealValueModal';
 import './DealDetail.css';
 
 type ActiveTab = 'Activity' | 'Notes' | 'Meeting scheduler' | 'Call' | 'Email' | 'Send quote' | 'Send Contract' | 'Share Worklinks';
+
+// Source and Sub-Source constants
+const DEAL_SOURCE_OPTIONS: Array<{ value: DealSource; label: string }> = [
+  { value: 'Direct', label: 'Direct' },
+  { value: 'Divert', label: 'Divert' },
+  { value: 'Reference', label: 'Reference' },
+  { value: 'Planner', label: 'Planner' },
+];
+
+const DEAL_SUB_SOURCE_OPTIONS: Array<{ value: DealSubSource; label: string }> = [
+  { value: 'Instagram', label: 'Instagram' },
+  { value: 'Whatsapp', label: 'Whatsapp' },
+  { value: 'Landing Page', label: 'Landing Page' },
+  { value: 'Email', label: 'Email' },
+];
 
 export default function DealDetail() {
   const { id } = useParams<{ id: string }>();
@@ -72,6 +87,8 @@ export default function DealDetail() {
     commissionAmount?: string;
     probability?: number | null;
     expectedCloseDate?: string | null;
+    source?: string;
+    subSource?: string;
   }>({
     name: '',
     value: '',
@@ -89,6 +106,8 @@ export default function DealDetail() {
     commissionAmount: '',
     probability: null,
     expectedCloseDate: null,
+    source: '',
+    subSource: '',
   });
 
   useEffect(() => {
@@ -167,6 +186,9 @@ export default function DealDetail() {
     try {
       const dealData = await dealsApi.get(dealId);
       setDeal(dealData);
+      console.log('Loaded deal data:', dealData);
+      console.log('Deal source:', dealData.source);
+      console.log('Deal subSource:', dealData.subSource);
 
       // Load person data if personId exists
       let personEmail = '';
@@ -199,6 +221,8 @@ export default function DealDetail() {
         email: dealData.email || personEmail || '',
         eventDate: dealData.eventDate ? formatDateForInput(dealData.eventDate) : '',
         commissionAmount: dealData.commissionAmount?.toString() || '',
+        source: dealData.source || '',
+        subSource: dealData.subSource || '',
       });
     } catch (error) {
       console.error('Failed to load deal:', error);
@@ -442,7 +466,14 @@ export default function DealDetail() {
   };
 
   const handleFieldChange = (field: string, value: any) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      const newData = { ...prev, [field]: value };
+      // If source changes, clear subSource if source is not "Direct"
+      if (field === 'source' && value !== 'Direct') {
+        newData.subSource = '';
+      }
+      return newData;
+    });
   };
 
   const handleSave = async () => {
@@ -520,6 +551,8 @@ export default function DealDetail() {
           email: toNullIfEmpty(formData.email),
           eventDate: toNullIfEmpty(formData.eventDate),
           commissionAmount: parseCommissionAmount(formData.commissionAmount),
+          source: formData.source ? (formData.source as DealSource) : undefined,
+          subSource: (formData.source === 'Direct' && formData.subSource) ? (formData.subSource as DealSubSource) : undefined,
         };
         console.log('Updating deal ID:', id, 'with payload:', updatePayload);
         const updatedDeal = await dealsApi.update(Number(id), updatePayload);
@@ -545,6 +578,8 @@ export default function DealDetail() {
           email: updatedDeal.email || '',
           eventDate: updatedDeal.eventDate ? formatDateForInput(updatedDeal.eventDate) : '',
           commissionAmount: updatedDeal.commissionAmount?.toString() || '',
+          source: updatedDeal.source || '',
+          subSource: updatedDeal.subSource || '',
         }));
         
         alert('Deal updated successfully');
@@ -664,8 +699,7 @@ export default function DealDetail() {
     
     // Only validate when marking as WON (not when reopening)
     if (newStatus === 'WON') {
-      // Check if deal has a value (value should be > 0) - REQUIRED for all deals
-      const hasDealValue = deal.value != null && deal.value > 0;
+      // Note: We'll always show the modal to allow editing value, so no need to check hasDealValue here
       
       // Check if deal is in Qualified stage (only validate activities for deals in Qualified stage)
       const pipeline = pipelines.find(p => p.id === deal.pipelineId);
@@ -697,11 +731,9 @@ export default function DealDetail() {
         }
       }
       
-      // If deal value is missing, open modal to enter it
-      if (!hasDealValue) {
-        setShowDealValueModal(true);
-        return;
-      }
+      // Always show modal when marking as WON to allow editing value and commission
+      setShowDealValueModal(true);
+      return;
     }
     
     try {
@@ -1260,6 +1292,50 @@ export default function DealDetail() {
                   )}
                 </div>
                 <div className="deal-field-row">
+                  <span className="deal-field-label">Source</span>
+                  {editingField === 'source' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                      <select
+                        className="deal-field-input"
+                        value={formData.source || ''}
+                        onChange={(e) => handleFieldChange('source', e.target.value)}
+                        onBlur={() => setEditingField(null)}
+                        autoFocus
+                      >
+                        <option value="">Select Source</option>
+                        {DEAL_SOURCE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      {formData.source === 'Direct' && (
+                        <select
+                          className="deal-field-input"
+                          value={formData.subSource || ''}
+                          onChange={(e) => handleFieldChange('subSource', e.target.value)}
+                          onBlur={() => setEditingField(null)}
+                        >
+                          <option value="">Select Sub-Source (Optional)</option>
+                          {DEAL_SUB_SOURCE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="deal-field-text" onClick={() => setEditingField('source')}>
+                      {formData.source 
+                        ? (formData.source === 'Direct' && formData.subSource 
+                            ? `${formData.source} (${formData.subSource})` 
+                            : formData.source)
+                        : '—'}
+                      </span>
+                  )}
+                </div>
+                <div className="deal-field-row">
                   <span className="deal-field-label">Created</span>
                   <div className="deal-field-text">
                     {deal ? formatDateForDisplay(deal.createdAt) : ''}
@@ -1619,17 +1695,40 @@ export default function DealDetail() {
         <DealValueModal
           isOpen={true}
           onClose={() => setShowDealValueModal(false)}
-          onConfirm={async (dealValue) => {
+          onConfirm={async (dealValue, commissionAmount, source, subSource) => {
             try {
-              // Update the deal value first
-              const updatedDeal = await dealsApi.update(Number(id), { value: dealValue });
-              setDeal(updatedDeal);
-              setFormData((prev) => ({ ...prev, value: dealValue.toString() }));
+              // Combine all updates into a single request
+              const updatePayload: any = {
+                status: 'WON',
+                value: dealValue,
+              };
               
-              // After updating value, mark as WON
-              const wonDeal = await dealsApi.updateStatus(Number(id), { status: 'WON' });
+              if (commissionAmount !== undefined && commissionAmount !== null) {
+                updatePayload.commissionAmount = commissionAmount;
+              }
+              
+              // Add source and subSource if provided
+              if (source) {
+                updatePayload.source = source;
+                if (source === 'Direct' && subSource) {
+                  updatePayload.subSource = subSource;
+                } else {
+                  // Clear subSource if source is not Direct
+                  updatePayload.subSource = null;
+                }
+              }
+              
+              // Use the update endpoint which accepts all these fields including status
+              const wonDeal = await dealsApi.update(Number(id), updatePayload);
               setDeal(wonDeal);
-              setFormData((prev) => ({ ...prev, status: 'WON' }));
+              setFormData((prev) => ({ 
+                ...prev, 
+                status: 'WON',
+                value: dealValue.toString(),
+                commissionAmount: commissionAmount?.toString() || wonDeal.commissionAmount?.toString() || '',
+                source: source || wonDeal.source || '',
+                subSource: (source === 'Direct' && subSource) ? subSource : '',
+              }));
               
               setShowDealValueModal(false);
             } catch (error: any) {
@@ -1646,6 +1745,9 @@ export default function DealDetail() {
           }}
           dealName={deal.name}
           currentValue={deal.value}
+          currentCommission={deal.commissionAmount}
+          dealSource={deal.source || null}
+          dealSubSource={deal.subSource || null}
         />
       )}
 

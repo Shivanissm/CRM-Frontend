@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import './Deals.css';
 import { dealsApi, type DealSortField, type SortDirection } from '../services/deals';
-import type { Deal, DealStatus } from '../types/deal';
+import type { Deal, DealStatus, DealSource, DealSubSource } from '../types/deal';
 import type { OrganizationCategory } from '../types/organization';
 import { organizationsApi } from '../services/organizations';
 import type { Organization } from '../types/organization';
@@ -38,6 +38,7 @@ interface DealFormState {
   categoryId: string;
   label: string;
   source: string;
+  subSource: string;
   eventType: string;
   venue: string;
   eventDate: string;
@@ -56,11 +57,27 @@ const initialFormState: DealFormState = {
   categoryId: '',
   label: '',
   source: '',
+  subSource: '',
   eventType: '',
   venue: '',
   eventDate: '',
   referencedDealId: '',
 };
+
+// Source and Sub-Source constants
+const DEAL_SOURCE_OPTIONS: Array<{ value: DealSource; label: string }> = [
+  { value: 'Direct', label: 'Direct' },
+  { value: 'Divert', label: 'Divert' },
+  { value: 'Reference', label: 'Reference' },
+  { value: 'Planner', label: 'Planner' },
+];
+
+const DEAL_SUB_SOURCE_OPTIONS: Array<{ value: DealSubSource; label: string }> = [
+  { value: 'Instagram', label: 'Instagram' },
+  { value: 'Whatsapp', label: 'Whatsapp' },
+  { value: 'Landing Page', label: 'Landing Page' },
+  { value: 'Email', label: 'Email' },
+];
 
 // Unused - kept for potential future use
 // const statusColors: Record<DealStatus, string> = {
@@ -1759,6 +1776,13 @@ const Deals = () => {
         newData.stageId = '';
       }
       
+      // If source changes, clear subSource if source is not "Direct"
+      if (name === 'source') {
+        if (value !== 'Direct') {
+          newData.subSource = '';
+        }
+      }
+      
       // If personName is being changed, filter persons for autocomplete
       if (name === 'personName') {
         if (value.trim().length > 0) {
@@ -1893,7 +1917,8 @@ const Deals = () => {
       organizationId: organizationId,
       categoryId: resolvedCategory,
       label: formData.label ? formData.label : undefined,
-      source: formData.source ? formData.source : undefined,
+      source: formData.source ? (formData.source as DealSource) : undefined,
+      subSource: (formData.source === 'Direct' && formData.subSource) ? (formData.subSource as DealSubSource) : undefined,
       referencedDealId: formData.referencedDealId ? Number(formData.referencedDealId) : undefined,
       eventType: formData.eventType ? formData.eventType : undefined,
       venue: formData.venue ? formData.venue : undefined,
@@ -1952,46 +1977,41 @@ const Deals = () => {
       return;
     }
 
-    // Validate when marking as WON - always require deal value
+    // Validate when marking as WON
     if (nextStatus === 'WON') {
-      // Check if deal has a value (value should be > 0) - REQUIRED for all deals
-      const hasDealValue = deal.value != null && deal.value > 0;
-      
       // Check if deal is in Qualified stage (only validate activities for deals in Qualified stage)
-      const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+    const pipeline = pipelines.find(p => p.id === deal.pipelineId);
       let hasIncompleteActivities = false;
       
-      if (pipeline) {
-        const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
-        if (currentStage) {
-          const currentStageName = currentStage.name.toLowerCase().trim();
-          const isCurrentlyQualified = currentStageName === 'qualified';
-          
+    if (pipeline) {
+      const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+      if (currentStage) {
+        const currentStageName = currentStage.name.toLowerCase().trim();
+        const isCurrentlyQualified = currentStageName === 'qualified';
+        
           // Only validate activities if deal is in Qualified stage
-          if (isCurrentlyQualified) {
-            // Check if deal has incomplete activities
+        if (isCurrentlyQualified) {
+          // Check if deal has incomplete activities
             hasIncompleteActivities = await checkIncompleteActivities(deal);
-            
-            if (hasIncompleteActivities) {
+          
+          if (hasIncompleteActivities) {
               const errorMessage = 'Please complete the assigned activities first to mark the deal as WON.';
-              setError(errorMessage);
-              setShowErrorToast(true);
-              // Auto-hide after 5 seconds
-              setTimeout(() => {
-                setShowErrorToast(false);
-                setError(null);
-              }, 5000);
-              return;
-            }
+            setError(errorMessage);
+            setShowErrorToast(true);
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+              setShowErrorToast(false);
+              setError(null);
+            }, 5000);
+            return;
           }
         }
       }
-      
-      // If deal value is missing, open modal to enter it
-      if (!hasDealValue) {
-        setDealValueModalDealId(dealId);
-        return;
       }
+      
+      // Always show modal when marking as WON to allow editing value and commission
+      setDealValueModalDealId(dealId);
+      return;
     }
 
     setActionInFlight({ dealId, type: 'status' });
@@ -2007,17 +2027,33 @@ const Deals = () => {
     }
   };
 
-  const handleDealValueUpdate = async (dealId: number, dealValue: number) => {
-    // Update the deal value first
+  const handleDealValueUpdate = async (dealId: number, dealValue: number, commissionAmount?: number, source?: DealSource, subSource?: DealSubSource) => {
+    // Update status with value, commission, and source
     setActionInFlight({ dealId, type: 'status' });
     try {
-      // First update the deal value
-      const updatedDeal = await dealsApi.update(dealId, { value: dealValue });
-      setDeals((prev) => prev.map((deal) => (deal.id === dealId ? updatedDeal : deal)));
-      setSelectedDeal((prev) => (prev && prev.id === dealId ? updatedDeal : prev));
+      // Combine all updates into a single request
+      const updatePayload: any = {
+        status: 'WON',
+        value: dealValue,
+      };
       
-      // After updating value, directly mark as WON (skip validation since we just added the value)
-      const wonDeal = await dealsApi.updateStatus(dealId, { status: 'WON' });
+      if (commissionAmount !== undefined && commissionAmount !== null) {
+        updatePayload.commissionAmount = commissionAmount;
+      }
+      
+      // Add source and subSource if provided
+      if (source) {
+        updatePayload.source = source;
+        if (source === 'Direct' && subSource) {
+          updatePayload.subSource = subSource;
+        } else {
+          // Clear subSource if source is not Direct
+          updatePayload.subSource = null;
+        }
+      }
+      
+      // Use the update endpoint which accepts all these fields including status
+      const wonDeal = await dealsApi.update(dealId, updatePayload);
       setDeals((prev) => prev.map((deal) => (deal.id === dealId ? wonDeal : deal)));
       setSelectedDeal((prev) => (prev && prev.id === dealId ? wonDeal : prev));
       
@@ -2509,8 +2545,8 @@ const Deals = () => {
                             }
                             setIsPipelineDropdownOpen(false);
                                 setPipelineSearchQuery('');
-                              }}
-                            >
+                          }}
+                        >
                               <span className="deals-pipeline-option-name">{pipeline.name}</span>
                               {selectedPipelineId === pipeline.id && (
                                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="deals-pipeline-checkmark">
@@ -3261,7 +3297,7 @@ const Deals = () => {
                                       </div>
                                     )}
                                     <div className="kanban-card-value">{formatCurrency(deal.value || 0)}</div>
-                                  </div>
+                  </div>
                                   <button
                                     className="kanban-card-action-btn"
                                     onClick={(e) => {
@@ -3438,7 +3474,7 @@ const Deals = () => {
                                       </div>
                                     )}
                                     <div className="kanban-card-value">{formatCurrency(deal.value || 0)}</div>
-                                  </div>
+                  </div>
                                   <button
                                     className="kanban-card-action-btn"
                                     onClick={(e) => {
@@ -4116,14 +4152,32 @@ const Deals = () => {
                     disabled={isSubmitting}
                   >
                     <option value="">Select Source</option>
-                    <option value="Instagram">Instagram</option>
-                    <option value="Whatsapp">Whatsapp</option>
-                    <option value="Email">Email</option>
-                    <option value="Reference">Reference</option>
-                    <option value="Call">Call</option>
-                    <option value="Website">Website</option>
+                    {DEAL_SOURCE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
+                {formData.source === 'Direct' && (
+                  <div className="form-group">
+                    <label className="form-label">Sub-Source</label>
+                    <select
+                      name="subSource"
+                      className="form-input"
+                      value={formData.subSource}
+                      onChange={handleInputChange}
+                      disabled={isSubmitting}
+                    >
+                      <option value="">Select Sub-Source (Optional)</option>
+                      {DEAL_SUB_SOURCE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
@@ -4341,15 +4395,21 @@ const Deals = () => {
           dealName={deals.find(d => d.id === markAsLostDealId)?.name}
         />
       )}
-      {dealValueModalDealId && (
-        <DealValueModal
-          isOpen={true}
-          onClose={() => setDealValueModalDealId(null)}
-          onConfirm={(dealValue) => handleDealValueUpdate(dealValueModalDealId, dealValue)}
-          dealName={deals.find(d => d.id === dealValueModalDealId)?.name}
-          currentValue={deals.find(d => d.id === dealValueModalDealId)?.value}
-        />
-      )}
+      {dealValueModalDealId && (() => {
+        const deal = deals.find(d => d.id === dealValueModalDealId);
+        return (
+          <DealValueModal
+            isOpen={true}
+            onClose={() => setDealValueModalDealId(null)}
+            onConfirm={(dealValue, commissionAmount, source, subSource) => handleDealValueUpdate(dealValueModalDealId, dealValue, commissionAmount, source, subSource)}
+            dealName={deal?.name}
+            currentValue={deal?.value}
+            currentCommission={deal?.commissionAmount}
+            dealSource={deal?.source || null}
+            dealSubSource={deal?.subSource || null}
+          />
+        );
+      })()}
       {isPipelineModalOpen && (
         <PipelineModal
           isOpen={true}
@@ -4699,7 +4759,7 @@ const Deals = () => {
                   {deleteConfirmDeal.name?.trim().length 
                     ? `"${deleteConfirmDeal.name.trim()}"` 
                     : `Deal #${deleteConfirmDeal.id}`}
-                </span>?
+                </span>
               </p>
 
               {/* Warning Strip */}

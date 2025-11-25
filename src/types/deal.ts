@@ -1,5 +1,9 @@
 export type DealStatus = 'IN_PROGRESS' | 'WON' | 'LOST';
 
+export type DealSource = 'Direct' | 'Divert' | 'Reference' | 'Planner';
+
+export type DealSubSource = 'Instagram' | 'Whatsapp' | 'Landing Page' | 'Email';
+
 export interface Deal {
   id: number;
   name: string;
@@ -25,7 +29,8 @@ export interface Deal {
   venueAsked?: boolean | null;
   eventDate?: string | null;
   label?: string | null;
-  source?: string | null;
+  source?: DealSource | null;
+  subSource?: DealSubSource | null;
   isDiverted?: boolean | null;
   referencedDealId?: number | null;
   referencedPipelineId?: number | null;
@@ -53,7 +58,8 @@ export interface DealCreateRequest {
   venueAsked?: boolean | null;
   eventDate?: string | null;
   label?: string | null;
-  source?: string | null;
+  source?: DealSource | null;
+  subSource?: DealSubSource | null;
   referencedDealId?: number | null;
 }
 
@@ -87,7 +93,8 @@ export interface DealUpdateRequest {
   venueAsked?: boolean | null;
   eventDate?: string | null;
   label?: string | null;
-  source?: string | null;
+  source?: DealSource | null;
+  subSource?: DealSubSource | null;
 }
 
 export interface DealCategory {
