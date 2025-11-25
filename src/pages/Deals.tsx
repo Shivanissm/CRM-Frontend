@@ -12,7 +12,7 @@ import type { Pipeline, Stage } from '../types/pipeline';
 import { personsApi } from '../services/api';
 import type { Person, PersonOwner } from '../types/person';
 import ActivityModal, { type ActivityFormValues } from '../components/ActivityModal';
-import { activitiesApi } from '../services/activities';
+import { activitiesApi, type Activity } from '../services/activities';
 import DivertDealModal from '../components/DivertDealModal';
 import MarkAsLostModal from '../components/MarkAsLostModal';
 import DealValueModal from '../components/DealValueModal';
@@ -98,6 +98,7 @@ const Deals = () => {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [activitiesByDealId, setActivitiesByDealId] = useState<Map<number, Activity[]>>(new Map());
   const [showErrorToast, setShowErrorToast] = useState(false);
   const [filterStatus, setFilterStatus] = useState<DealFilterStatus>(() => {
     const saved = localStorage.getItem('dealsFilterStatus');
@@ -298,7 +299,70 @@ const Deals = () => {
     }
   }, [deleteConfirmDeal]);
 
+  const loadActivities = useCallback(async () => {
+    try {
+      const activitiesResponse = await activitiesApi.list({ page: 0, size: 10000, done: false });
+      const allActivities = activitiesResponse.content || [];
+      
+      // Group activities by dealId
+      const grouped = new Map<number, Activity[]>();
+      allActivities.forEach(activity => {
+        if (activity.dealId) {
+          const existing = grouped.get(activity.dealId) || [];
+          grouped.set(activity.dealId, [...existing, activity]);
+        }
+      });
+      
+      setActivitiesByDealId(grouped);
+    } catch (err) {
+      console.error('Failed to load activities:', err);
+    }
+  }, []);
 
+  // Determine activity status for a deal
+  const getDealActivityStatus = useCallback((dealId: number): { status: 'future' | 'today' | 'overdue' | 'none'; tooltip: string } => {
+    const activities = activitiesByDealId.get(dealId) || [];
+    
+    if (activities.length === 0) {
+      return { status: 'none', tooltip: 'Schedule an activity' };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let hasToday = false;
+    let hasOverdue = false;
+    let hasFuture = false;
+
+    activities.forEach(activity => {
+      const activityDate = activity.date || activity.dueDate || activity.dateTime?.split('T')[0];
+      if (!activityDate) return;
+
+      const date = new Date(activityDate);
+      date.setHours(0, 0, 0, 0);
+      
+      const diffTime = date.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 0) {
+        hasOverdue = true;
+      } else if (diffDays === 0) {
+        hasToday = true;
+      } else {
+        hasFuture = true;
+      }
+    });
+
+    if (hasOverdue) {
+      return { status: 'overdue', tooltip: 'View overdue activity' };
+    } else if (hasToday) {
+      return { status: 'today', tooltip: 'View activity scheduled for today' };
+    } else if (hasFuture) {
+      return { status: 'future', tooltip: 'View upcoming activity' };
+    }
+
+    return { status: 'none', tooltip: 'Schedule an activity' };
+  }, [activitiesByDealId]);
 
   const loadDeals = useCallback(async (preserveDealId?: number | null) => {
     setLoading(true);
@@ -332,19 +396,28 @@ const Deals = () => {
         });
       }
       setError(null);
+      // Load activities after deals are loaded
+      await loadActivities();
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Failed to load deals.';
       setError(message);
     } finally {
       setLoading(false);
     }
-  }, [sortField, sortDirection]);
+  }, [sortField, sortDirection, loadActivities]);
 
   // Initial load
   useEffect(() => {
     loadDeals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reload activities when deals change
+  useEffect(() => {
+    if (deals.length > 0) {
+      loadActivities();
+    }
+  }, [deals.length, loadActivities]);
 
   // Auto-open modal if coming from Person page
   useEffect(() => {
@@ -3297,6 +3370,45 @@ const Deals = () => {
                                       </div>
                                     )}
                                     <div className="kanban-card-value">{formatCurrency(deal.value || 0)}</div>
+                                    {(() => {
+                                      const activityStatus = getDealActivityStatus(deal.id);
+                                      return (
+                                        <div className="kanban-card-activity-icon-wrapper">
+                                          {activityStatus.status === 'future' && (
+                                            <div className="kanban-card-activity-icon activity-future" title={activityStatus.tooltip}>
+                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <circle cx="8" cy="8" r="7" fill="#10B981" stroke="#10B981" strokeWidth="1"/>
+                                                <path d="M6 4L10 8L6 12" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                                              </svg>
+                                            </div>
+                                          )}
+                                          {activityStatus.status === 'today' && (
+                                            <div className="kanban-card-activity-icon activity-today" title={activityStatus.tooltip}>
+                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M8 2L2 6L8 10L14 6L8 2Z" fill="#FCD34D" stroke="#F59E0B" strokeWidth="1.5"/>
+                                                <path d="M8 7V9M8 11H8.01" stroke="#92400E" strokeWidth="1.5" strokeLinecap="round"/>
+                                              </svg>
+                                            </div>
+                                          )}
+                                          {activityStatus.status === 'overdue' && (
+                                            <div className="kanban-card-activity-icon activity-overdue" title={activityStatus.tooltip}>
+                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <circle cx="8" cy="8" r="7" fill="#DC2626" stroke="#DC2626" strokeWidth="1"/>
+                                                <path d="M10 6L6 10M6 6L10 10" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                              </svg>
+                                            </div>
+                                          )}
+                                          {activityStatus.status === 'none' && (
+                                            <div className="kanban-card-activity-icon activity-none" title={activityStatus.tooltip}>
+                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <circle cx="8" cy="8" r="7" fill="#9CA3AF" stroke="#9CA3AF" strokeWidth="1"/>
+                                                <path d="M6 4L10 8L6 12" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                                              </svg>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
                   </div>
                                   <button
                                     className="kanban-card-action-btn"
@@ -3474,6 +3586,45 @@ const Deals = () => {
                                       </div>
                                     )}
                                     <div className="kanban-card-value">{formatCurrency(deal.value || 0)}</div>
+                                    {(() => {
+                                      const activityStatus = getDealActivityStatus(deal.id);
+                                      return (
+                                        <div className="kanban-card-activity-icon-wrapper">
+                                          {activityStatus.status === 'future' && (
+                                            <div className="kanban-card-activity-icon activity-future" title={activityStatus.tooltip}>
+                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <circle cx="8" cy="8" r="7" fill="#10B981" stroke="#10B981" strokeWidth="1"/>
+                                                <path d="M6 4L10 8L6 12" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                                              </svg>
+                                            </div>
+                                          )}
+                                          {activityStatus.status === 'today' && (
+                                            <div className="kanban-card-activity-icon activity-today" title={activityStatus.tooltip}>
+                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M8 2L2 6L8 10L14 6L8 2Z" fill="#FCD34D" stroke="#F59E0B" strokeWidth="1.5"/>
+                                                <path d="M8 7V9M8 11H8.01" stroke="#92400E" strokeWidth="1.5" strokeLinecap="round"/>
+                                              </svg>
+                                            </div>
+                                          )}
+                                          {activityStatus.status === 'overdue' && (
+                                            <div className="kanban-card-activity-icon activity-overdue" title={activityStatus.tooltip}>
+                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <circle cx="8" cy="8" r="7" fill="#DC2626" stroke="#DC2626" strokeWidth="1"/>
+                                                <path d="M10 6L6 10M6 6L10 10" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                              </svg>
+                                            </div>
+                                          )}
+                                          {activityStatus.status === 'none' && (
+                                            <div className="kanban-card-activity-icon activity-none" title={activityStatus.tooltip}>
+                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <circle cx="8" cy="8" r="7" fill="#9CA3AF" stroke="#9CA3AF" strokeWidth="1"/>
+                                                <path d="M6 4L10 8L6 12" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                                              </svg>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
                   </div>
                                   <button
                                     className="kanban-card-action-btn"
