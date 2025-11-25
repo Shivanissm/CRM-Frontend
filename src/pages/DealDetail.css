@@ -2013,6 +2013,42 @@
   height: 16px;
 }
 
+.deal-detail-toast-success {
+  border-left-color: #10B981;
+}
+
+.deal-detail-toast-success .deal-detail-toast-icon-wrapper {
+  background: #ECFDF5;
+}
+
+.deal-detail-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 0;
+}
+
+.deal-detail-toast-ok-btn {
+  background: #10B981;
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.deal-detail-toast-ok-btn:hover {
+  background: #059669;
+}
+
+.deal-detail-toast-ok-btn:active {
+  background: #047857;
+  transform: scale(0.98);
+}
+
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .deal-detail-main {

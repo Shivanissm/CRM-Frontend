@@ -3545,30 +3545,6 @@ const Deals = () => {
             </div>
           </>
         ) : null}
-        
-        {/* Tooltip rendered at root level */}
-        {tooltipPosition && (
-          <div 
-            className="kanban-card-tooltip"
-            style={{
-              top: `${tooltipPosition.top}px`,
-              left: `${tooltipPosition.left}px`,
-            }}
-          >
-            {tooltipPosition.organizationName && (
-              <div className="tooltip-item">
-                <span className="tooltip-label">Linked organization:</span>
-                <span className="tooltip-value">{tooltipPosition.organizationName}</span>
-              </div>
-            )}
-            {tooltipPosition.personName && (
-              <div className="tooltip-item">
-                <span className="tooltip-label">Linked person:</span>
-                <span className="tooltip-value">{tooltipPosition.personName}</span>
-          </div>
-            )}
-          </div>
-        )}
 
         {viewMode === 'list' && (
           <div className="sheet-view">

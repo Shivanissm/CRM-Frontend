@@ -336,6 +336,32 @@
   color: #666;
 }
 
+.table-reloading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  min-height: 100%;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 40px;
+  z-index: 10;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.table-reloading-spinner {
+  background: white;
+  padding: 12px 24px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 14px;
+  color: #666;
+  font-weight: 500;
+}
+
 .pagination {
   display: flex;
   justify-content: center;

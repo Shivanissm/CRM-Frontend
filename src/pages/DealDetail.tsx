@@ -48,6 +48,7 @@ export default function DealDetail() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('Activity');
   const [showErrorToast, setShowErrorToast] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [showMarkAsLostModal, setShowMarkAsLostModal] = useState(false);
   const [showDealValueModal, setShowDealValueModal] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
@@ -582,7 +583,7 @@ export default function DealDetail() {
           subSource: updatedDeal.subSource || '',
         }));
         
-        alert('Deal updated successfully');
+        setShowSuccessToast(true);
       }
     } catch (error: any) {
       console.error('Failed to save deal:', error);
@@ -855,6 +856,32 @@ export default function DealDetail() {
                 <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Toast Notification for Success */}
+      {showSuccessToast && createPortal(
+        <div className="deal-detail-toast-overlay" onClick={() => setShowSuccessToast(false)}>
+          <div className="deal-detail-toast deal-detail-toast-success" onClick={(e) => e.stopPropagation()}>
+            <div className="deal-detail-toast-icon-wrapper">
+              <svg className="deal-detail-toast-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M20 6L9 17l-5-5" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="#10B981" strokeWidth="2" fill="none"/>
+              </svg>
+            </div>
+            <div className="deal-detail-toast-content">
+              <div className="deal-detail-toast-message">Deal updated successfully!</div>
+            </div>
+            <div className="deal-detail-toast-actions">
+              <button 
+                className="deal-detail-toast-ok-btn" 
+                onClick={() => setShowSuccessToast(false)}
+              >
+                OK
+              </button>
+            </div>
           </div>
         </div>,
         document.body

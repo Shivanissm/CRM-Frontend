@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { personsApi } from '../services/api';
 import { organizationsApi } from '../services/organizations';
@@ -20,6 +21,7 @@ export default function PersonDetail() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('Activity');
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [_filterMeta, setFilterMeta] = useState<FilterMeta | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [_owners, setOwners] = useState<PersonOwner[]>([]);
@@ -474,7 +476,7 @@ export default function PersonDetail() {
       // Also set a flag in localStorage to trigger refresh in other tabs/pages
       localStorage.setItem('personUpdated', Date.now().toString());
       
-      alert('Person updated successfully!');
+      setShowSuccessToast(true);
     } catch (error: any) {
       console.error('Failed to save person:', error);
       alert(`Failed to save: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
@@ -596,6 +598,32 @@ export default function PersonDetail() {
           </button>
         </div>
       </div>
+
+      {/* Toast Notification for Success */}
+      {showSuccessToast && createPortal(
+        <div className="person-detail-toast-overlay" onClick={() => setShowSuccessToast(false)}>
+          <div className="person-detail-toast person-detail-toast-success" onClick={(e) => e.stopPropagation()}>
+            <div className="person-detail-toast-icon-wrapper">
+              <svg className="person-detail-toast-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M20 6L9 17l-5-5" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="#10B981" strokeWidth="2" fill="none"/>
+              </svg>
+            </div>
+            <div className="person-detail-toast-content">
+              <div className="person-detail-toast-message">Person updated successfully!</div>
+            </div>
+            <div className="person-detail-toast-actions">
+              <button 
+                className="person-detail-toast-ok-btn" 
+                onClick={() => setShowSuccessToast(false)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Main Content - Two Halves */}
       <div className="person-detail-main">

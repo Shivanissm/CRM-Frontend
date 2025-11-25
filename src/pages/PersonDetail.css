@@ -1878,3 +1878,121 @@
 .deal-history-menu-item:not(:last-child) {
   border-bottom: 1px solid #f0f0f0;
 }
+
+/* Toast Notification Styles */
+.person-detail-toast-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(17, 24, 39, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 100000;
+  padding-top: 100px;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.person-detail-toast {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.1);
+  padding: 0;
+  max-width: 520px;
+  width: 90%;
+  display: flex;
+  align-items: center;
+  position: relative;
+  animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border-left: 4px solid #DC2626;
+  overflow: hidden;
+  min-height: 72px;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.person-detail-toast-icon-wrapper {
+  flex-shrink: 0;
+  padding: 20px 16px 20px 20px;
+  display: flex;
+  align-items: center;
+}
+
+.person-detail-toast-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.person-detail-toast-content {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 16px 20px 0;
+  display: flex;
+  align-items: center;
+}
+
+.person-detail-toast-message {
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+}
+
+.person-detail-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 0;
+}
+
+.person-detail-toast-ok-btn {
+  background: #10B981;
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.person-detail-toast-ok-btn:hover {
+  background: #059669;
+}
+
+.person-detail-toast-ok-btn:active {
+  background: #047857;
+  transform: scale(0.98);
+}
+
+.person-detail-toast-success {
+  border-left-color: #10B981;
+}
+
+.person-detail-toast-success .person-detail-toast-icon-wrapper {
+  background: #ECFDF5;
+}

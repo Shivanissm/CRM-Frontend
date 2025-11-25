@@ -40,7 +40,11 @@ export default function ColumnMenu({
       >
         <div
           className={`column-menu-item ${isSortedAsc ? 'active' : ''}`}
-          onClick={onSortAscending}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onSortAscending();
+          }}
         >
           <span className="menu-icon">↑</span>
           <span>Sort ascending</span>
@@ -48,22 +52,47 @@ export default function ColumnMenu({
         </div>
         <div
           className={`column-menu-item ${isSortedDesc ? 'active' : ''}`}
-          onClick={onSortDescending}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onSortDescending();
+          }}
         >
           <span className="menu-icon">↓</span>
           <span>Sort descending</span>
           {isSortedDesc && <span className="checkmark">✓</span>}
         </div>
         <div className="column-menu-divider"></div>
-        <div className="column-menu-item" onClick={onHideColumn}>
+        <div 
+          className="column-menu-item" 
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onHideColumn();
+          }}
+        >
           <span className="menu-icon">👁️</span>
           <span>Hide column</span>
         </div>
-        <div className="column-menu-item" onClick={onInsertRight}>
+        <div 
+          className="column-menu-item" 
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onInsertRight();
+          }}
+        >
           <span className="menu-icon">→</span>
           <span>Insert columns to right</span>
         </div>
-        <div className="column-menu-item" onClick={onInsertLeft}>
+        <div 
+          className="column-menu-item" 
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onInsertLeft();
+          }}
+        >
           <span className="menu-icon">←</span>
           <span>Insert columns to left</span>
         </div>
