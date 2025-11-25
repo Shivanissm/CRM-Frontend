@@ -128,8 +128,9 @@ export default function AddPersonModal({
         email: form.email.trim() || undefined,
         instagramId: form.instagramId.trim() || undefined,
         leadDate: form.leadDate || undefined,
-        label: form.label || undefined,
-        source: form.source || undefined,
+        // Convert empty strings to undefined for enum fields - backend expects null/undefined, not empty string
+        label: form.label && form.label.trim() ? form.label.trim() : undefined,
+        source: form.source && form.source.trim() ? form.source.trim() : undefined,
       };
 
       if (mode === 'edit' && person?.id != null) {

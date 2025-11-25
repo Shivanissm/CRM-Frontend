@@ -422,12 +422,18 @@ export default function PersonDetail() {
 
     setSaving(true);
     try {
-      // Helper to process field: if empty string, send empty string to clear; if has value, send trimmed value
-      // Note: Some backends require empty string instead of null to clear fields
+      // Helper to process field: if empty string, send undefined; if has value, send trimmed value
       const processField = (value: string | undefined | null): string | undefined => {
         if (value === undefined) return undefined; // Field not in formData, don't include
         const trimmed = (value || '').trim();
-        return trimmed === '' ? '' : trimmed; // Send empty string to clear, trimmed value otherwise
+        return trimmed === '' ? undefined : trimmed; // Send undefined for empty strings
+      };
+      
+      // Helper for enum fields: convert empty strings to undefined (backend expects null/undefined, not empty string)
+      const processEnumField = (value: string | undefined | null): string | undefined => {
+        if (value === undefined) return undefined;
+        const trimmed = (value || '').trim();
+        return trimmed === '' ? undefined : trimmed; // Enum fields must be undefined/null, not empty string
       };
 
       const payload: PersonRequest = {
@@ -438,8 +444,9 @@ export default function PersonDetail() {
         email: processField(formData.email),
         instagramId: processField(formData.instagramId),
         leadDate: processField(formData.leadDate),
-        label: processField(formData.label),
-        source: processField(formData.source),
+        // Enum fields: use processEnumField to ensure empty strings become undefined
+        label: processEnumField(formData.label),
+        source: processEnumField(formData.source),
       };
 
       // Remove undefined fields from payload (but keep null values to explicitly clear fields)
