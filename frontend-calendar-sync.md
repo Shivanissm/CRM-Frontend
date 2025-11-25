@@ -102,4 +102,13 @@ google:
 
 Keep this file open in Cursor while wiring your forms—it contains everything needed to submit the right payloads and display the new fields. If additional endpoints are introduced (e.g., manual resync), append them here.
 
+---
+
+### 6. Manual QA checklist
+1. Create (or edit) a CRM deal tied to an organization that already has a `googleCalendarId`, set `status` to `WON`, and populate an `eventDate`.
+2. Wait for the backend sync (or trigger it manually if you have an admin tool) so the linked Google event is created/updated.
+3. Open the Calendar page, filter to that organization, and confirm the day shows a **single** CRM event tile (no duplicate vendor tile).
+4. Click the event tile (or the corresponding row under “Upcoming events”) and verify that the new “Event details” card in the sidebar populates with organization, owner, status, and calendar metadata.
+5. Repeat with a vendor-only Google Calendar event (one that doesn’t have a CRM deal) to confirm it still appears once, shows the “Vendor” badge, and surfaces its description/time range inside the details card.
+
 
