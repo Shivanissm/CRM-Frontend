@@ -210,7 +210,7 @@ const Deals = () => {
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [categoriesFetched, setCategoriesFetched] = useState(false);
   const [_hoveredDealId, setHoveredDealId] = useState<number | null>(null);
-  const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number; organizationName: string | null; personName: string | null } | null>(null);
+  const [_tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number; organizationName: string | null; personName: string | null } | null>(null);
   const [openDropdownDealId, setOpenDropdownDealId] = useState<number | null>(null);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [activityDealId, setActivityDealId] = useState<number | null>(null);
