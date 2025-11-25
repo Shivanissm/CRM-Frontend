@@ -179,6 +179,19 @@
   padding: 6px 8px;
   background: rgba(59, 130, 246, 0.12);
   border: 1px solid rgba(59, 130, 246, 0.2);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.calendar-event:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.calendar-event.selected {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  background: rgba(37, 99, 235, 0.12);
 }
 
 .calendar-event.vendor-event {
@@ -265,8 +278,6 @@
 }
 
 .calendar-upcoming-list li {
-  display: flex;
-  gap: 12px;
   border-bottom: 1px solid #f3f4f6;
   padding-bottom: 12px;
 }
@@ -274,6 +285,29 @@
 .calendar-upcoming-list li:last-child {
   border-bottom: none;
   padding-bottom: 0;
+}
+
+.calendar-upcoming-item {
+  width: 100%;
+  display: flex;
+  gap: 12px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.calendar-upcoming-item:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.calendar-upcoming-item.selected {
+  background: rgba(37, 99, 235, 0.08);
+  border-radius: 10px;
+  padding: 8px;
 }
 
 .calendar-upcoming-date {
@@ -302,6 +336,80 @@
   font-size: 12px;
   color: #047857;
   margin-top: 2px;
+}
+
+.calendar-selected-panel {
+  border-top: 1px solid #f3f4f6;
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.calendar-selected-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.calendar-selected-clear {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.calendar-selected-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.calendar-selected-title {
+  font-weight: 700;
+  color: #111827;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.calendar-selected-meta {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.calendar-selected-meta li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: #4b5563;
+}
+
+.calendar-selected-meta li span:first-child {
+  color: #6b7280;
+}
+
+.calendar-selected-description {
+  font-size: 13px;
+  color: #374151;
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+.calendar-selected-empty {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
 }
 
 @media (max-width: 1024px) {

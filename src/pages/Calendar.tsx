@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import './Calendar.css';
 import { dealsApi } from '../services/deals';
 import { organizationsApi } from '../services/organizations';
@@ -38,6 +38,30 @@ const formatIsoDateKey = (isoString: string | null | undefined) => {
   return `${year}-${month}-${day}`;
 };
 
+const isDateOnlyString = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+const formatDateDisplay = (
+  value: string | null | undefined,
+  options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', year: 'numeric' },
+) => {
+  if (!value) return null;
+  const date = isDateOnlyString(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('en-US', options);
+};
+
+const formatTimeDisplay = (value: string | null | undefined) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
+
+const capitalize = (value: string | null | undefined) => {
+  if (!value) return null;
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+};
+
 interface CalendarDeal extends Deal {
   organization?: Organization | null;
   ownerLabel?: string;
@@ -62,6 +86,16 @@ type CalendarEntry =
       vendorEvent: CalendarVendorEventEntry;
     };
 
+type SelectedEntryKey =
+  | {
+      kind: 'deal';
+      id: number;
+    }
+  | {
+      kind: 'vendor';
+      id: number;
+    };
+
 export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -73,6 +107,7 @@ export default function CalendarPage() {
   const [organizationFilter, setOrganizationFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [calendarOnly, setCalendarOnly] = useState<boolean>(true);
+  const [selectedEntryKey, setSelectedEntryKey] = useState<SelectedEntryKey | null>(null);
 
   useEffect(() => {
     void loadData();
@@ -173,6 +208,15 @@ export default function CalendarPage() {
     return ids;
   }, [filteredDeals]);
 
+  const dealCalendarDateKeys = useMemo(() => {
+    const keys = new Set<string>();
+    filteredDeals.forEach((deal) => {
+      if (!deal.eventDate || !deal.organizationId) return;
+      keys.add(`${deal.organizationId}:${deal.eventDate}`);
+    });
+    return keys;
+  }, [filteredDeals]);
+
   const filteredVendorEvents = useMemo(() => {
     const query = search.trim().toLowerCase();
     const deduped: VendorCalendarEvent[] = [];
@@ -196,6 +240,11 @@ export default function CalendarPage() {
       }
 
       if (event.googleEventId && dealGoogleEventIds.has(event.googleEventId)) {
+        return;
+      }
+
+      const dateKey = formatIsoDateKey(event.startAt);
+      if (dateKey && event.organizationId && dealCalendarDateKeys.has(`${event.organizationId}:${dateKey}`)) {
         return;
       }
 
@@ -223,7 +272,69 @@ export default function CalendarPage() {
       deduped.push(event);
     });
     return deduped;
-  }, [calendarOnly, dealGoogleEventIds, organizationFilter, organizationsById, ownerFilter, search, vendorEvents]);
+  }, [
+    calendarOnly,
+    dealCalendarDateKeys,
+    dealGoogleEventIds,
+    organizationFilter,
+    organizationsById,
+    ownerFilter,
+    search,
+    vendorEvents,
+  ]);
+
+  const selectedEntry = useMemo<CalendarEntry | null>(() => {
+    if (!selectedEntryKey) return null;
+    if (selectedEntryKey.kind === 'deal') {
+      const deal = filteredDeals.find((item) => item.id === selectedEntryKey.id);
+      if (!deal || !deal.eventDate) return null;
+      const organization = deal.organizationId ? organizationsById.get(deal.organizationId) : null;
+      const owner = organization?.owner;
+      const ownerLabel =
+        owner?.displayName ||
+        [owner?.firstName, owner?.lastName].filter(Boolean).join(' ').trim() ||
+        owner?.email ||
+        undefined;
+      return {
+        kind: 'deal',
+        dateKey: deal.eventDate,
+        sortKey: deal.eventDate,
+        deal: {
+          ...deal,
+          organization,
+          ownerLabel,
+        },
+      };
+    }
+
+    const vendorEvent = filteredVendorEvents.find((event) => event.id === selectedEntryKey.id);
+    if (!vendorEvent) return null;
+    const dateKey = formatIsoDateKey(vendorEvent.startAt);
+    if (!dateKey) return null;
+    const organization = vendorEvent.organizationId ? organizationsById.get(vendorEvent.organizationId) : null;
+    const owner = organization?.owner;
+    const ownerLabel =
+      owner?.displayName ||
+      [owner?.firstName, owner?.lastName].filter(Boolean).join(' ').trim() ||
+      owner?.email ||
+      undefined;
+    return {
+      kind: 'vendor',
+      dateKey,
+      sortKey: vendorEvent.startAt || dateKey,
+      vendorEvent: {
+        ...vendorEvent,
+        organization,
+        ownerLabel,
+      },
+    };
+  }, [filteredDeals, filteredVendorEvents, organizationsById, selectedEntryKey]);
+
+  useEffect(() => {
+    if (selectedEntryKey && !selectedEntry) {
+      setSelectedEntryKey(null);
+    }
+  }, [selectedEntry, selectedEntryKey]);
 
   const calendarDays = useMemo(() => buildCalendarDays(currentMonth), [currentMonth]);
 
@@ -362,6 +473,16 @@ export default function CalendarPage() {
       .slice(0, 8);
   }, [filteredDeals, filteredVendorEvents, organizationsById, todayKey]);
 
+  const handleEntrySelect = (entry: CalendarEntry) => {
+    if (entry.kind === 'deal') {
+      setSelectedEntryKey({ kind: 'deal', id: entry.deal.id });
+    } else {
+      setSelectedEntryKey({ kind: 'vendor', id: entry.vendorEvent.id });
+    }
+  };
+
+  const clearSelection = () => setSelectedEntryKey(null);
+
   const handlePrevMonth = () => {
     const prev = new Date(currentMonth);
     prev.setMonth(prev.getMonth() - 1);
@@ -469,11 +590,33 @@ export default function CalendarPage() {
                     <span>{day.getDate()}</span>
                   </div>
                   <div className="calendar-day-events">
-                    {displayEntries.map((entry) =>
-                      entry.kind === 'deal' ? (
+                    {displayEntries.map((entry) => {
+                      const isSelected =
+                        (entry.kind === 'deal' &&
+                          selectedEntryKey?.kind === 'deal' &&
+                          selectedEntryKey.id === entry.deal.id) ||
+                        (entry.kind === 'vendor' &&
+                          selectedEntryKey?.kind === 'vendor' &&
+                          selectedEntryKey.id === entry.vendorEvent.id);
+                      const baseProps = {
+                        role: 'button' as const,
+                        tabIndex: 0,
+                        onClick: () => handleEntrySelect(entry),
+                        onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            handleEntrySelect(entry);
+                          }
+                        },
+                        className: `calendar-event${entry.kind === 'vendor' ? ' vendor-event' : ''}${
+                          entry.kind === 'deal' ? ` ${entry.deal.status?.toLowerCase() ?? ''}` : ''
+                        }${isSelected ? ' selected' : ''}`,
+                        'aria-pressed': isSelected,
+                      };
+                      return entry.kind === 'deal' ? (
                         <div
                           key={`deal-${entry.deal.id}-${entry.deal.eventDate}`}
-                          className={`calendar-event ${entry.deal.status?.toLowerCase() ?? ''}`}
+                          {...baseProps}
                         >
                           <div className="calendar-event-name">{entry.deal.name || `Deal #${entry.deal.id}`}</div>
                           <div className="calendar-event-meta">
@@ -484,7 +627,7 @@ export default function CalendarPage() {
                       ) : (
                         <div
                           key={`vendor-${entry.vendorEvent.id}-${entry.dateKey}`}
-                          className="calendar-event vendor-event"
+                          {...baseProps}
                         >
                           <div className="calendar-event-name">
                             {entry.vendorEvent.summary || 'Vendor event'}
@@ -497,8 +640,8 @@ export default function CalendarPage() {
                             {entry.vendorEvent.ownerLabel ? ` · ${entry.vendorEvent.ownerLabel}` : ''}
                           </div>
                         </div>
-                      ),
-                    )}
+                      );
+                    })}
                     {dayEntries.length > 3 && (
                       <div className="calendar-event-more">+{dayEntries.length - 3} more</div>
                     )}
@@ -518,58 +661,182 @@ export default function CalendarPage() {
             </div>
           ) : (
             <ul className="calendar-upcoming-list">
-              {upcomingEntries.map((entry) =>
-                entry.kind === 'deal' ? (
+              {upcomingEntries.map((entry) => {
+                const isSelected =
+                  (entry.kind === 'deal' &&
+                    selectedEntryKey?.kind === 'deal' &&
+                    selectedEntryKey.id === entry.deal.id) ||
+                  (entry.kind === 'vendor' &&
+                    selectedEntryKey?.kind === 'vendor' &&
+                    selectedEntryKey.id === entry.vendorEvent.id);
+                return entry.kind === 'deal' ? (
                   <li key={`upcoming-deal-${entry.deal.id}`}>
-                    <div className="calendar-upcoming-date">
-                      {entry.deal.eventDate
-                        ? new Date(entry.deal.eventDate).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                          })
-                        : '—'}
-                    </div>
-                    <div className="calendar-upcoming-body">
-                      <div className="calendar-upcoming-name">{entry.deal.name || `Deal #${entry.deal.id}`}</div>
-                      <div className="calendar-upcoming-meta">
-                        {entry.deal.organization?.name ?? '—'}
-                        {entry.deal.ownerLabel ? ` · ${entry.deal.ownerLabel}` : ''}
+                    <button
+                      type="button"
+                      className={`calendar-upcoming-item${isSelected ? ' selected' : ''}`}
+                      onClick={() => handleEntrySelect(entry)}
+                      aria-pressed={isSelected}
+                    >
+                      <div className="calendar-upcoming-date">
+                        {entry.deal.eventDate
+                          ? new Date(entry.deal.eventDate).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                            })
+                          : '—'}
                       </div>
-                      {entry.deal.organization?.googleCalendarId && (
-                        <div className="calendar-upcoming-calendar">
-                          {entry.deal.organization.googleCalendarId}
+                      <div className="calendar-upcoming-body">
+                        <div className="calendar-upcoming-name">{entry.deal.name || `Deal #${entry.deal.id}`}</div>
+                        <div className="calendar-upcoming-meta">
+                          {entry.deal.organization?.name ?? '—'}
+                          {entry.deal.ownerLabel ? ` · ${entry.deal.ownerLabel}` : ''}
                         </div>
-                      )}
-                    </div>
+                        {entry.deal.organization?.googleCalendarId && (
+                          <div className="calendar-upcoming-calendar">
+                            {entry.deal.organization.googleCalendarId}
+                          </div>
+                        )}
+                      </div>
+                    </button>
                   </li>
                 ) : (
                   <li key={`upcoming-vendor-${entry.vendorEvent.id}`}>
-                    <div className="calendar-upcoming-date">
-                      {entry.dateKey
-                        ? new Date(entry.vendorEvent.startAt).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                          })
-                        : '—'}
-                    </div>
-                    <div className="calendar-upcoming-body">
-                      <div className="calendar-upcoming-name">
-                        {entry.vendorEvent.summary || 'Vendor event'}
-                        <span className="calendar-event-badge">Vendor</span>
+                    <button
+                      type="button"
+                      className={`calendar-upcoming-item${isSelected ? ' selected' : ''}`}
+                      onClick={() => handleEntrySelect(entry)}
+                      aria-pressed={isSelected}
+                    >
+                      <div className="calendar-upcoming-date">
+                        {entry.dateKey
+                          ? new Date(entry.vendorEvent.startAt).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                            })
+                          : '—'}
                       </div>
-                      <div className="calendar-upcoming-meta">
-                        {entry.vendorEvent.organization?.name ??
-                          entry.vendorEvent.organizationName ??
-                          'Vendor calendar'}
-                        {entry.vendorEvent.ownerLabel ? ` · ${entry.vendorEvent.ownerLabel}` : ''}
+                      <div className="calendar-upcoming-body">
+                        <div className="calendar-upcoming-name">
+                          {entry.vendorEvent.summary || 'Vendor event'}
+                          <span className="calendar-event-badge">Vendor</span>
+                        </div>
+                        <div className="calendar-upcoming-meta">
+                          {entry.vendorEvent.organization?.name ??
+                            entry.vendorEvent.organizationName ??
+                            'Vendor calendar'}
+                          {entry.vendorEvent.ownerLabel ? ` · ${entry.vendorEvent.ownerLabel}` : ''}
+                        </div>
+                        <div className="calendar-upcoming-source">Synced from Google Calendar</div>
                       </div>
-                      <div className="calendar-upcoming-source">Synced from Google Calendar</div>
-                    </div>
+                    </button>
                   </li>
-                ),
-              )}
+                );
+              })}
             </ul>
           )}
+
+          <section className="calendar-selected-panel">
+            <div className="calendar-selected-header">
+              <h3>Event details</h3>
+              {selectedEntry && (
+                <button type="button" className="calendar-selected-clear" onClick={clearSelection}>
+                  Clear
+                </button>
+              )}
+            </div>
+            {!selectedEntry ? (
+              <p className="calendar-selected-empty">Select an event to see more details.</p>
+            ) : selectedEntry.kind === 'deal' ? (
+              <div className="calendar-selected-body">
+                <div className="calendar-selected-title">{selectedEntry.deal.name || `Deal #${selectedEntry.deal.id}`}</div>
+                <ul className="calendar-selected-meta">
+                  {[
+                    { label: 'Type', value: 'CRM deal' },
+                    {
+                      label: 'Date',
+                      value:
+                        selectedEntry.deal.eventDate &&
+                        formatDateDisplay(selectedEntry.deal.eventDate, {
+                          weekday: 'short',
+                          month: 'long',
+                          day: 'numeric',
+                          year: 'numeric',
+                        }),
+                    },
+                    { label: 'Organization', value: selectedEntry.deal.organization?.name ?? 'Unassigned' },
+                    { label: 'Owner', value: selectedEntry.deal.ownerLabel },
+                    {
+                      label: 'Status',
+                      value: capitalize(selectedEntry.deal.status),
+                    },
+                    { label: 'Event type', value: selectedEntry.deal.eventType },
+                    { label: 'Venue', value: selectedEntry.deal.venue },
+                    { label: 'Calendar', value: selectedEntry.deal.organization?.googleCalendarId },
+                    { label: 'Google event ID', value: selectedEntry.deal.googleCalendarEventId },
+                  ]
+                    .filter((item) => item.value)
+                    .map((item) => (
+                      <li key={item.label}>
+                        <span>{item.label}</span>
+                        <span>{item.value}</span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="calendar-selected-body">
+                <div className="calendar-selected-title">
+                  {selectedEntry.vendorEvent.summary || 'Vendor event'}
+                  <span className="calendar-event-badge">Vendor</span>
+                </div>
+                <ul className="calendar-selected-meta">
+                  {[
+                    { label: 'Type', value: 'Google Calendar sync' },
+                    {
+                      label: 'Date',
+                      value:
+                        selectedEntry.vendorEvent.startAt &&
+                        formatDateDisplay(selectedEntry.vendorEvent.startAt, {
+                          weekday: 'short',
+                          month: 'long',
+                          day: 'numeric',
+                          year: 'numeric',
+                        }),
+                    },
+                    {
+                      label: 'Time',
+                      value: selectedEntry.vendorEvent.allDay
+                        ? 'All day'
+                        : `${formatTimeDisplay(selectedEntry.vendorEvent.startAt) ?? '—'} – ${
+                            formatTimeDisplay(selectedEntry.vendorEvent.endAt) ?? '—'
+                          }`,
+                    },
+                    {
+                      label: 'Organization',
+                      value:
+                        selectedEntry.vendorEvent.organization?.name ??
+                        selectedEntry.vendorEvent.organizationName ??
+                        'Vendor calendar',
+                    },
+                    { label: 'Owner', value: selectedEntry.vendorEvent.ownerLabel },
+                    { label: 'Calendar', value: selectedEntry.vendorEvent.organization?.googleCalendarId },
+                    { label: 'Google event ID', value: selectedEntry.vendorEvent.googleEventId },
+                    { label: 'Status', value: capitalize(selectedEntry.vendorEvent.status ?? undefined) },
+                  ]
+                    .filter((item) => item.value)
+                    .map((item) => (
+                      <li key={item.label}>
+                        <span>{item.label}</span>
+                        <span>{item.value}</span>
+                      </li>
+                    ))}
+                </ul>
+                {selectedEntry.vendorEvent.description && (
+                  <div className="calendar-selected-description">{selectedEntry.vendorEvent.description}</div>
+                )}
+              </div>
+            )}
+          </section>
         </aside>
       </div>
     </div>
