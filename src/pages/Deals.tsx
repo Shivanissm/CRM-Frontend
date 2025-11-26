@@ -98,8 +98,8 @@ const Deals = () => {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [activitiesByDealId, setActivitiesByDealId] = useState<Map<number, Activity[]>>(new Map());
   const [showErrorToast, setShowErrorToast] = useState(false);
+  const [activitiesByDealId, setActivitiesByDealId] = useState<Map<number, Activity[]>>(new Map());
   const [filterStatus, setFilterStatus] = useState<DealFilterStatus>(() => {
     const saved = localStorage.getItem('dealsFilterStatus');
     // Default to 'IN_PROGRESS' (Open Deals) if nothing is saved or if 'all' is saved
@@ -212,9 +212,12 @@ const Deals = () => {
   const [categoriesFetched, setCategoriesFetched] = useState(false);
   const [_hoveredDealId, setHoveredDealId] = useState<number | null>(null);
   const [_tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number; organizationName: string | null; personName: string | null } | null>(null);
+  const [hoveredButtonDealId, setHoveredButtonDealId] = useState<number | null>(null);
+  const [buttonTooltipPosition, setButtonTooltipPosition] = useState<{ top: number; left: number } | null>(null);
   const [openDropdownDealId, setOpenDropdownDealId] = useState<number | null>(null);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [activityDealId, setActivityDealId] = useState<number | null>(null);
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [isDivertModalOpen, setIsDivertModalOpen] = useState(false);
@@ -301,7 +304,7 @@ const Deals = () => {
 
   const loadActivities = useCallback(async () => {
     try {
-      const activitiesResponse = await activitiesApi.list({ page: 0, size: 10000, done: false });
+      const activitiesResponse = await activitiesApi.list({ page: 0, size: 10000 });
       const allActivities = activitiesResponse.content || [];
       
       // Group activities by dealId
@@ -319,49 +322,357 @@ const Deals = () => {
     }
   }, []);
 
-  // Determine activity status for a deal
-  const getDealActivityStatus = useCallback((dealId: number): { status: 'future' | 'today' | 'overdue' | 'none'; tooltip: string } => {
-    const activities = activitiesByDealId.get(dealId) || [];
+  // Check if a deal should show the warning icon (no activities or all completed)
+  const shouldShowWarningIcon = useCallback((dealId: number): boolean => {
+    const dealActivities = activitiesByDealId.get(dealId) || [];
     
-    if (activities.length === 0) {
-      return { status: 'none', tooltip: 'Schedule an activity' };
+    // If no activities, show warning
+    if (dealActivities.length === 0) {
+      return true;
+    }
+    
+    // If all activities are completed, show warning
+    const allCompleted = dealActivities.every(activity => activity.done === true);
+    return allCompleted;
+  }, [activitiesByDealId]);
+
+  // Get the top scheduled activity for a deal (prioritize overdue, then today, then future)
+  const getTopScheduledActivity = useCallback((dealId: number): Activity | null => {
+    const dealActivities = activitiesByDealId.get(dealId) || [];
+    
+    // Filter out completed activities
+    const undoneActivities = dealActivities.filter(activity => !activity.done);
+    
+    if (undoneActivities.length === 0) {
+      return null;
     }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+
+    // Sort activities by date and priority: overdue first, then today, then future
+    const sortedActivities = undoneActivities
+      .map(activity => {
+        // Try to get the date from various fields
+        let activityDateStr = null;
+        
+        if (activity.dateTime) {
+          activityDateStr = activity.dateTime.split('T')[0];
+        } else {
+          activityDateStr = activity.date || activity.dueDate || null;
+        }
+        
+        if (!activityDateStr) {
+          return { activity, date: null, timestamp: Infinity };
+        }
+
+        // Parse date
+        let year: number, month: number, day: number;
+        const isoFormat = activityDateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (isoFormat) {
+          year = parseInt(isoFormat[1], 10);
+          month = parseInt(isoFormat[2], 10) - 1;
+          day = parseInt(isoFormat[3], 10);
+        } else if (activityDateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+          const parts = activityDateStr.split('/');
+          day = parseInt(parts[0], 10);
+          month = parseInt(parts[1], 10) - 1;
+          year = parseInt(parts[2], 10);
+        } else {
+          const date = new Date(activityDateStr);
+          if (isNaN(date.getTime())) {
+            return { activity, date: null, timestamp: Infinity };
+          }
+          year = date.getFullYear();
+          month = date.getMonth();
+          day = date.getDate();
+        }
+        
+        const activityDate = new Date(year, month, day);
+        activityDate.setHours(0, 0, 0, 0);
+        
+        // Calculate priority: overdue (0), today (1), future (2)
+        let priority = 2;
+        if (activityDate.getTime() < today.getTime()) {
+          priority = 0; // Overdue
+        } else if (activityDate.getTime() === today.getTime()) {
+          priority = 1; // Today
+        }
+        
+        return { activity, date: activityDate, timestamp: activityDate.getTime(), priority };
+      })
+      .filter(item => item.date !== null)
+      .sort((a, b) => {
+        // First sort by priority (overdue first, then today, then future)
+        if (a.priority !== b.priority) {
+          return a.priority - b.priority;
+        }
+        // Then sort by date (earliest first)
+        return a.timestamp - b.timestamp;
+      });
+
+    return sortedActivities.length > 0 ? sortedActivities[0].activity : null;
+  }, [activitiesByDealId]);
+
+  // Format activity date for display
+  const formatActivityDate = useCallback((activity: Activity): string => {
+    let activityDateStr = null;
     
-    let hasToday = false;
-    let hasOverdue = false;
-    let hasFuture = false;
-
-    activities.forEach(activity => {
-      const activityDate = activity.date || activity.dueDate || activity.dateTime?.split('T')[0];
-      if (!activityDate) return;
-
-      const date = new Date(activityDate);
-      date.setHours(0, 0, 0, 0);
-      
-      const diffTime = date.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (diffDays < 0) {
-        hasOverdue = true;
-      } else if (diffDays === 0) {
-        hasToday = true;
-      } else {
-        hasFuture = true;
-      }
-    });
-
-    if (hasOverdue) {
-      return { status: 'overdue', tooltip: 'View overdue activity' };
-    } else if (hasToday) {
-      return { status: 'today', tooltip: 'View activity scheduled for today' };
-    } else if (hasFuture) {
-      return { status: 'future', tooltip: 'View upcoming activity' };
+    if (activity.dateTime) {
+      activityDateStr = activity.dateTime.split('T')[0];
+    } else {
+      activityDateStr = activity.date || activity.dueDate || null;
+    }
+    
+    if (!activityDateStr) {
+      return '';
     }
 
-    return { status: 'none', tooltip: 'Schedule an activity' };
+    // Parse and format date
+    let year: number, month: number, day: number;
+    const isoFormat = activityDateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoFormat) {
+      year = parseInt(isoFormat[1], 10);
+      month = parseInt(isoFormat[2], 10) - 1;
+      day = parseInt(isoFormat[3], 10);
+    } else if (activityDateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+      const parts = activityDateStr.split('/');
+      day = parseInt(parts[0], 10);
+      month = parseInt(parts[1], 10) - 1;
+      year = parseInt(parts[2], 10);
+    } else {
+      const date = new Date(activityDateStr);
+      if (isNaN(date.getTime())) {
+        return activityDateStr;
+      }
+      year = date.getFullYear();
+      month = date.getMonth();
+      day = date.getDate();
+    }
+    
+    const activityDate = new Date(year, month, day);
+    activityDate.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    // Format as "Today" if it's today
+    if (activityDate.getTime() === today.getTime()) {
+      return 'Today';
+    }
+    
+    // Format as "Tomorrow" if it's tomorrow, otherwise format as "DD MMM" or "DD MMM YYYY"
+    if (activityDate.getTime() === tomorrow.getTime()) {
+      return 'Tomorrow';
+    }
+    
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dayStr = day.toString();
+    const monthStr = months[month];
+    const yearStr = year.toString();
+    
+    // If same year, don't show year
+    if (year === today.getFullYear()) {
+      return `${dayStr} ${monthStr}`;
+    }
+    
+    return `${dayStr} ${monthStr} ${yearStr}`;
+  }, []);
+
+  // Check if a deal has overdue activities (undone activities from previous dates)
+  const hasOverdueActivities = useCallback((dealId: number): boolean => {
+    const dealActivities = activitiesByDealId.get(dealId) || [];
+    
+    // Filter out completed activities
+    const undoneActivities = dealActivities.filter(activity => !activity.done);
+    
+    if (undoneActivities.length === 0) {
+      return false;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Check if any undone activity is from a previous date (overdue)
+    return undoneActivities.some(activity => {
+      let activityDateStr = null;
+      
+      if (activity.dateTime) {
+        activityDateStr = activity.dateTime.split('T')[0];
+      } else {
+        activityDateStr = activity.date || activity.dueDate || null;
+      }
+      
+      if (!activityDateStr) {
+        return false;
+      }
+
+      // Parse date
+      let year: number, month: number, day: number;
+      const isoFormat = activityDateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (isoFormat) {
+        year = parseInt(isoFormat[1], 10);
+        month = parseInt(isoFormat[2], 10) - 1;
+        day = parseInt(isoFormat[3], 10);
+      } else if (activityDateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+        const parts = activityDateStr.split('/');
+        day = parseInt(parts[0], 10);
+        month = parseInt(parts[1], 10) - 1;
+        year = parseInt(parts[2], 10);
+      } else {
+        const date = new Date(activityDateStr);
+        if (isNaN(date.getTime())) {
+          return false;
+        }
+        year = date.getFullYear();
+        month = date.getMonth();
+        day = date.getDate();
+      }
+      
+      const activityDate = new Date(year, month, day);
+      activityDate.setHours(0, 0, 0, 0);
+      
+      // Return true if the activity date is before today (overdue)
+      return activityDate.getTime() < today.getTime();
+    });
+  }, [activitiesByDealId]);
+
+  // Check if a deal has activities scheduled for today
+  const hasTodayActivities = useCallback((dealId: number): boolean => {
+    const dealActivities = activitiesByDealId.get(dealId) || [];
+    
+    // Filter out completed activities
+    const undoneActivities = dealActivities.filter(activity => !activity.done);
+    
+    if (undoneActivities.length === 0) {
+      return false;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Check if any undone activity is scheduled for today
+    return undoneActivities.some(activity => {
+      let activityDateStr = null;
+      
+      if (activity.dateTime) {
+        activityDateStr = activity.dateTime.split('T')[0];
+      } else {
+        activityDateStr = activity.date || activity.dueDate || null;
+      }
+      
+      if (!activityDateStr) {
+        return false;
+      }
+
+      // Parse date
+      let year: number, month: number, day: number;
+      const isoFormat = activityDateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (isoFormat) {
+        year = parseInt(isoFormat[1], 10);
+        month = parseInt(isoFormat[2], 10) - 1;
+        day = parseInt(isoFormat[3], 10);
+      } else if (activityDateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+        const parts = activityDateStr.split('/');
+        day = parseInt(parts[0], 10);
+        month = parseInt(parts[1], 10) - 1;
+        year = parseInt(parts[2], 10);
+      } else {
+        const date = new Date(activityDateStr);
+        if (isNaN(date.getTime())) {
+          return false;
+        }
+        year = date.getFullYear();
+        month = date.getMonth();
+        day = date.getDate();
+      }
+      
+      const activityDate = new Date(year, month, day);
+      activityDate.setHours(0, 0, 0, 0);
+      
+      // Return true if the activity date is today
+      return activityDate.getTime() === today.getTime();
+    });
+  }, [activitiesByDealId]);
+
+  // Check if a deal has ONLY future activities (all undone activities are in the future, not today or past)
+  const hasFutureActivities = useCallback((dealId: number): boolean => {
+    const dealActivities = activitiesByDealId.get(dealId) || [];
+    
+    // Filter out completed activities - explicitly check for done === true
+    const undoneActivities = dealActivities.filter(activity => !activity.done);
+    
+    // If no undone activities, return false
+    if (undoneActivities.length === 0) {
+      return false;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Check that ALL undone activities are in the future (not today or past)
+    return undoneActivities.every(activity => {
+      // Try to get the date from various fields - prioritize dateTime (ISO format)
+      let activityDateStr = null;
+      
+      // First try dateTime (ISO format: YYYY-MM-DDTHH:mm:ss)
+      if (activity.dateTime) {
+        activityDateStr = activity.dateTime.split('T')[0]; // Extract YYYY-MM-DD part
+      }
+      
+      // If no dateTime, try date or dueDate
+      if (!activityDateStr) {
+        activityDateStr = activity.date || activity.dueDate || null;
+      }
+      
+      if (!activityDateStr) {
+        return false; // If no date, don't consider it as future
+      }
+
+      let year: number, month: number, day: number;
+      
+      // Check if it's YYYY-MM-DD format (ISO or standard)
+      const isoFormat = activityDateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (isoFormat) {
+        year = parseInt(isoFormat[1], 10);
+        month = parseInt(isoFormat[2], 10) - 1; // Month is 0-indexed
+        day = parseInt(isoFormat[3], 10);
+      } 
+      // Check if it's DD/MM/YYYY format
+      else if (activityDateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+        const parts = activityDateStr.split('/');
+        day = parseInt(parts[0], 10);
+        month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+        year = parseInt(parts[2], 10);
+      }
+      // Check if it's MM/DD/YYYY format (US format)
+      else if (activityDateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+        const parts = activityDateStr.split('/');
+        month = parseInt(parts[0], 10) - 1; // Month is 0-indexed
+        day = parseInt(parts[1], 10);
+        year = parseInt(parts[2], 10);
+      }
+      // Fallback to Date constructor
+      else {
+        const date = new Date(activityDateStr);
+        if (isNaN(date.getTime())) {
+          return false;
+        }
+        date.setHours(0, 0, 0, 0);
+        return date.getTime() > today.getTime();
+      }
+      
+      if (isNaN(year) || isNaN(month) || isNaN(day)) {
+        return false; // Invalid date parts
+      }
+      
+      const activityDate = new Date(year, month, day);
+      activityDate.setHours(0, 0, 0, 0);
+      
+      // Return true only if the activity date is strictly in the future (after today)
+      return activityDate.getTime() > today.getTime();
+    });
   }, [activitiesByDealId]);
 
   const loadDeals = useCallback(async (preserveDealId?: number | null) => {
@@ -411,13 +722,6 @@ const Deals = () => {
     loadDeals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Reload activities when deals change
-  useEffect(() => {
-    if (deals.length > 0) {
-      loadActivities();
-    }
-  }, [deals.length, loadActivities]);
 
   // Auto-open modal if coming from Person page
   useEffect(() => {
@@ -623,6 +927,8 @@ const Deals = () => {
       });
 
       console.log(`Created activities for deal ${deal.id} in Qualified stage`);
+      // Reload activities to update the warning icon
+      await loadActivities();
     } catch (err) {
       console.error(`Failed to create activities for deal ${deal.id}:`, err);
     }
@@ -3370,48 +3676,24 @@ const Deals = () => {
                                       </div>
                                     )}
                                     <div className="kanban-card-value">{formatCurrency(deal.value || 0)}</div>
-                                    {(() => {
-                                      const activityStatus = getDealActivityStatus(deal.id);
-                                      return (
-                                        <div className="kanban-card-activity-icon-wrapper">
-                                          {activityStatus.status === 'future' && (
-                                            <div className="kanban-card-activity-icon activity-future" title={activityStatus.tooltip}>
-                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <circle cx="8" cy="8" r="7" fill="#10B981" stroke="#10B981" strokeWidth="1"/>
-                                                <path d="M6 4L10 8L6 12" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                                              </svg>
-                                            </div>
-                                          )}
-                                          {activityStatus.status === 'today' && (
-                                            <div className="kanban-card-activity-icon activity-today" title={activityStatus.tooltip}>
-                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M8 2L2 6L8 10L14 6L8 2Z" fill="#FCD34D" stroke="#F59E0B" strokeWidth="1.5"/>
-                                                <path d="M8 7V9M8 11H8.01" stroke="#92400E" strokeWidth="1.5" strokeLinecap="round"/>
-                                              </svg>
-                                            </div>
-                                          )}
-                                          {activityStatus.status === 'overdue' && (
-                                            <div className="kanban-card-activity-icon activity-overdue" title={activityStatus.tooltip}>
-                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <circle cx="8" cy="8" r="7" fill="#DC2626" stroke="#DC2626" strokeWidth="1"/>
-                                                <path d="M10 6L6 10M6 6L10 10" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                              </svg>
-                                            </div>
-                                          )}
-                                          {activityStatus.status === 'none' && (
-                                            <div className="kanban-card-activity-icon activity-none" title={activityStatus.tooltip}>
-                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <circle cx="8" cy="8" r="7" fill="#9CA3AF" stroke="#9CA3AF" strokeWidth="1"/>
-                                                <path d="M6 4L10 8L6 12" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                                              </svg>
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })()}
                   </div>
                                   <button
-                                    className="kanban-card-action-btn"
+                                    className={`kanban-card-action-btn ${shouldShowWarningIcon(deal.id) ? 'has-warning-icon' : ''} ${hasOverdueActivities(deal.id) ? 'has-overdue-activities' : hasTodayActivities(deal.id) ? 'has-today-activities' : ''}`}
+                                    title=""
+                                    onMouseEnter={(e) => {
+                                      if (hasOverdueActivities(deal.id) || hasTodayActivities(deal.id) || hasFutureActivities(deal.id)) {
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setHoveredButtonDealId(deal.id);
+                                        setButtonTooltipPosition({
+                                          top: rect.top - 35,
+                                          left: rect.left + rect.width / 2,
+                                        });
+                                      }
+                                    }}
+                                    onMouseLeave={() => {
+                                      setHoveredButtonDealId(null);
+                                      setButtonTooltipPosition(null);
+                                    }}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       if (openDropdownDealId === deal.id) {
@@ -3450,9 +3732,20 @@ const Deals = () => {
                                     }}
                                     aria-label="Deal actions"
                                   >
+                                    {shouldShowWarningIcon(deal.id) ? (
+                                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                                        <circle cx="10" cy="10" r="9" fill="#FEF3C7" stroke="#FCD34D" strokeWidth="1.5"/>
+                                        <text x="10" y="14" textAnchor="middle" fill="#F59E0B" fontSize="14" fontWeight="bold" fontFamily="Arial, sans-serif">!</text>
+                                      </svg>
+                                    ) : hasOverdueActivities(deal.id) ? (
+                                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M10 4L6 8L10 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                      </svg>
+                                    ) : (
                                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                                       <path d="M6 4L10 8L6 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                     </svg>
+                                    )}
                                   </button>
                                 </div>
                       </div>
@@ -3586,48 +3879,24 @@ const Deals = () => {
                                       </div>
                                     )}
                                     <div className="kanban-card-value">{formatCurrency(deal.value || 0)}</div>
-                                    {(() => {
-                                      const activityStatus = getDealActivityStatus(deal.id);
-                                      return (
-                                        <div className="kanban-card-activity-icon-wrapper">
-                                          {activityStatus.status === 'future' && (
-                                            <div className="kanban-card-activity-icon activity-future" title={activityStatus.tooltip}>
-                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <circle cx="8" cy="8" r="7" fill="#10B981" stroke="#10B981" strokeWidth="1"/>
-                                                <path d="M6 4L10 8L6 12" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                                              </svg>
-                                            </div>
-                                          )}
-                                          {activityStatus.status === 'today' && (
-                                            <div className="kanban-card-activity-icon activity-today" title={activityStatus.tooltip}>
-                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M8 2L2 6L8 10L14 6L8 2Z" fill="#FCD34D" stroke="#F59E0B" strokeWidth="1.5"/>
-                                                <path d="M8 7V9M8 11H8.01" stroke="#92400E" strokeWidth="1.5" strokeLinecap="round"/>
-                                              </svg>
-                                            </div>
-                                          )}
-                                          {activityStatus.status === 'overdue' && (
-                                            <div className="kanban-card-activity-icon activity-overdue" title={activityStatus.tooltip}>
-                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <circle cx="8" cy="8" r="7" fill="#DC2626" stroke="#DC2626" strokeWidth="1"/>
-                                                <path d="M10 6L6 10M6 6L10 10" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                              </svg>
-                                            </div>
-                                          )}
-                                          {activityStatus.status === 'none' && (
-                                            <div className="kanban-card-activity-icon activity-none" title={activityStatus.tooltip}>
-                                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <circle cx="8" cy="8" r="7" fill="#9CA3AF" stroke="#9CA3AF" strokeWidth="1"/>
-                                                <path d="M6 4L10 8L6 12" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                                              </svg>
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })()}
                   </div>
                                   <button
-                                    className="kanban-card-action-btn"
+                                    className={`kanban-card-action-btn ${shouldShowWarningIcon(deal.id) ? 'has-warning-icon' : ''} ${hasOverdueActivities(deal.id) ? 'has-overdue-activities' : hasTodayActivities(deal.id) ? 'has-today-activities' : ''}`}
+                                    title=""
+                                    onMouseEnter={(e) => {
+                                      if (hasOverdueActivities(deal.id) || hasTodayActivities(deal.id) || hasFutureActivities(deal.id)) {
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setHoveredButtonDealId(deal.id);
+                                        setButtonTooltipPosition({
+                                          top: rect.top - 35,
+                                          left: rect.left + rect.width / 2,
+                                        });
+                                      }
+                                    }}
+                                    onMouseLeave={() => {
+                                      setHoveredButtonDealId(null);
+                                      setButtonTooltipPosition(null);
+                                    }}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       const buttonRect = e.currentTarget.getBoundingClientRect();
@@ -3673,13 +3942,25 @@ const Deals = () => {
                                           top,
                                           left,
                                         });
+                                        setOpenDropdownDealId(deal.id);
                                       }
                                     }}
                                     aria-label="Deal actions"
                                   >
+                                    {shouldShowWarningIcon(deal.id) ? (
+                                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
+                                        <circle cx="10" cy="10" r="9" fill="#FEF3C7" stroke="#FCD34D" strokeWidth="1.5"/>
+                                        <text x="10" y="14" textAnchor="middle" fill="#F59E0B" fontSize="14" fontWeight="bold" fontFamily="Arial, sans-serif">!</text>
+                                      </svg>
+                                    ) : hasOverdueActivities(deal.id) ? (
+                                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M10 4L6 8L10 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                      </svg>
+                                    ) : (
                                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                                       <path d="M6 4L10 8L6 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                     </svg>
+                                    )}
                                   </button>
                                 </div>
                               </div>
@@ -4405,6 +4686,24 @@ const Deals = () => {
         </div>
       )}
 
+      {/* Button Tooltip Portal */}
+      {hoveredButtonDealId !== null && buttonTooltipPosition && (hasOverdueActivities(hoveredButtonDealId) || hasTodayActivities(hoveredButtonDealId) || hasFutureActivities(hoveredButtonDealId)) && createPortal(
+        <div
+          className="kanban-card-button-tooltip"
+          style={{
+            position: 'fixed',
+            top: `${buttonTooltipPosition.top}px`,
+            left: `${buttonTooltipPosition.left}px`,
+            transform: 'translateX(-50%)',
+            pointerEvents: 'none',
+            zIndex: 10001,
+          }}
+        >
+          {hasOverdueActivities(hoveredButtonDealId) ? 'View Overdue activity' : hasTodayActivities(hoveredButtonDealId) ? 'View activities scheduled for today' : 'View upcoming activity'}
+        </div>,
+        document.body
+      )}
+
       {/* Dropdown Portal */}
       {openDropdownDealId !== null && dropdownPosition && createPortal(
         <>
@@ -4425,6 +4724,73 @@ const Deals = () => {
             }}
             onClick={(e) => e.stopPropagation()}
           >
+            {openDropdownDealId !== null && (() => {
+              const topActivity = getTopScheduledActivity(openDropdownDealId);
+              const showWarning = shouldShowWarningIcon(openDropdownDealId);
+              
+              return (
+                <>
+                  {showWarning && (
+                    <>
+                      <div className="kanban-card-dropdown-message">
+                        <div className="kanban-card-dropdown-message-text">
+                          You have no activities scheduled for this deal
+                        </div>
+                      </div>
+                      <div className="kanban-card-dropdown-divider"></div>
+                    </>
+                  )}
+                  {topActivity && (
+                    <>
+                      <div 
+                        className="kanban-card-dropdown-activity"
+                        onClick={() => {
+                          setEditingActivity(topActivity);
+                          setIsActivityModalOpen(true);
+                          setOpenDropdownDealId(null);
+                          setDropdownPosition(null);
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <div className="kanban-card-dropdown-activity-header">
+                          <div
+                            className="kanban-card-dropdown-activity-checkbox"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await activitiesApi.markDone(topActivity.id, !topActivity.done);
+                                await loadActivities();
+                                // Keep dropdown open after marking as done
+                              } catch (err) {
+                                console.error('Failed to mark activity as done:', err);
+                              }
+                            }}
+                          >
+                            {topActivity.done ? (
+                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="8" cy="8" r="7" fill="#10B981" stroke="#10B981" strokeWidth="1.5"/>
+                                <path d="M5 8L7 10L11 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            ) : (
+                              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <circle cx="8" cy="8" r="7" stroke="#9CA3AF" strokeWidth="1.5" fill="none"/>
+                              </svg>
+                            )}
+                          </div>
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                            <path d="M3 2V14M3 2L8 5L13 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="currentColor"/>
+                          </svg>
+                          <div className="kanban-card-dropdown-activity-content">
+                            <div className="kanban-card-dropdown-activity-subject">{topActivity.subject}</div>
+                            <div className="kanban-card-dropdown-activity-meta">
+                              {formatActivityDate(topActivity)} {topActivity.assignedUser ? `· ${topActivity.assignedUser}` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="kanban-card-dropdown-divider"></div>
+                    </>
+                  )}
             <button
               className="kanban-card-dropdown-item"
               onClick={() => {
@@ -4441,6 +4807,9 @@ const Deals = () => {
               </svg>
               Schedule an Activity
             </button>
+                </>
+              );
+            })()}
             <button
               className="kanban-card-dropdown-item"
               onClick={() => {
@@ -4468,7 +4837,9 @@ const Deals = () => {
         onClose={() => {
           setIsActivityModalOpen(false);
           setActivityDealId(null);
+          setEditingActivity(null);
         }}
+        initialActivity={editingActivity}
         userOptions={users}
         dealData={activityDealId ? (() => {
           const deal = deals.find(d => d.id === activityDealId);
@@ -4484,8 +4855,22 @@ const Deals = () => {
             phone: person?.phone || undefined,
             instagramId: person?.instagramId || undefined,
           };
+        })() : editingActivity ? (() => {
+          const deal = deals.find(d => d.id === editingActivity.dealId);
+          if (!deal) return undefined;
+          const person = deal.personId ? persons.find(p => p.id === deal.personId) : null;
+          const organization = deal.organizationId ? organizationsById.get(deal.organizationId) : null;
+          return {
+            dealId: deal.id,
+            dealName: deal.name || undefined,
+            personId: deal.personId || undefined,
+            personName: person?.name || undefined,
+            organization: organization?.name || undefined,
+            phone: person?.phone || undefined,
+            instagramId: person?.instagramId || undefined,
+          };
         })() : undefined}
-        onSave={async (values: ActivityFormValues) => {
+        onSave={async (values: ActivityFormValues & { id?: number }) => {
           try {
             const activityData = {
               subject: values.subject || '',
@@ -4497,17 +4882,28 @@ const Deals = () => {
               type: values.type,
               assignedUser: values.assignedUser,
               notes: values.notes,
-              dealId: activityDealId || undefined,
+              dealId: activityDealId || editingActivity?.dealId || undefined,
               personId: values.personId,
               dueDate: values.dueDate,
               dateTime: values.dateTime,
             };
+            
+            if (values.id && editingActivity) {
+              // Update existing activity
+              await activitiesApi.update(values.id, activityData);
+            } else {
+              // Create new activity
             await activitiesApi.create(activityData);
+            }
+            
+            // Reload activities to update the warning icon
+            await loadActivities();
             // Don't close modal here - let ActivityModal handle it after showing confirmation
             // setIsActivityModalOpen(false);
             // setActivityDealId(null);
+            // setEditingActivity(null);
           } catch (err: any) {
-            console.error('Failed to create activity:', err);
+            console.error('Failed to save activity:', err);
             throw err;
           }
         }}

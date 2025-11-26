@@ -1030,37 +1030,6 @@
   padding-top: 8px;
 }
 
-.kanban-card-activity-icon-wrapper {
-  display: flex;
-  align-items: center;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #e5e7eb;
-}
-
-.kanban-card-activity-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  cursor: pointer;
-  position: relative;
-  border-radius: 50%;
-  transition: transform 0.2s ease;
-  flex-shrink: 0;
-}
-
-.kanban-card-activity-icon:hover {
-  transform: scale(1.1);
-}
-
-.kanban-card-activity-icon svg {
-  width: 16px;
-  height: 16px;
-  display: block;
-}
-
 .kanban-card-date {
   font-size: 10px;
   font-weight: 400;
@@ -1094,6 +1063,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Prevent native browser tooltip */
+  pointer-events: auto;
   color: #6b7280;
   transition: all 0.2s ease;
   padding: 0;
@@ -1114,6 +1085,45 @@
   width: 14px;
   height: 14px;
   transition: transform 0.2s ease;
+}
+
+.kanban-card-action-btn.has-warning-icon {
+  background: #FEF3C7;
+  border: 1.5px solid #FCD34D;
+}
+
+.kanban-card-action-btn.has-warning-icon:hover {
+  background: #FDE68A;
+  border-color: #F59E0B;
+  transform: scale(1.05);
+}
+
+.kanban-card-action-btn.has-warning-icon svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.kanban-card-action-btn.has-today-activities {
+  background: #D1FAE5;
+  border: 1.5px solid #10B981;
+}
+
+.kanban-card-action-btn.has-today-activities:hover {
+  background: #A7F3D0;
+  border-color: #059669;
+  transform: scale(1.05);
+}
+
+.kanban-card-action-btn.has-overdue-activities {
+  background: #FEE2E2;
+  border: 1.5px solid #EF4444;
+}
+
+.kanban-card-action-btn.has-overdue-activities:hover {
+  background: #FECACA;
+  border-color: #DC2626;
+  transform: scale(1.05);
 }
 
 .kanban-card.dropdown-open .kanban-card-action-btn {
@@ -1210,6 +1220,107 @@
 .kanban-card-dropdown-item:last-child {
   border-bottom-left-radius: 8px;
   border-bottom-right-radius: 8px;
+}
+
+.kanban-card-dropdown-message {
+  padding: 16px;
+  text-align: center;
+}
+
+.kanban-card-dropdown-message-text {
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.kanban-card-dropdown-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 0;
+}
+
+.kanban-card-dropdown-activity {
+  padding: 12px 16px;
+  transition: background-color 0.15s ease;
+}
+
+.kanban-card-dropdown-activity:hover {
+  background-color: #f3f4f6;
+}
+
+.kanban-card-dropdown-activity-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.kanban-card-dropdown-activity-checkbox {
+  margin-top: 2px;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease;
+}
+
+.kanban-card-dropdown-activity-checkbox:hover {
+  transform: scale(1.1);
+}
+
+.kanban-card-dropdown-activity-checkbox svg {
+  display: block;
+}
+
+.kanban-card-dropdown-activity-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.kanban-card-dropdown-activity-subject {
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.kanban-card-dropdown-activity-meta {
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.kanban-card-button-tooltip {
+  background: #1f2937;
+  color: #ffffff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: fadeInTooltip 0.1s ease-out;
+}
+
+.kanban-card-button-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #1f2937;
+}
+
+@keyframes fadeInTooltip {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 .kanban-card-tooltip {
