@@ -1,4 +1,6 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import { activitiesApi, type Activity, type PageResponse, type ActivityFilters } from '../services/activities';
 import FilterDropdown, { type SavedFilter as DropdownSavedFilter } from '../components/FilterDropdown';
 import FilterModal, { type FilterCondition } from '../components/FilterModal';
@@ -7,6 +9,7 @@ import ColumnMenu from '../components/ColumnMenu';
 import BulkEditModal from '../components/BulkEditModal';
 import { organizationsApi } from '../services/organizations';
 import { usersApi } from '../services/users';
+import { dealsApi } from '../services/deals';
 import type { Organization } from '../types/organization';
 import type { User } from '../types/user';
 
@@ -24,6 +27,10 @@ type SummaryCardAction =
   | 'overdue';
 
 export default function ActivitiesList() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activityRowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
+  const [highlightedActivityId, setHighlightedActivityId] = useState<number | null>(null);
+  
   const [data, setData] = useState<PageResponse<Activity> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +70,7 @@ export default function ActivitiesList() {
   const [activityTotalCount, setActivityTotalCount] = useState(0);
   const [activityPendingCount, setActivityPendingCount] = useState(0);
   const [activityCompletedCount, setActivityCompletedCount] = useState(0);
+  const [dealsMap, setDealsMap] = useState<Map<number, string>>(new Map());
   const DEFAULT_CATEGORY_OPTIONS: Array<{ code: string; label: string }> = [
     { code: 'PHOTOGRAPHY', label: 'Photography' },
     { code: 'MAKEUP', label: 'Makeup' },
@@ -88,9 +96,16 @@ export default function ActivitiesList() {
   const [pendingDoneActivity, setPendingDoneActivity] = useState<Activity | null>(null);
   const [pendingDoneValue, setPendingDoneValue] = useState(false);
   const [pendingDurationValue, setPendingDurationValue] = useState('');
-  const [pendingAttachmentName, setPendingAttachmentName] = useState('');
+  const [pendingAttachmentFile, setPendingAttachmentFile] = useState<File | null>(null);
+  const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null);
+  const [pendingUploading, setPendingUploading] = useState(false);
   const [pendingDialogPosition, setPendingDialogPosition] = useState<{ top: number; left: number } | null>(null);
   const [lastClickPosition, setLastClickPosition] = useState<{ top: number; left: number } | null>(null);
+  const [screenshotViewerActivity, setScreenshotViewerActivity] = useState<Activity | null>(null);
+  const [screenshotViewerImageUrl, setScreenshotViewerImageUrl] = useState<string | null>(null);
+  const [screenshotReplacementFile, setScreenshotReplacementFile] = useState<File | null>(null);
+  const [screenshotReplacementPreview, setScreenshotReplacementPreview] = useState<string | null>(null);
+  const [screenshotReplacing, setScreenshotReplacing] = useState(false);
   const SERVICE_CATEGORY_STORAGE_KEY = 'activityServiceCategories';
   const [serviceCategories, setServiceCategories] = useState<Record<number, string>>(() => {
     if (typeof window === 'undefined') return {};
@@ -442,6 +457,40 @@ export default function ActivitiesList() {
       }
       activitiesApi
         .list(normalizedFilters)
+        .then(async (response) => {
+          // Fetch deal names for activities that have dealId but no dealName
+          const activitiesWithDealId = response.content.filter(a => a.dealId && !a.dealName);
+          if (activitiesWithDealId.length > 0) {
+            try {
+              // Fetch all deals to get names
+              const allDeals = await dealsApi.list();
+              const newDealsMap = new Map<number, string>();
+              allDeals.forEach(deal => {
+                if (deal.id) {
+                  newDealsMap.set(deal.id, deal.name);
+                }
+              });
+              setDealsMap(newDealsMap);
+              
+              // Update activities with deal names
+              const updatedContent = response.content.map(activity => {
+                if (activity.dealId && !activity.dealName) {
+                  const dealName = newDealsMap.get(activity.dealId);
+                  if (dealName) {
+                    return { ...activity, dealName };
+                  }
+                }
+                return activity;
+              });
+              
+              return { ...response, content: updatedContent };
+            } catch (err) {
+              console.error('Failed to load deals for activity names:', err);
+              return response;
+            }
+          }
+          return response;
+        })
         .then(setData)
       .catch((e) => setError(e?.message ?? 'Failed to load'))
       .finally(() => setLoading(false));
@@ -540,6 +589,29 @@ export default function ActivitiesList() {
     }
   };
 
+  // Handle category and tab from URL parameter
+  useEffect(() => {
+    const categoryParam = searchParams.get('category');
+    const activityId = searchParams.get('activityId');
+    
+    if (categoryParam) {
+      const decodedCategory = decodeURIComponent(categoryParam);
+      const validCategories: Array<'Activity' | 'Call' | 'Meeting scheduler'> = ['Activity', 'Call', 'Meeting scheduler'];
+      if (validCategories.includes(decodedCategory as any)) {
+        const newCategory = decodedCategory as 'Activity' | 'Call' | 'Meeting scheduler';
+        if (category !== newCategory) {
+          setCategory(newCategory);
+        }
+      }
+    }
+    
+    // If activityId is present, switch to "All" tab to ensure activity is visible
+    // This ensures the activity can be highlighted regardless of date filters
+    if (activityId && tab !== 'All') {
+      setTab('All');
+    }
+  }, [searchParams, category, tab]);
+
   useEffect(() => {
     loadActivities();
     loadCounts(filters); // Pass current filters to loadCounts so COMPLETED and PENDING reflect the selected tab's date range
@@ -554,6 +626,185 @@ export default function ActivitiesList() {
       setSelectedManagerFilter(filters.assignedUser.trim());
     }
   }, [filters.assignedUser]);
+
+  // Handle scrolling to activity when activityId is in URL
+  useEffect(() => {
+    const activityId = searchParams.get('activityId');
+    const categoryParam = searchParams.get('category');
+    
+    // Wait for category to be set if category param exists
+    if (categoryParam) {
+      const decodedCategory = decodeURIComponent(categoryParam);
+      const validCategories: Array<'Activity' | 'Call' | 'Meeting scheduler'> = ['Activity', 'Call', 'Meeting scheduler'];
+      if (validCategories.includes(decodedCategory as any)) {
+        const expectedCategory = decodedCategory as 'Activity' | 'Call' | 'Meeting scheduler';
+        // If category hasn't been set yet, wait for it
+        if (category !== expectedCategory) {
+          return; // Wait for category to be set
+        }
+      }
+    }
+    
+    if (activityId && data?.content && !loading) {
+      const id = Number(activityId);
+      // Set highlighted activity ID in state to persist even if URL changes
+      setHighlightedActivityId(id);
+      
+      // Check if activity exists in the data (it should be there if category matches)
+      const activity = data.content.find(a => a.id === id);
+      
+      // Only proceed if activity exists in the data
+      if (activity) {
+        // Wait for DOM to update after category change and data load, then scroll
+        const scrollToActivity = (): boolean => {
+          const rowElement = activityRowRefs.current.get(id);
+          if (rowElement) {
+            // Use requestAnimationFrame to ensure DOM is fully rendered
+            requestAnimationFrame(() => {
+              // Scroll to the element with more aggressive scrolling
+              // First, scroll the window to ensure the table is in view
+              const windowHeight = window.innerHeight;
+              const rowRect = rowElement.getBoundingClientRect();
+              const rowTop = rowRect.top + window.scrollY;
+              const rowCenter = rowTop + (rowRect.height / 2);
+              const targetScrollY = rowCenter - (windowHeight / 2);
+              
+              // Scroll window to center the row
+              window.scrollTo({
+                top: Math.max(0, targetScrollY - 100), // Add some offset from top
+                behavior: 'smooth'
+              });
+              
+              // Also try scrolling the main content container if it exists
+              const mainContent = document.querySelector('.main-content') as HTMLElement;
+              if (mainContent && mainContent.scrollHeight > mainContent.clientHeight) {
+                const containerRect = mainContent.getBoundingClientRect();
+                const relativeTop = rowRect.top - containerRect.top + mainContent.scrollTop;
+                const containerCenter = relativeTop + (rowRect.height / 2);
+                const targetContainerScroll = containerCenter - (mainContent.clientHeight / 2);
+                
+                mainContent.scrollTo({
+                  top: Math.max(0, targetContainerScroll),
+                  behavior: 'smooth'
+                });
+              }
+              
+              // Also scroll the table container if it has its own scroll
+              const tableContainer = rowElement.closest('.table-wrap') as HTMLElement;
+              if (tableContainer && tableContainer.scrollHeight > tableContainer.clientHeight) {
+                const containerRect = tableContainer.getBoundingClientRect();
+                const relativeTop = rowRect.top - containerRect.top + tableContainer.scrollTop;
+                const containerCenter = relativeTop + (rowRect.height / 2);
+                const targetTableScroll = containerCenter - (tableContainer.clientHeight / 2);
+                
+                tableContainer.scrollTo({
+                  top: Math.max(0, targetTableScroll),
+                  behavior: 'smooth'
+                });
+              }
+              
+              // Final scroll using scrollIntoView as a fallback
+              setTimeout(() => {
+                rowElement.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+              }, 200);
+              
+              // Add a more visible highlight effect with animation
+              rowElement.style.transition = 'background-color 0.3s ease, box-shadow 0.3s ease, border 0.3s ease';
+              // Add a pulsing animation for better visibility
+              rowElement.style.animation = 'highlightPulse 2s ease-in-out infinite';
+            });
+            return true;
+          }
+          return false;
+        };
+
+        // Try with multiple retry attempts - important for large lists
+        // Use requestAnimationFrame for first attempt to ensure DOM is ready
+        requestAnimationFrame(() => {
+          if (!scrollToActivity()) {
+            // Retry after a short delay
+            setTimeout(() => {
+              if (!scrollToActivity()) {
+                // Retry after medium delay
+                setTimeout(() => {
+                  if (!scrollToActivity()) {
+                    // Retry after longer delay (for very large lists)
+                    setTimeout(() => {
+                      if (!scrollToActivity()) {
+                        // Final retry with even longer delay
+                        setTimeout(() => {
+                          if (!scrollToActivity()) {
+                            // Last retry - sometimes DOM takes much longer with many entries
+                            setTimeout(() => scrollToActivity(), 2000);
+                          }
+                        }, 1500);
+                      }
+                    }, 1000);
+                  }
+                }, 800);
+              }
+            }, 500);
+          }
+        });
+
+        // Add click listener to clear highlight when user clicks anywhere on the page
+        const handlePageClick = (e: Event) => {
+          // Don't clear if clicking on the highlighted row itself or its children
+          const rowElement = activityRowRefs.current.get(id);
+          const target = e.target as Node;
+          if (rowElement && target && rowElement.contains(target)) {
+            return; // Keep highlight if clicking on the row itself
+          }
+          
+          // Clear the highlight
+          setHighlightedActivityId(null);
+          if (rowElement) {
+            // Remove animation
+            rowElement.style.animation = '';
+          }
+          setSearchParams((prev) => {
+            const newParams = new URLSearchParams(prev);
+            newParams.delete('activityId');
+            return newParams;
+          });
+          
+          // Remove the event listener after clearing
+          document.removeEventListener('click', handlePageClick, true);
+        };
+
+        // Add click listener to document after a short delay to avoid immediate clearing
+        // This delay prevents the click that triggered navigation from immediately clearing the highlight
+        const addListenerTimeout = setTimeout(() => {
+          document.addEventListener('click', handlePageClick, true); // Use capture phase
+        }, 100);
+
+        // Cleanup function to remove event listener and timeout if component unmounts or effect re-runs
+        return () => {
+          clearTimeout(addListenerTimeout);
+          document.removeEventListener('click', handlePageClick, true);
+        };
+      } else {
+        // Activity not found in current data - might be filtered by tab or category hasn't loaded yet
+        // If we have a category param, the category might still be switching or data might still be loading
+        if (categoryParam) {
+          const decodedCategory = decodeURIComponent(categoryParam);
+          const validCategories: Array<'Activity' | 'Call' | 'Meeting scheduler'> = ['Activity', 'Call', 'Meeting scheduler'];
+          if (validCategories.includes(decodedCategory as any)) {
+            const expectedCategory = decodedCategory as 'Activity' | 'Call' | 'Meeting scheduler';
+            // If category matches but activity not found, it might still be loading
+            if (category === expectedCategory && loading) {
+              // Data is still loading, wait for it
+              return;
+            }
+          }
+        }
+        console.warn(`Activity ${id} not found in current data. Category: ${category}, Tab: ${tab}, Loading: ${loading}`);
+      }
+    } else if (!activityId && highlightedActivityId) {
+      // Clear highlighted activity if URL param is removed
+      setHighlightedActivityId(null);
+    }
+  }, [data, searchParams, setSearchParams, loading, category, tab, highlightedActivityId]);
 
   const handleTabSelection = (nextTab: TabOption) => {
     if (nextTab === 'Select period') {
@@ -841,14 +1092,38 @@ export default function ActivitiesList() {
 
   const handlePendingAttachmentInput = (files?: FileList | null) => {
     if (!files || files.length === 0) return;
-    setPendingAttachmentName(files[0].name);
+    const file = files[0];
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    
+    // Validate file size (10MB = 10 * 1024 * 1024 bytes)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+    
+    setPendingAttachmentFile(file);
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setPendingAttachmentPreview(previewUrl);
   };
 
   const handlePendingDoneCancel = () => {
+    // Clean up preview URL if it exists
+    if (pendingAttachmentPreview && pendingAttachmentPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(pendingAttachmentPreview);
+    }
     setPendingDoneActivity(null);
     setPendingDoneValue(false);
     setPendingDurationValue('');
-    setPendingAttachmentName('');
+    setPendingAttachmentFile(null);
+    setPendingAttachmentPreview(null);
+    setPendingUploading(false);
     setPendingDialogPosition(null);
   };
 
@@ -892,7 +1167,7 @@ export default function ActivitiesList() {
       alert('Please enter a duration.');
       return;
     }
-    if (!pendingAttachmentName) {
+    if (!pendingAttachmentFile && !pendingDoneActivity.attachmentUrl) {
       alert('Please attach an image.');
       return;
     }
@@ -901,15 +1176,32 @@ export default function ActivitiesList() {
       alert('Please enter a valid duration (e.g., 15 or 00:15:00).');
       return;
     }
-    const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
-    const startMinutes = existingStartMinutes ?? 0;
-    const endMinutes = startMinutes + durationMinutes;
-    const startTimeFormatted =
-      existingStartMinutes !== null && pendingDoneActivity.startTime
-        ? pendingDoneActivity.startTime
-        : formatMinutesToHHMM(startMinutes);
-    const endTimeFormatted = formatMinutesToHHMM(endMinutes);
+    
+    setPendingUploading(true);
+    
     try {
+      // Upload screenshot if a new file is selected
+      let attachmentUrl = pendingDoneActivity.attachmentUrl;
+      if (pendingAttachmentFile) {
+        try {
+          attachmentUrl = await activitiesApi.uploadScreenshot(pendingDoneActivity.id, pendingAttachmentFile);
+        } catch (error: any) {
+          console.error('Failed to upload screenshot:', error);
+          alert(`Failed to upload screenshot: ${error?.message || 'Unknown error'}`);
+          setPendingUploading(false);
+          return;
+        }
+      }
+      
+      const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
+      const startMinutes = existingStartMinutes ?? 0;
+      const endMinutes = startMinutes + durationMinutes;
+      const startTimeFormatted =
+        existingStartMinutes !== null && pendingDoneActivity.startTime
+          ? pendingDoneActivity.startTime
+          : formatMinutesToHHMM(startMinutes);
+      const endTimeFormatted = formatMinutesToHHMM(endMinutes);
+      
       const updatedActivity = await activitiesApi.update(pendingDoneActivity.id, {
         startTime: startTimeFormatted,
         endTime: endTimeFormatted,
@@ -920,12 +1212,19 @@ export default function ActivitiesList() {
             ? {
                 ...prev,
                 content: prev.content.map((a) =>
-                  a.id === updatedActivity.id ? { ...a, ...updatedActivity } : a,
+                  a.id === updatedActivity.id ? { ...a, ...updatedActivity, attachmentUrl } : a,
                 ),
               }
             : prev,
         );
       }
+      
+      const durationDisplay = duration.includes(':')
+        ? duration
+        : formatMinutesToHHMM(durationMinutes);
+      setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
+      await completeToggleDone(pendingDoneActivity.id, pendingDoneValue);
+      handlePendingDoneCancel();
     } catch (error: any) {
       console.error('Failed to save call duration:', error);
       alert(
@@ -933,15 +1232,8 @@ export default function ActivitiesList() {
           error?.response?.data?.message || error?.message || 'Unknown error'
         }`,
       );
-      return;
+      setPendingUploading(false);
     }
-    const durationDisplay = duration.includes(':')
-      ? duration
-      : formatMinutesToHHMM(durationMinutes);
-    setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
-    setAttachmentPreviews((prev) => ({ ...prev, [pendingDoneActivity.id]: pendingAttachmentName }));
-    await completeToggleDone(pendingDoneActivity.id, pendingDoneValue);
-    handlePendingDoneCancel();
   };
 
   const handleRowClick = (activity: Activity) => {
@@ -1031,12 +1323,88 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
       setPendingDoneActivity(activity);
       setPendingDoneValue(value);
       setPendingDurationValue(durationEntries[activity.id] ?? '');
-      setPendingAttachmentName(attachmentPreviews[activity.id] ?? '');
+      setPendingAttachmentFile(null);
+      // If activity already has an attachment URL, use it as preview
+      setPendingAttachmentPreview(activity.attachmentUrl || null);
       setPendingDialogPosition(lastClickPosition || null);
       return;
     }
     await completeToggleDone(activity.id, value);
   };
+
+  // Open screenshot viewer
+  const openScreenshotViewer = useCallback((activity: Activity) => {
+    if (activity.attachmentUrl) {
+      setScreenshotViewerActivity(activity);
+      setScreenshotViewerImageUrl(activity.attachmentUrl);
+      setScreenshotReplacementFile(null);
+      setScreenshotReplacementPreview(null);
+    }
+  }, []);
+
+  // Close screenshot viewer
+  const closeScreenshotViewer = useCallback(() => {
+    // Clean up preview URL if it exists
+    if (screenshotReplacementPreview && screenshotReplacementPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(screenshotReplacementPreview);
+    }
+    setScreenshotViewerActivity(null);
+    setScreenshotViewerImageUrl(null);
+    setScreenshotReplacementFile(null);
+    setScreenshotReplacementPreview(null);
+    setScreenshotReplacing(false);
+  }, [screenshotReplacementPreview]);
+
+  // Handle screenshot replacement file input
+  const handleScreenshotReplacementInput = useCallback((files?: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    
+    // Validate file size (10MB = 10 * 1024 * 1024 bytes)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+    
+    setScreenshotReplacementFile(file);
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setScreenshotReplacementPreview(previewUrl);
+  }, []);
+
+  // Handle screenshot replacement
+  const handleScreenshotReplacement = useCallback(async () => {
+    if (!screenshotViewerActivity || !screenshotReplacementFile) return;
+    
+    setScreenshotReplacing(true);
+    
+    try {
+      const newImageUrl = await activitiesApi.uploadScreenshot(screenshotViewerActivity.id, screenshotReplacementFile);
+      // Update the image URL
+      setScreenshotViewerImageUrl(newImageUrl);
+      // Clean up old preview
+      if (screenshotReplacementPreview && screenshotReplacementPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(screenshotReplacementPreview);
+      }
+      setScreenshotReplacementFile(null);
+      setScreenshotReplacementPreview(null);
+      // Reload activities to get updated data
+      loadActivities();
+      alert('Screenshot replaced successfully!');
+    } catch (error: any) {
+      console.error('Failed to replace screenshot:', error);
+      alert(`Failed to replace screenshot: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setScreenshotReplacing(false);
+    }
+  }, [screenshotViewerActivity, screenshotReplacementFile, screenshotReplacementPreview]);
 
   const openRowMenu = (event: React.MouseEvent<HTMLButtonElement>, activity: Activity) => {
     event.stopPropagation();
@@ -1305,12 +1673,13 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           </span>
         );
       case 'deal':
+        const dealName = a.dealName || (a.dealId ? dealsMap.get(a.dealId) : null);
         return (
           <span 
             className={statusClass(a)}
             style={{ textDecoration: a.done ? 'line-through' : 'none' }}
           >
-            {a.dealName || '-'}
+            {dealName || '-'}
           </span>
         );
       case 'instagramId':
@@ -1861,6 +2230,19 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         </div>
       )}
 
+      {/* Add keyframes animation for highlight pulsing */}
+      <style>{`
+        @keyframes highlightPulse {
+          0%, 100% {
+            box-shadow: 0 0 0 6px #1976d2, 0 8px 24px rgba(33, 150, 243, 0.6), inset 0 0 0 2px rgba(33, 150, 243, 0.3);
+            background-color: #bbdefb;
+          }
+          50% {
+            box-shadow: 0 0 0 10px #1976d2, 0 12px 32px rgba(33, 150, 243, 0.8), inset 0 0 0 2px rgba(33, 150, 243, 0.4);
+            background-color: #90caf9;
+          }
+        }
+      `}</style>
       <div className="table-wrap">
       <table className="table">
         <thead>
@@ -1912,8 +2294,35 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           </tr>
         </thead>
         <tbody>
-          {data?.content?.filter(shouldShow).map((a) => (
-            <tr key={a.id} onClick={() => handleRowClick(a)} style={{ cursor: 'pointer' }}>
+          {data?.content?.filter(shouldShow).map((a) => {
+            // Use state-based highlighting for persistence, fallback to URL param
+            const activityIdFromUrl = searchParams.get('activityId');
+            const isHighlighted = (highlightedActivityId === a.id) || (activityIdFromUrl && Number(activityIdFromUrl) === a.id);
+            return (
+            <tr 
+              key={a.id} 
+              ref={(el) => {
+                if (el) {
+                  activityRowRefs.current.set(a.id, el);
+                } else {
+                  activityRowRefs.current.delete(a.id);
+                }
+              }}
+              onClick={() => handleRowClick(a)} 
+              style={{ 
+                cursor: 'pointer',
+                backgroundColor: isHighlighted ? '#bbdefb' : 'transparent',
+                transition: 'background-color 0.3s ease, box-shadow 0.3s ease, border 0.3s ease',
+                boxShadow: isHighlighted ? '0 0 0 6px #1976d2, 0 8px 24px rgba(33, 150, 243, 0.6), inset 0 0 0 2px rgba(33, 150, 243, 0.3)' : 'none',
+                outline: isHighlighted ? '4px solid #1976d2' : 'none',
+                outlineOffset: isHighlighted ? '-4px' : '0',
+                borderLeft: isHighlighted ? '8px solid #1976d2' : 'none',
+                borderRight: isHighlighted ? '2px solid #1976d2' : 'none',
+                position: isHighlighted ? 'relative' : 'static',
+                zIndex: isHighlighted ? 100 : 'auto',
+                transform: isHighlighted ? 'scale(1.01)' : 'scale(1)',
+              }}
+            >
               {/* Checkbox column cell */}
               <td style={{ textAlign: 'center', padding: '10px 8px' }}>
                 <input
@@ -1939,7 +2348,8 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
                 </button>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
       </div>
@@ -1977,6 +2387,27 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
             >
               {rowMenu.activity.done ? 'Mark undone' : 'Mark as done'}
             </button>
+            {rowMenu.activity.attachmentUrl && (
+              <button
+                onClick={() => {
+                  openScreenshotViewer(rowMenu.activity);
+                  setRowMenu(null);
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '10px 16px',
+                  border: 'none',
+                  background: 'transparent',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  color: '#2563eb',
+                }}
+              >
+                View Screenshot
+              </button>
+            )}
             <button
               onClick={handleRowMenuDelete}
               style={{
@@ -2164,12 +2595,12 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
             </div>
             <div style={{ padding: 16 }}>
             <label style={{ display: 'block', marginBottom: 10, fontWeight: 500, fontSize: '13px' }}>
-              Duration (hh:mm:ss)
+              Please Enter Duration In Minutes
               <input
                 type="text"
                 value={pendingDurationValue}
                 onChange={(e) => setPendingDurationValue(e.target.value)}
-                placeholder="00:15:00"
+                placeholder="15"
                 style={{
                   width: '100%',
                   marginTop: 4,
@@ -2184,20 +2615,42 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
             <label style={{ display: 'block', marginBottom: 16, fontWeight: 500, fontSize: '13px' }}>
               Attach image
               <div style={{ marginTop: 4 }}>
+                {pendingAttachmentPreview && (
+                  <div style={{ marginBottom: 8, position: 'relative' }}>
+                    <img
+                      src={pendingAttachmentPreview}
+                      alt="Screenshot preview"
+                      style={{
+                        width: '100%',
+                        maxHeight: '150px',
+                        objectFit: 'contain',
+                        borderRadius: 6,
+                        border: '1px solid #e5e7eb',
+                      }}
+                      onError={(e) => {
+                        console.error('Failed to load image:', pendingAttachmentPreview);
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )}
                 <label
                   style={{
                     color: '#2563eb',
-                    cursor: 'pointer',
+                    cursor: pendingUploading ? 'not-allowed' : 'pointer',
                     fontWeight: 600,
                     fontSize: '13px',
+                    opacity: pendingUploading ? 0.6 : 1,
+                    display: 'inline-block',
                   }}
                 >
-                  {pendingAttachmentName || 'Select image'}
+                  {pendingAttachmentFile ? pendingAttachmentFile.name : pendingAttachmentPreview ? 'Replace image' : 'Select image'}
                   <input
                     type="file"
                     accept="image/*"
                     style={{ display: 'none' }}
                     onChange={(e) => handlePendingAttachmentInput(e.target.files)}
+                    disabled={pendingUploading}
                   />
                 </label>
               </div>
@@ -2218,17 +2671,19 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
               </button>
               <button
                 onClick={handlePendingDoneConfirm}
+                disabled={pendingUploading}
                 style={{
                   border: 'none',
-                  background: '#2563eb',
+                  background: pendingUploading ? '#9ca3af' : '#2563eb',
                   color: '#fff',
                   borderRadius: 6,
                   padding: '6px 12px',
-                  cursor: 'pointer',
+                  cursor: pendingUploading ? 'not-allowed' : 'pointer',
                   fontSize: '13px',
+                  opacity: pendingUploading ? 0.6 : 1,
                 }}
               >
-                Save
+                {pendingUploading ? 'Uploading...' : 'Save'}
               </button>
             </div>
             </div>
@@ -2639,6 +3094,158 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Screenshot Viewer Modal */}
+      {screenshotViewerActivity && screenshotViewerImageUrl && createPortal(
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              zIndex: 1599,
+            }}
+            onClick={closeScreenshotViewer}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: '#fff',
+              borderRadius: 12,
+              width: '90%',
+              maxWidth: '800px',
+              maxHeight: '90vh',
+              boxShadow: '0 20px 45px rgba(15,23,42,0.25)',
+              zIndex: 1600,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ 
+              background: '#e4e7ec', 
+              padding: '12px 16px', 
+              borderBottom: '1px solid #e5e7eb',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>
+                Screenshot - {screenshotViewerActivity.subject}
+              </h3>
+              <button
+                onClick={closeScreenshotViewer}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M15 5L5 15M5 5L15 15" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <div style={{ padding: 16, overflow: 'auto', flex: 1 }}>
+              <div style={{ marginBottom: 16 }}>
+                <img
+                  src={screenshotReplacementPreview || screenshotViewerImageUrl}
+                  alt="Screenshot"
+                  style={{
+                    width: '100%',
+                    maxHeight: '60vh',
+                    objectFit: 'contain',
+                    borderRadius: 6,
+                    border: '1px solid #e5e7eb',
+                  }}
+                  onError={(e) => {
+                    console.error('Failed to load image:', screenshotReplacementPreview || screenshotViewerImageUrl);
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              </div>
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
+                <label style={{ display: 'block', marginBottom: 10, fontWeight: 500, fontSize: '13px' }}>
+                  Replace Screenshot
+                  <div style={{ marginTop: 8 }}>
+                    <label
+                      style={{
+                        color: '#2563eb',
+                        cursor: screenshotReplacing ? 'not-allowed' : 'pointer',
+                        fontWeight: 600,
+                        fontSize: '13px',
+                        opacity: screenshotReplacing ? 0.6 : 1,
+                        display: 'inline-block',
+                        padding: '8px 12px',
+                        border: '1px solid #2563eb',
+                        borderRadius: 6,
+                        background: '#fff',
+                      }}
+                    >
+                      {screenshotReplacementFile ? screenshotReplacementFile.name : 'Select new image'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={(e) => handleScreenshotReplacementInput(e.target.files)}
+                        disabled={screenshotReplacing}
+                      />
+                    </label>
+                  </div>
+                </label>
+                {screenshotReplacementFile && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                    <button
+                      onClick={() => {
+                        if (screenshotReplacementPreview && screenshotReplacementPreview.startsWith('blob:')) {
+                          URL.revokeObjectURL(screenshotReplacementPreview);
+                        }
+                        setScreenshotReplacementFile(null);
+                        setScreenshotReplacementPreview(null);
+                      }}
+                      style={{
+                        border: '1px solid #d1d5db',
+                        background: '#fff',
+                        borderRadius: 6,
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleScreenshotReplacement}
+                      disabled={screenshotReplacing}
+                      style={{
+                        border: 'none',
+                        background: screenshotReplacing ? '#9ca3af' : '#2563eb',
+                        color: '#fff',
+                        borderRadius: 6,
+                        padding: '6px 12px',
+                        cursor: screenshotReplacing ? 'not-allowed' : 'pointer',
+                        fontSize: '13px',
+                        opacity: screenshotReplacing ? 0.6 : 1,
+                      }}
+                    >
+                      {screenshotReplacing ? 'Replacing...' : 'Replace'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>,
+        document.body
       )}
     </div>
   );

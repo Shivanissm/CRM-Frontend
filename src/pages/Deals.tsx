@@ -211,7 +211,7 @@ const Deals = () => {
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [categoriesFetched, setCategoriesFetched] = useState(false);
   const [_hoveredDealId, setHoveredDealId] = useState<number | null>(null);
-  const [_tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number; organizationName: string | null; personName: string | null } | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number; organizationName: string | null; personName: string | null } | null>(null);
   const [hoveredButtonDealId, setHoveredButtonDealId] = useState<number | null>(null);
   const [buttonTooltipPosition, setButtonTooltipPosition] = useState<{ top: number; left: number } | null>(null);
   const [openDropdownDealId, setOpenDropdownDealId] = useState<number | null>(null);
@@ -227,6 +227,19 @@ const Deals = () => {
   const [filteredPersons, setFilteredPersons] = useState<Person[]>([]);
   const personInputRef = useRef<HTMLInputElement>(null);
   const personSuggestionsRef = useRef<HTMLDivElement>(null);
+  const [pendingDoneActivity, setPendingDoneActivity] = useState<Activity | null>(null);
+  const [pendingDoneValue, setPendingDoneValue] = useState(false);
+  const [pendingDurationValue, setPendingDurationValue] = useState('');
+  const [pendingAttachmentFile, setPendingAttachmentFile] = useState<File | null>(null);
+  const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null);
+  const [pendingUploading, setPendingUploading] = useState(false);
+  const [pendingDialogPosition, setPendingDialogPosition] = useState<{ top: number; left: number } | null>(null);
+  const [durationEntries, setDurationEntries] = useState<Record<number, string>>({});
+  const [screenshotViewerActivity, setScreenshotViewerActivity] = useState<Activity | null>(null);
+  const [screenshotViewerImageUrl, setScreenshotViewerImageUrl] = useState<string | null>(null);
+  const [screenshotReplacementFile, setScreenshotReplacementFile] = useState<File | null>(null);
+  const [screenshotReplacementPreview, setScreenshotReplacementPreview] = useState<string | null>(null);
+  const [screenshotReplacing, setScreenshotReplacing] = useState(false);
   const venueInputRef = useRef<HTMLInputElement>(null);
   const [venueSuggestions, setVenueSuggestions] = useState<Array<{ formatted: string; name: string }>>([]);
   const [showVenueSuggestions, setShowVenueSuggestions] = useState(false);
@@ -321,6 +334,266 @@ const Deals = () => {
       console.error('Failed to load activities:', err);
     }
   }, []);
+
+  // Helper function to normalize category label
+  const normalizeCategoryLabel = useCallback((cat?: string | null): 'Activity' | 'Call' | 'Meeting scheduler' => {
+    if (!cat) return 'Activity';
+    if (cat === 'CALL') return 'Call';
+    if (cat === 'MEETING_SCHEDULER') return 'Meeting scheduler';
+    return 'Activity';
+  }, []);
+
+  // Helper function to parse time string to minutes
+  const parseTimeToMinutes = useCallback((time?: string | null): number | null => {
+    if (!time) return null;
+    const [hoursStr, minutesStr] = time.split(':');
+    const hours = Number(hoursStr);
+    const minutes = Number(minutesStr);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+    return hours * 60 + minutes;
+  }, []);
+
+  // Helper function to parse duration input to minutes
+  const parseDurationInputToMinutes = useCallback((value: string): number | null => {
+    const trimmed = value?.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.includes(':')) {
+      const parts = trimmed.split(':').map((p) => p.trim());
+      if (parts.length < 2 || parts.length > 3) {
+        return null;
+      }
+      const [hoursStr, minutesStr, secondsStr] = parts;
+      const hours = Number(hoursStr);
+      const minutes = Number(minutesStr);
+      const seconds = parts.length === 3 ? Number(secondsStr) : 0;
+      if ([hours, minutes, seconds].some((n) => Number.isNaN(n))) {
+        return null;
+      }
+      return hours * 60 + minutes + Math.floor(seconds / 60);
+    }
+
+    const numericMinutes = Number(trimmed);
+    if (Number.isNaN(numericMinutes)) {
+      return null;
+    }
+    return numericMinutes;
+  }, []);
+
+  // Helper function to format minutes to HH:MM
+  const formatMinutesToHHMM = useCallback((minutes: number): string => {
+    const safeMinutes = Math.max(0, minutes);
+    const hours = Math.floor(safeMinutes / 60);
+    const remainingMinutes = safeMinutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(remainingMinutes).padStart(2, '0')}`;
+  }, []);
+
+  // Handle pending attachment input
+  const handlePendingAttachmentInput = useCallback((files?: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    
+    // Validate file size (10MB = 10 * 1024 * 1024 bytes)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+    
+    setPendingAttachmentFile(file);
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setPendingAttachmentPreview(previewUrl);
+  }, []);
+
+  // Handle pending done cancel
+  const handlePendingDoneCancel = useCallback(() => {
+    // Clean up preview URL if it exists
+    if (pendingAttachmentPreview && pendingAttachmentPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(pendingAttachmentPreview);
+    }
+    setPendingDoneActivity(null);
+    setPendingDoneValue(false);
+    setPendingDurationValue('');
+    setPendingAttachmentFile(null);
+    setPendingAttachmentPreview(null);
+    setPendingUploading(false);
+    setPendingDialogPosition(null);
+  }, [pendingAttachmentPreview]);
+
+  // Complete toggle done (without modal)
+  const completeToggleDone = useCallback(async (id: number, value: boolean) => {
+    try {
+      await activitiesApi.markDone(id, value);
+      await loadActivities();
+    } catch (e) {
+      console.error('Failed to toggle done', e);
+    }
+  }, []);
+
+  // Handle pending done confirm
+  const handlePendingDoneConfirm = useCallback(async () => {
+    if (!pendingDoneActivity) return;
+    const duration = pendingDurationValue.trim();
+    if (!duration) {
+      alert('Please enter a duration.');
+      return;
+    }
+    if (!pendingAttachmentFile && !pendingDoneActivity.attachmentUrl) {
+      alert('Please attach an image.');
+      return;
+    }
+    const durationMinutes = parseDurationInputToMinutes(duration);
+    if (durationMinutes === null || durationMinutes <= 0) {
+      alert('Please enter a valid duration (e.g., 15 or 00:15:00).');
+      return;
+    }
+    
+    setPendingUploading(true);
+    
+    try {
+      // Upload screenshot if a new file is selected
+      if (pendingAttachmentFile) {
+        try {
+          await activitiesApi.uploadScreenshot(pendingDoneActivity.id, pendingAttachmentFile);
+        } catch (error: any) {
+          console.error('Failed to upload screenshot:', error);
+          alert(`Failed to upload screenshot: ${error?.message || 'Unknown error'}`);
+          setPendingUploading(false);
+          return;
+        }
+      }
+      
+      const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
+      const startMinutes = existingStartMinutes ?? 0;
+      const endMinutes = startMinutes + durationMinutes;
+      const startTimeFormatted =
+        existingStartMinutes !== null && pendingDoneActivity.startTime
+          ? pendingDoneActivity.startTime
+          : formatMinutesToHHMM(startMinutes);
+      const endTimeFormatted = formatMinutesToHHMM(endMinutes);
+      
+      const updatedActivity = await activitiesApi.update(pendingDoneActivity.id, {
+        startTime: startTimeFormatted,
+        endTime: endTimeFormatted,
+      });
+      if (updatedActivity) {
+        await loadActivities();
+      }
+      
+      const durationDisplay = duration.includes(':')
+        ? duration
+        : formatMinutesToHHMM(durationMinutes);
+      setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
+      await completeToggleDone(pendingDoneActivity.id, pendingDoneValue);
+      handlePendingDoneCancel();
+    } catch (error: any) {
+      console.error('Failed to save call duration:', error);
+      alert(
+        `Failed to save call duration: ${
+          error?.response?.data?.message || error?.message || 'Unknown error'
+        }`,
+      );
+      setPendingUploading(false);
+    }
+  }, [pendingDoneActivity, pendingDurationValue, pendingAttachmentFile, pendingDoneValue, parseDurationInputToMinutes, parseTimeToMinutes, formatMinutesToHHMM, completeToggleDone, handlePendingDoneCancel, loadActivities]);
+
+  // Toggle done with call activity check
+  const toggleDone = useCallback(async (activity: Activity, value: boolean, clickPosition?: { top: number; left: number }) => {
+    // Check if it's a call activity being marked as done
+    const category = normalizeCategoryLabel(activity.category);
+    if (category === 'Call' && value) {
+      setPendingDoneActivity(activity);
+      setPendingDoneValue(value);
+      setPendingDurationValue(durationEntries[activity.id] ?? '');
+      setPendingAttachmentFile(null);
+      // If activity already has an attachment URL, use it as preview
+      setPendingAttachmentPreview(activity.attachmentUrl || null);
+      setPendingDialogPosition(clickPosition || null);
+      return;
+    }
+    await completeToggleDone(activity.id, value);
+  }, [normalizeCategoryLabel, durationEntries, completeToggleDone]);
+
+  // Open screenshot viewer
+  const openScreenshotViewer = useCallback((activity: Activity) => {
+    if (activity.attachmentUrl) {
+      setScreenshotViewerActivity(activity);
+      setScreenshotViewerImageUrl(activity.attachmentUrl);
+      setScreenshotReplacementFile(null);
+      setScreenshotReplacementPreview(null);
+    }
+  }, []);
+
+  // Close screenshot viewer
+  const closeScreenshotViewer = useCallback(() => {
+    // Clean up preview URL if it exists
+    if (screenshotReplacementPreview && screenshotReplacementPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(screenshotReplacementPreview);
+    }
+    setScreenshotViewerActivity(null);
+    setScreenshotViewerImageUrl(null);
+    setScreenshotReplacementFile(null);
+    setScreenshotReplacementPreview(null);
+    setScreenshotReplacing(false);
+  }, [screenshotReplacementPreview]);
+
+  // Handle screenshot replacement file input
+  const handleScreenshotReplacementInput = useCallback((files?: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    
+    // Validate file size (10MB = 10 * 1024 * 1024 bytes)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+    
+    setScreenshotReplacementFile(file);
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setScreenshotReplacementPreview(previewUrl);
+  }, []);
+
+  // Handle screenshot replacement
+  const handleScreenshotReplacement = useCallback(async () => {
+    if (!screenshotViewerActivity || !screenshotReplacementFile) return;
+    
+    setScreenshotReplacing(true);
+    
+    try {
+      const newImageUrl = await activitiesApi.uploadScreenshot(screenshotViewerActivity.id, screenshotReplacementFile);
+      // Update the image URL
+      setScreenshotViewerImageUrl(newImageUrl);
+      // Clean up old preview
+      if (screenshotReplacementPreview && screenshotReplacementPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(screenshotReplacementPreview);
+      }
+      setScreenshotReplacementFile(null);
+      setScreenshotReplacementPreview(null);
+      // Reload activities to get updated data
+      await loadActivities();
+      alert('Screenshot replaced successfully!');
+    } catch (error: any) {
+      console.error('Failed to replace screenshot:', error);
+      alert(`Failed to replace screenshot: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setScreenshotReplacing(false);
+    }
+  }, [screenshotViewerActivity, screenshotReplacementFile, screenshotReplacementPreview, loadActivities]);
 
   // Check if a deal should show the warning icon (no activities or all completed)
   const shouldShowWarningIcon = useCallback((dealId: number): boolean => {
@@ -2150,6 +2423,32 @@ const Deals = () => {
         [name]: value,
       };
       
+      // If organization changes, auto-select the associated pipeline and category
+      if (name === 'organizationId' && value) {
+        const organizationId = Number(value);
+        // Find pipeline associated with this organization
+        const associatedPipeline = allPipelines.find(pipeline => 
+          pipeline.organization?.id === organizationId
+        );
+        if (associatedPipeline) {
+          newData.pipelineId = String(associatedPipeline.id);
+          // Clear stageId since pipeline changed
+          newData.stageId = '';
+        }
+        
+        // Auto-select category based on organization's category
+        const selectedOrg = organizationsById.get(organizationId);
+        if (selectedOrg?.category && categoryOptions.length > 0) {
+          // Find matching category by comparing organization category with category label or code
+          const matchingCategory = categoryOptions.find(cat => 
+            cat.label === selectedOrg.category || cat.id === selectedOrg.category
+          );
+          if (matchingCategory) {
+            newData.categoryId = matchingCategory.id;
+          }
+        }
+      }
+      
       // If pipeline changes, clear the stageId since stages are pipeline-specific
       if (name === 'pipelineId') {
         newData.stageId = '';
@@ -2191,23 +2490,31 @@ const Deals = () => {
     let personId: number | undefined = undefined;
     let personHasPhone = false;
     if (formData.personName.trim()) {
+      const searchName = formData.personName.toLowerCase().trim();
+      console.log(`Looking for person with name: "${formData.personName}" (normalized: "${searchName}")`);
+      console.log(`Available persons (${persons.length}):`, persons.map(p => ({ id: p.id, name: p.name, phone: p.phone })));
+      
       const foundPerson = persons.find(
-        (p) => p.name.toLowerCase().trim() === formData.personName.toLowerCase().trim()
+        (p) => p.name.toLowerCase().trim() === searchName
       );
+      
       if (foundPerson) {
         personId = foundPerson.id;
+        console.log(`✓ Found person: ID=${foundPerson.id}, Name="${foundPerson.name}", Phone="${foundPerson.phone}"`);
+        
         // Fetch the latest person data to ensure we have the most up-to-date phone number
         try {
           const latestPerson = await personsApi.get(foundPerson.id);
           personHasPhone = !!(latestPerson.phone && latestPerson.phone.trim().length > 0);
-          console.log(`Fetched latest person data for ${foundPerson.name}: phone=${latestPerson.phone}, personHasPhone=${personHasPhone}`);
+          console.log(`✓ Fetched latest person data for "${foundPerson.name}": phone="${latestPerson.phone}", personHasPhone=${personHasPhone}`);
         } catch (err) {
           // If fetching fails, fall back to cached data
-          console.warn('Failed to fetch latest person data, using cached data:', err);
+          console.warn('⚠ Failed to fetch latest person data, using cached data:', err);
           personHasPhone = !!(foundPerson.phone && foundPerson.phone.trim().length > 0);
-          console.log(`Using cached person data for ${foundPerson.name}: phone=${foundPerson.phone}, personHasPhone=${personHasPhone}`);
+          console.log(`Using cached person data for "${foundPerson.name}": phone="${foundPerson.phone}", personHasPhone=${personHasPhone}`);
         }
       } else {
+        console.log(`✗ Person not found in cache, will create new person`);
         // Person doesn't exist, create a new one
         try {
           const newPerson = await personsApi.create({
@@ -2215,6 +2522,7 @@ const Deals = () => {
           });
           personId = newPerson.id;
           personHasPhone = !!(newPerson.phone && newPerson.phone.trim().length > 0);
+          console.log(`✓ Created new person: ID=${newPerson.id}, Name="${newPerson.name}", Phone="${newPerson.phone}", personHasPhone=${personHasPhone}`);
           // Reload persons list to include the new person
           const personsPage = await personsApi.list({ page: 0, size: 200, sort: 'name,asc' });
           setPersons(personsPage.content ?? []);
@@ -2225,6 +2533,8 @@ const Deals = () => {
           return;
         }
       }
+    } else {
+      console.log('No person name provided, skipping person lookup');
     }
 
     const trimmedCategory = formData.categoryId?.trim();
@@ -2249,9 +2559,16 @@ const Deals = () => {
 
     // Determine stage based on person's phone number - ALWAYS set based on phone, not manual selection
     let stageId: number | undefined = undefined;
+    
+    console.log(`=== Stage Assignment Logic ===`);
+    console.log(`Person ID: ${personId}, Person Has Phone: ${personHasPhone}, Pipeline ID: ${formData.pipelineId}, Manual Stage ID: ${formData.stageId}`);
+    
     if (personId && formData.pipelineId) {
       const selectedPipeline = pipelines.find(p => p.id === Number(formData.pipelineId));
       if (selectedPipeline) {
+        console.log(`Pipeline found: "${selectedPipeline.name}" with ${selectedPipeline.stages.length} stages`);
+        console.log(`Pipeline stages:`, selectedPipeline.stages.map(s => ({ id: s.id, name: s.name })));
+        
         // Find stages by name (case-insensitive, flexible matching)
         const leadInStage = selectedPipeline.stages.find(s => {
           const stageName = s.name.toLowerCase().trim();
@@ -2262,37 +2579,85 @@ const Deals = () => {
           return stageName === 'qualified';
         });
         
-        // ALWAYS auto-assign stage based on phone number
+        console.log(`Lead In Stage: ${leadInStage ? `Found (ID: ${leadInStage.id}, Name: "${leadInStage.name}")` : 'NOT FOUND'}`);
+        console.log(`Qualified Stage: ${qualifiedStage ? `Found (ID: ${qualifiedStage.id}, Name: "${qualifiedStage.name}")` : 'NOT FOUND'}`);
+        
+        // ALWAYS auto-assign stage based on phone number - PRIORITY OVER MANUAL SELECTION
         // If person has phone, use Qualified stage; otherwise use Lead In stage
-        if (personHasPhone && qualifiedStage) {
-          stageId = qualifiedStage.id;
-          console.log(`Person has phone (${personHasPhone}), setting stage to Qualified (${qualifiedStage.id})`);
-        } else if (!personHasPhone && leadInStage) {
-          stageId = leadInStage.id;
-          console.log(`Person has no phone, setting stage to Lead In (${leadInStage.id})`);
+        if (personHasPhone) {
+          if (qualifiedStage) {
+            stageId = qualifiedStage.id;
+            console.log(`✓✓✓ Person has phone (${personHasPhone}), FORCING stage to Qualified (ID: ${qualifiedStage.id}, Name: "${qualifiedStage.name}")`);
+          } else {
+            console.error(`❌ Person has phone but Qualified stage not found in pipeline "${selectedPipeline.name}"!`);
+            console.error(`Available stages: ${selectedPipeline.stages.map(s => s.name).join(', ')}`);
+            // If qualified stage not found but person has phone, still try to use lead in or fallback
+            if (leadInStage) {
+              stageId = leadInStage.id;
+              console.warn(`⚠ Using Lead In stage as fallback: ${leadInStage.id}`);
+            } else if (formData.stageId) {
+              stageId = Number(formData.stageId);
+              console.warn(`⚠ Using manually selected stage as fallback: ${stageId}`);
+            } else if (selectedPipeline.stages.length > 0) {
+              stageId = selectedPipeline.stages[0].id;
+              console.warn(`⚠ Using first stage as fallback: ${stageId}`);
+            }
+          }
         } else {
-          // Fallback: use manually selected stage if available, or first stage
-          if (formData.stageId) {
-            stageId = Number(formData.stageId);
-            console.log(`Using manually selected stage: ${stageId}`);
-          } else if (selectedPipeline.stages.length > 0) {
-            // Use first stage as fallback
-            stageId = selectedPipeline.stages[0].id;
-            console.log(`Using first stage as fallback: ${stageId}`);
+          if (leadInStage) {
+            stageId = leadInStage.id;
+            console.log(`✓ Person has no phone, setting stage to Lead In (ID: ${leadInStage.id}, Name: "${leadInStage.name}")`);
+          } else {
+            console.warn(`⚠ Person has no phone but Lead In stage not found in pipeline. Available stages: ${selectedPipeline.stages.map(s => s.name).join(', ')}`);
+            // Fallback: use manually selected stage if available, or first stage
+            if (formData.stageId) {
+              stageId = Number(formData.stageId);
+              console.log(`Using manually selected stage: ${stageId}`);
+            } else if (selectedPipeline.stages.length > 0) {
+              stageId = selectedPipeline.stages[0].id;
+              console.log(`Using first stage as fallback: ${stageId}`);
+            }
           }
         }
+      } else {
+        console.error(`❌ Pipeline ${formData.pipelineId} not found in pipelines list!`);
+        console.log(`Available pipelines:`, pipelines.map(p => ({ id: p.id, name: p.name })));
+        // Fallback to manual stage if pipeline not found
+        if (formData.stageId) {
+          stageId = Number(formData.stageId);
+          console.log(`Using manually selected stage as fallback: ${stageId}`);
+        }
       }
-    } else if (formData.stageId) {
+    } else {
+      if (!personId) {
+        console.log(`No person ID, cannot auto-assign stage based on phone`);
+      }
+      if (!formData.pipelineId) {
+        console.log(`No pipeline ID, cannot auto-assign stage based on phone`);
+      }
       // If no person or pipeline, use manually selected stage
-      stageId = Number(formData.stageId);
+      if (formData.stageId) {
+        stageId = Number(formData.stageId);
+        console.log(`Using manually selected stage: ${stageId}`);
+      }
     }
+    
+    console.log(`=== Final Stage ID: ${stageId} ===`);
 
+    // Log the final payload to verify stageId is set correctly
+    console.log(`=== Creating Deal Payload ===`);
+    console.log(`Name: ${formData.name.trim()}`);
+    console.log(`Person ID: ${personId}`);
+    console.log(`Pipeline ID: ${formData.pipelineId ? Number(formData.pipelineId) : undefined}`);
+    console.log(`Stage ID: ${stageId} ${stageId ? '(AUTO-ASSIGNED)' : '(NOT SET!)'}`);
+    console.log(`Organization ID: ${organizationId}`);
+    
     const payload: any = {
       name: formData.name.trim(),
       status: formData.status,
       personId: personId,
       pipelineId: formData.pipelineId ? Number(formData.pipelineId) : undefined,
-      stageId: stageId,
+      stageId: stageId, // This should be set based on phone number
       organizationId: organizationId,
       categoryId: resolvedCategory,
       label: formData.label ? formData.label : undefined,
@@ -3681,7 +4046,7 @@ const Deals = () => {
                                     className={`kanban-card-action-btn ${shouldShowWarningIcon(deal.id) ? 'has-warning-icon' : ''} ${hasOverdueActivities(deal.id) ? 'has-overdue-activities' : hasTodayActivities(deal.id) ? 'has-today-activities' : ''}`}
                                     title=""
                                     onMouseEnter={(e) => {
-                                      if (hasOverdueActivities(deal.id) || hasTodayActivities(deal.id) || hasFutureActivities(deal.id)) {
+                                      if (shouldShowWarningIcon(deal.id) || hasOverdueActivities(deal.id) || hasTodayActivities(deal.id) || hasFutureActivities(deal.id)) {
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         setHoveredButtonDealId(deal.id);
                                         setButtonTooltipPosition({
@@ -3884,7 +4249,7 @@ const Deals = () => {
                                     className={`kanban-card-action-btn ${shouldShowWarningIcon(deal.id) ? 'has-warning-icon' : ''} ${hasOverdueActivities(deal.id) ? 'has-overdue-activities' : hasTodayActivities(deal.id) ? 'has-today-activities' : ''}`}
                                     title=""
                                     onMouseEnter={(e) => {
-                                      if (hasOverdueActivities(deal.id) || hasTodayActivities(deal.id) || hasFutureActivities(deal.id)) {
+                                      if (shouldShowWarningIcon(deal.id) || hasOverdueActivities(deal.id) || hasTodayActivities(deal.id) || hasFutureActivities(deal.id)) {
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         setHoveredButtonDealId(deal.id);
                                         setButtonTooltipPosition({
@@ -4686,8 +5051,37 @@ const Deals = () => {
         </div>
       )}
 
+      {/* Organization/Person Tooltip Portal */}
+      {tooltipPosition && (tooltipPosition.organizationName || tooltipPosition.personName) && createPortal(
+        <div
+          className="kanban-card-rsp-tooltip"
+          style={{
+            position: 'fixed',
+            top: `${tooltipPosition.top - 10}px`,
+            left: `${tooltipPosition.left}px`,
+            transform: 'translate(-50%, -100%)',
+            pointerEvents: 'none',
+            zIndex: 10001,
+          }}
+        >
+          {tooltipPosition.organizationName && (
+            <div className="kanban-card-rsp-tooltip-item">
+              <span className="kanban-card-rsp-tooltip-icon">$</span>
+              <span>Linked organization: {tooltipPosition.organizationName}</span>
+            </div>
+          )}
+          {tooltipPosition.personName && (
+            <div className="kanban-card-rsp-tooltip-item">
+              <span className="kanban-card-rsp-tooltip-icon">$</span>
+              <span>Linked person: {tooltipPosition.personName}</span>
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+
       {/* Button Tooltip Portal */}
-      {hoveredButtonDealId !== null && buttonTooltipPosition && (hasOverdueActivities(hoveredButtonDealId) || hasTodayActivities(hoveredButtonDealId) || hasFutureActivities(hoveredButtonDealId)) && createPortal(
+      {hoveredButtonDealId !== null && buttonTooltipPosition && (shouldShowWarningIcon(hoveredButtonDealId) || hasOverdueActivities(hoveredButtonDealId) || hasTodayActivities(hoveredButtonDealId) || hasFutureActivities(hoveredButtonDealId)) && createPortal(
         <div
           className="kanban-card-button-tooltip"
           style={{
@@ -4699,7 +5093,7 @@ const Deals = () => {
             zIndex: 10001,
           }}
         >
-          {hasOverdueActivities(hoveredButtonDealId) ? 'View Overdue activity' : hasTodayActivities(hoveredButtonDealId) ? 'View activities scheduled for today' : 'View upcoming activity'}
+          {shouldShowWarningIcon(hoveredButtonDealId) ? 'no activity is scheduled for this deal' : hasOverdueActivities(hoveredButtonDealId) ? 'View Overdue activity' : hasTodayActivities(hoveredButtonDealId) ? 'View activities scheduled for today' : 'View upcoming activity'}
         </div>,
         document.body
       )}
@@ -4744,9 +5138,10 @@ const Deals = () => {
                     <>
                       <div 
                         className="kanban-card-dropdown-activity"
-                        onClick={() => {
-                          setEditingActivity(topActivity);
-                          setIsActivityModalOpen(true);
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const activityCategory = normalizeCategoryLabel(topActivity.category);
+                          navigate(`/activities?activityId=${topActivity.id}&category=${encodeURIComponent(activityCategory)}`);
                           setOpenDropdownDealId(null);
                           setDropdownPosition(null);
                         }}
@@ -4757,13 +5152,13 @@ const Deals = () => {
                             className="kanban-card-dropdown-activity-checkbox"
                             onClick={async (e) => {
                               e.stopPropagation();
-                              try {
-                                await activitiesApi.markDone(topActivity.id, !topActivity.done);
-                                await loadActivities();
-                                // Keep dropdown open after marking as done
-                              } catch (err) {
-                                console.error('Failed to mark activity as done:', err);
-                              }
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const clickPosition = {
+                                top: rect.top + window.scrollY,
+                                left: rect.left + window.scrollX,
+                              };
+                              await toggleDone(topActivity, !topActivity.done, clickPosition);
+                              // Keep dropdown open after marking as done (unless modal opens)
                             }}
                           >
                             {topActivity.done ? (
@@ -4786,6 +5181,32 @@ const Deals = () => {
                               {formatActivityDate(topActivity)} {topActivity.assignedUser ? `· ${topActivity.assignedUser}` : ''}
                             </div>
                           </div>
+                          {topActivity.attachmentUrl && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openScreenshotViewer(topActivity);
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginLeft: '8px',
+                                flexShrink: 0,
+                              }}
+                              title="View screenshot"
+                            >
+                              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M14.25 3H3.75C2.92157 3 2.25 3.67157 2.25 4.5V13.5C2.25 14.3284 2.92157 15 3.75 15H14.25C15.0784 15 15.75 14.3284 15.75 13.5V4.5C15.75 3.67157 15.0784 3 14.25 3Z" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M6.75 7.5C7.57843 7.5 8.25 6.82843 8.25 6C8.25 5.17157 7.57843 4.5 6.75 4.5C5.92157 4.5 5.25 5.17157 5.25 6C5.25 6.82843 5.92157 7.5 6.75 7.5Z" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M15.75 10.5L12 7.5L3.75 13.5" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="kanban-card-dropdown-divider"></div>
@@ -5449,6 +5870,293 @@ const Deals = () => {
             </div>
           </div>
         </div>,
+        document.body
+      )}
+
+      {/* Pending Done Modal for Call Activities */}
+      {pendingDoneActivity && createPortal(
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.2)',
+              zIndex: 1499,
+            }}
+            onClick={handlePendingDoneCancel}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: pendingDialogPosition?.top ?? window.innerHeight / 2,
+              left: pendingDialogPosition?.left ?? window.innerWidth / 2,
+              transform:
+                pendingDialogPosition ? 'translateY(0)' : 'translate(-50%, -50%)',
+              background: '#fff',
+              borderRadius: 12,
+              width: 280,
+              boxShadow: '0 20px 45px rgba(15,23,42,0.25)',
+              zIndex: 1500,
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ 
+              background: '#e4e7ec', 
+              padding: '12px 16px', 
+              borderBottom: '1px solid #e5e7eb',
+              margin: 0,
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>Complete call activity</h3>
+            </div>
+            <div style={{ padding: 16 }}>
+            <label style={{ display: 'block', marginBottom: 10, fontWeight: 500, fontSize: '13px' }}>
+              Please Enter Duration In Minutes
+              <input
+                type="text"
+                value={pendingDurationValue}
+                onChange={(e) => setPendingDurationValue(e.target.value)}
+                placeholder="15"
+                style={{
+                  width: '100%',
+                  marginTop: 4,
+                  padding: '8px 10px',
+                  border: '1px solid #f5d867',
+                  borderRadius: 6,
+                  fontSize: '13px',
+                  background: '#fff9e6',
+                }}
+              />
+            </label>
+            <label style={{ display: 'block', marginBottom: 16, fontWeight: 500, fontSize: '13px' }}>
+              Attach image
+              <div style={{ marginTop: 4 }}>
+                {pendingAttachmentPreview && (
+                  <div style={{ marginBottom: 8, position: 'relative' }}>
+                    <img
+                      src={pendingAttachmentPreview}
+                      alt="Screenshot preview"
+                      style={{
+                        width: '100%',
+                        maxHeight: '150px',
+                        objectFit: 'contain',
+                        borderRadius: 6,
+                        border: '1px solid #e5e7eb',
+                      }}
+                      onError={(e) => {
+                        console.error('Failed to load image:', pendingAttachmentPreview);
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )}
+                <label
+                  style={{
+                    color: '#2563eb',
+                    cursor: pendingUploading ? 'not-allowed' : 'pointer',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    opacity: pendingUploading ? 0.6 : 1,
+                    display: 'inline-block',
+                  }}
+                >
+                  {pendingAttachmentFile ? pendingAttachmentFile.name : pendingAttachmentPreview ? 'Replace image' : 'Select image'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={(e) => handlePendingAttachmentInput(e.target.files)}
+                    disabled={pendingUploading}
+                  />
+                </label>
+              </div>
+            </label>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                onClick={handlePendingDoneCancel}
+                style={{
+                  border: '1px solid #d1d5db',
+                  background: '#fff',
+                  borderRadius: 6,
+                  padding: '6px 12px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePendingDoneConfirm}
+                disabled={pendingUploading}
+                style={{
+                  border: 'none',
+                  background: pendingUploading ? '#9ca3af' : '#2563eb',
+                  color: '#fff',
+                  borderRadius: 6,
+                  padding: '6px 12px',
+                  cursor: pendingUploading ? 'not-allowed' : 'pointer',
+                  fontSize: '13px',
+                  opacity: pendingUploading ? 0.6 : 1,
+                }}
+              >
+                {pendingUploading ? 'Uploading...' : 'Save'}
+              </button>
+            </div>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
+
+      {/* Screenshot Viewer Modal */}
+      {screenshotViewerActivity && screenshotViewerImageUrl && createPortal(
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              zIndex: 1599,
+            }}
+            onClick={closeScreenshotViewer}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: '#fff',
+              borderRadius: 12,
+              width: '90%',
+              maxWidth: '800px',
+              maxHeight: '90vh',
+              boxShadow: '0 20px 45px rgba(15,23,42,0.25)',
+              zIndex: 1600,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ 
+              background: '#e4e7ec', 
+              padding: '12px 16px', 
+              borderBottom: '1px solid #e5e7eb',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>
+                Screenshot - {screenshotViewerActivity.subject}
+              </h3>
+              <button
+                onClick={closeScreenshotViewer}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M15 5L5 15M5 5L15 15" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <div style={{ padding: 16, overflow: 'auto', flex: 1 }}>
+              <div style={{ marginBottom: 16 }}>
+                <img
+                  src={screenshotReplacementPreview || screenshotViewerImageUrl}
+                  alt="Screenshot"
+                  style={{
+                    width: '100%',
+                    maxHeight: '60vh',
+                    objectFit: 'contain',
+                    borderRadius: 6,
+                    border: '1px solid #e5e7eb',
+                  }}
+                  onError={(e) => {
+                    console.error('Failed to load image:', screenshotReplacementPreview || screenshotViewerImageUrl);
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              </div>
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
+                <label style={{ display: 'block', marginBottom: 10, fontWeight: 500, fontSize: '13px' }}>
+                  Replace Screenshot
+                  <div style={{ marginTop: 8 }}>
+                    <label
+                      style={{
+                        color: '#2563eb',
+                        cursor: screenshotReplacing ? 'not-allowed' : 'pointer',
+                        fontWeight: 600,
+                        fontSize: '13px',
+                        opacity: screenshotReplacing ? 0.6 : 1,
+                        display: 'inline-block',
+                        padding: '8px 12px',
+                        border: '1px solid #2563eb',
+                        borderRadius: 6,
+                        background: '#fff',
+                      }}
+                    >
+                      {screenshotReplacementFile ? screenshotReplacementFile.name : 'Select new image'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={(e) => handleScreenshotReplacementInput(e.target.files)}
+                        disabled={screenshotReplacing}
+                      />
+                    </label>
+                  </div>
+                </label>
+                {screenshotReplacementFile && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                    <button
+                      onClick={() => {
+                        if (screenshotReplacementPreview && screenshotReplacementPreview.startsWith('blob:')) {
+                          URL.revokeObjectURL(screenshotReplacementPreview);
+                        }
+                        setScreenshotReplacementFile(null);
+                        setScreenshotReplacementPreview(null);
+                      }}
+                      style={{
+                        border: '1px solid #d1d5db',
+                        background: '#fff',
+                        borderRadius: 6,
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleScreenshotReplacement}
+                      disabled={screenshotReplacing}
+                      style={{
+                        border: 'none',
+                        background: screenshotReplacing ? '#9ca3af' : '#2563eb',
+                        color: '#fff',
+                        borderRadius: 6,
+                        padding: '6px 12px',
+                        cursor: screenshotReplacing ? 'not-allowed' : 'pointer',
+                        fontSize: '13px',
+                        opacity: screenshotReplacing ? 0.6 : 1,
+                      }}
+                    >
+                      {screenshotReplacing ? 'Replacing...' : 'Replace'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>,
         document.body
       )}
     </div>

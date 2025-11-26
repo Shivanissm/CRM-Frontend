@@ -2182,3 +2182,117 @@
   .column-title { font-size: 11px; }
   .users-sheet-table th, .users-sheet-table td { padding: 8px 12px; font-size: 12px; }
 }
+
+/* Toast Notification Styles */
+.users-toast-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 100000;
+  padding-top: 100px;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.users-toast {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.1);
+  padding: 0;
+  max-width: 520px;
+  width: 90%;
+  display: flex;
+  align-items: center;
+  position: relative;
+  animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border-left: 4px solid #DC2626;
+  overflow: hidden;
+  min-height: 72px;
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.users-toast-icon-wrapper {
+  flex-shrink: 0;
+  padding: 20px 16px 20px 20px;
+  display: flex;
+  align-items: center;
+}
+
+.users-toast-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.users-toast-content {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 16px 20px 0;
+  display: flex;
+  align-items: center;
+}
+
+.users-toast-message {
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+}
+
+.users-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 0;
+}
+
+.users-toast-ok-btn {
+  background: #10B981;
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.users-toast-ok-btn:hover {
+  background: #059669;
+}
+
+.users-toast-ok-btn:active {
+  background: #047857;
+  transform: scale(0.98);
+}
+
+.users-toast-error {
+  border-left-color: #DC2626;
+}
+
+.users-toast-error .users-toast-icon-wrapper {
+  background: #FEF2F2;
+}

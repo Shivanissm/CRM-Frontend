@@ -57,6 +57,19 @@ export default function DealDetail() {
   const [_focusedActivities, _setFocusedActivities] = useState<Set<number>>(new Set());
   const [expandAllFocus, setExpandAllFocus] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [pendingDoneActivity, setPendingDoneActivity] = useState<Activity | null>(null);
+  const [pendingDoneValue, setPendingDoneValue] = useState(false);
+  const [pendingDurationValue, setPendingDurationValue] = useState('');
+  const [pendingAttachmentFile, setPendingAttachmentFile] = useState<File | null>(null);
+  const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null);
+  const [pendingUploading, setPendingUploading] = useState(false);
+  const [pendingDialogPosition, setPendingDialogPosition] = useState<{ top: number; left: number } | null>(null);
+  const [durationEntries, setDurationEntries] = useState<Record<number, string>>({});
+  const [screenshotViewerActivity, setScreenshotViewerActivity] = useState<Activity | null>(null);
+  const [screenshotViewerImageUrl, setScreenshotViewerImageUrl] = useState<string | null>(null);
+  const [screenshotReplacementFile, setScreenshotReplacementFile] = useState<File | null>(null);
+  const [screenshotReplacementPreview, setScreenshotReplacementPreview] = useState<string | null>(null);
+  const [screenshotReplacing, setScreenshotReplacing] = useState(false);
 
   // Collapsible sections state
   const [summaryExpanded, setSummaryExpanded] = useState(true);
@@ -386,8 +399,167 @@ export default function DealDetail() {
     return 'deal-activity-future';
   };
 
-  // Mark activity as done and move to history (or undo and move back to focus)
-  const markActivityDone = async (activityId: number, done: boolean) => {
+  // Helper function to normalize category label
+  const normalizeCategoryLabel = (cat?: string | null): 'Activity' | 'Call' | 'Meeting scheduler' => {
+    if (!cat) return 'Activity';
+    if (cat === 'CALL') return 'Call';
+    if (cat === 'MEETING_SCHEDULER') return 'Meeting scheduler';
+    return 'Activity';
+  };
+
+  // Helper function to parse time string to minutes
+  const parseTimeToMinutes = (time?: string | null): number | null => {
+    if (!time) return null;
+    const [hoursStr, minutesStr] = time.split(':');
+    const hours = Number(hoursStr);
+    const minutes = Number(minutesStr);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+    return hours * 60 + minutes;
+  };
+
+  // Helper function to parse duration input to minutes
+  const parseDurationInputToMinutes = (value: string): number | null => {
+    const trimmed = value?.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.includes(':')) {
+      const parts = trimmed.split(':').map((p) => p.trim());
+      if (parts.length < 2 || parts.length > 3) {
+        return null;
+      }
+      const [hoursStr, minutesStr, secondsStr] = parts;
+      const hours = Number(hoursStr);
+      const minutes = Number(minutesStr);
+      const seconds = parts.length === 3 ? Number(secondsStr) : 0;
+      if ([hours, minutes, seconds].some((n) => Number.isNaN(n))) {
+        return null;
+      }
+      return hours * 60 + minutes + Math.floor(seconds / 60);
+    }
+
+    const numericMinutes = Number(trimmed);
+    if (Number.isNaN(numericMinutes)) {
+      return null;
+    }
+    return numericMinutes;
+  };
+
+  // Helper function to format minutes to HH:MM
+  const formatMinutesToHHMM = (minutes: number): string => {
+    const safeMinutes = Math.max(0, minutes);
+    const hours = Math.floor(safeMinutes / 60);
+    const remainingMinutes = safeMinutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(remainingMinutes).padStart(2, '0')}`;
+  };
+
+  // Handle pending attachment input
+  const handlePendingAttachmentInput = (files?: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    
+    // Validate file size (10MB = 10 * 1024 * 1024 bytes)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+    
+    setPendingAttachmentFile(file);
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setPendingAttachmentPreview(previewUrl);
+  };
+
+  // Handle pending done cancel
+  const handlePendingDoneCancel = () => {
+    // Clean up preview URL if it exists
+    if (pendingAttachmentPreview && pendingAttachmentPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(pendingAttachmentPreview);
+    }
+    setPendingDoneActivity(null);
+    setPendingDoneValue(false);
+    setPendingDurationValue('');
+    setPendingAttachmentFile(null);
+    setPendingAttachmentPreview(null);
+    setPendingUploading(false);
+    setPendingDialogPosition(null);
+  };
+
+  // Handle pending done confirm
+  const handlePendingDoneConfirm = async () => {
+    if (!pendingDoneActivity) return;
+    const duration = pendingDurationValue.trim();
+    if (!duration) {
+      alert('Please enter a duration.');
+      return;
+    }
+    if (!pendingAttachmentFile && !pendingDoneActivity.attachmentUrl) {
+      alert('Please attach an image.');
+      return;
+    }
+    const durationMinutes = parseDurationInputToMinutes(duration);
+    if (durationMinutes === null || durationMinutes <= 0) {
+      alert('Please enter a valid duration (e.g., 15 or 00:15:00).');
+      return;
+    }
+    
+    setPendingUploading(true);
+    
+    try {
+      // Upload screenshot if a new file is selected
+      if (pendingAttachmentFile) {
+        try {
+          await activitiesApi.uploadScreenshot(pendingDoneActivity.id, pendingAttachmentFile);
+        } catch (error: any) {
+          console.error('Failed to upload screenshot:', error);
+          alert(`Failed to upload screenshot: ${error?.message || 'Unknown error'}`);
+          setPendingUploading(false);
+          return;
+        }
+      }
+      
+      const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
+      const startMinutes = existingStartMinutes ?? 0;
+      const endMinutes = startMinutes + durationMinutes;
+      const startTimeFormatted =
+        existingStartMinutes !== null && pendingDoneActivity.startTime
+          ? pendingDoneActivity.startTime
+          : formatMinutesToHHMM(startMinutes);
+      const endTimeFormatted = formatMinutesToHHMM(endMinutes);
+      
+      const updatedActivity = await activitiesApi.update(pendingDoneActivity.id, {
+        startTime: startTimeFormatted,
+        endTime: endTimeFormatted,
+      });
+      if (updatedActivity && id) {
+        await loadActivities(Number(id));
+      }
+      
+      const durationDisplay = duration.includes(':')
+        ? duration
+        : formatMinutesToHHMM(durationMinutes);
+      setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
+      await completeToggleDone(pendingDoneActivity.id, pendingDoneValue);
+      handlePendingDoneCancel();
+    } catch (error: any) {
+      console.error('Failed to save call duration:', error);
+      alert(
+        `Failed to save call duration: ${
+          error?.response?.data?.message || error?.message || 'Unknown error'
+        }`,
+      );
+      setPendingUploading(false);
+    }
+  };
+
+  // Complete toggle done (without modal)
+  const completeToggleDone = async (activityId: number, done: boolean) => {
     try {
       await activitiesApi.markDone(activityId, done);
       // Reload activities to get updated status
@@ -402,6 +574,107 @@ export default function DealDetail() {
       console.error('Failed to update activity:', error);
       alert('Failed to update activity');
     }
+  };
+
+  // Open screenshot viewer
+  const openScreenshotViewer = (activity: Activity) => {
+    if (activity.attachmentUrl) {
+      setScreenshotViewerActivity(activity);
+      setScreenshotViewerImageUrl(activity.attachmentUrl);
+      setScreenshotReplacementFile(null);
+      setScreenshotReplacementPreview(null);
+    }
+  };
+
+  // Close screenshot viewer
+  const closeScreenshotViewer = () => {
+    // Clean up preview URL if it exists
+    if (screenshotReplacementPreview && screenshotReplacementPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(screenshotReplacementPreview);
+    }
+    setScreenshotViewerActivity(null);
+    setScreenshotViewerImageUrl(null);
+    setScreenshotReplacementFile(null);
+    setScreenshotReplacementPreview(null);
+    setScreenshotReplacing(false);
+  };
+
+  // Handle screenshot replacement file input
+  const handleScreenshotReplacementInput = (files?: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    
+    // Validate file size (10MB = 10 * 1024 * 1024 bytes)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+    
+    setScreenshotReplacementFile(file);
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setScreenshotReplacementPreview(previewUrl);
+  };
+
+  // Handle screenshot replacement
+  const handleScreenshotReplacement = async () => {
+    if (!screenshotViewerActivity || !screenshotReplacementFile) return;
+    
+    setScreenshotReplacing(true);
+    
+    try {
+      const newImageUrl = await activitiesApi.uploadScreenshot(screenshotViewerActivity.id, screenshotReplacementFile);
+      // Update the image URL
+      setScreenshotViewerImageUrl(newImageUrl);
+      // Clean up old preview
+      if (screenshotReplacementPreview && screenshotReplacementPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(screenshotReplacementPreview);
+      }
+      setScreenshotReplacementFile(null);
+      setScreenshotReplacementPreview(null);
+      // Reload activities to get updated data
+      if (id) {
+        await loadActivities(Number(id));
+      }
+      alert('Screenshot replaced successfully!');
+    } catch (error: any) {
+      console.error('Failed to replace screenshot:', error);
+      alert(`Failed to replace screenshot: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setScreenshotReplacing(false);
+    }
+  };
+
+  // Mark activity as done and move to history (or undo and move back to focus)
+  const markActivityDone = async (activityId: number, done: boolean, clickPosition?: { top: number; left: number }) => {
+    const activity = activities.find(a => a.id === activityId);
+    if (!activity) {
+      await completeToggleDone(activityId, done);
+      return;
+    }
+
+    // Check if it's a call activity being marked as done
+    const category = normalizeCategoryLabel(activity.category);
+    if (category === 'Call' && done) {
+      setPendingDoneActivity(activity);
+      setPendingDoneValue(done);
+      setPendingDurationValue(durationEntries[activity.id] ?? '');
+      setPendingAttachmentFile(null);
+      // If activity already has an attachment URL, use it as preview
+      setPendingAttachmentPreview(activity.attachmentUrl || null);
+      setPendingDialogPosition(clickPosition || null);
+      setOpenMenuId(null); // Close menu when modal opens
+      return;
+    }
+    
+    await completeToggleDone(activityId, done);
   };
 
   // Delete activity
@@ -1489,11 +1762,53 @@ export default function DealDetail() {
                         <input
                           type="checkbox"
                           checked={activity.done}
-                          onChange={(e) => markActivityDone(activity.id, e.target.checked)}
+                          onChange={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const clickPosition = {
+                              top: rect.top + window.scrollY,
+                              left: rect.left + window.scrollX,
+                            };
+                            markActivityDone(activity.id, e.target.checked, clickPosition);
+                          }}
                         />
                       </div>
-                      <div className="deal-activity-content">
-                        <div className="deal-activity-subject">{activity.subject}</div>
+                      <div className="deal-activity-content" style={{ flex: 1 }}>
+                        <div 
+                          className="deal-activity-subject" 
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const activityCategory = normalizeCategoryLabel(activity.category);
+                            navigate(`/activities?activityId=${activity.id}&category=${encodeURIComponent(activityCategory)}`);
+                          }}
+                        >
+                          {activity.subject}
+                          {activity.attachmentUrl && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openScreenshotViewer(activity);
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '2px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}
+                              title="View screenshot"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M14.25 3H3.75C2.92157 3 2.25 3.67157 2.25 4.5V13.5C2.25 14.3284 2.92157 15 3.75 15H14.25C15.0784 15 15.75 14.3284 15.75 13.5V4.5C15.75 3.67157 15.0784 3 14.25 3Z" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M6.75 7.5C7.57843 7.5 8.25 6.82843 8.25 6C8.25 5.17157 7.57843 4.5 6.75 4.5C5.92157 4.5 5.25 5.17157 5.25 6C5.25 6.82843 5.92157 7.5 6.75 7.5Z" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M15.75 10.5L12 7.5L3.75 13.5" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                         <div className="deal-activity-meta">
                           {/* Date: when activity was created */}
                           <span className="deal-activity-date">
@@ -1556,7 +1871,14 @@ export default function DealDetail() {
                           <div className="deal-activity-menu-dropdown">
                             <div 
                               className="deal-activity-menu-item"
-                              onClick={() => markActivityDone(activity.id, !activity.done)}
+                              onClick={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const clickPosition = {
+                                  top: rect.top + window.scrollY,
+                                  left: rect.left + window.scrollX,
+                                };
+                                markActivityDone(activity.id, !activity.done, clickPosition);
+                              }}
                             >
                               {activity.done ? 'Mark as undone' : 'Mark as done'}
                             </div>
@@ -1606,13 +1928,56 @@ export default function DealDetail() {
                           <input
                             type="checkbox"
                             checked={activity.done}
-                            onChange={(e) => markActivityDone(activity.id, e.target.checked)}
+                            onChange={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const clickPosition = {
+                                top: rect.top + window.scrollY,
+                                left: rect.left + window.scrollX,
+                              };
+                              markActivityDone(activity.id, e.target.checked, clickPosition);
+                            }}
                           />
                         </div>
                         <div className="deal-history-content-wrapper">
-                          <div className="deal-history-header-row">
+                          <div className="deal-history-header-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {activity.done && <span className="deal-history-checkmark">✓</span>}
-                            <span className="deal-history-subject">{activity.subject}</span>
+                            <span 
+                              className="deal-history-subject" 
+                              style={{ cursor: 'pointer' }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const activityCategory = normalizeCategoryLabel(activity.category);
+                                navigate(`/activities?activityId=${activity.id}&category=${activityCategory}`);
+                              }}
+                            >
+                              {activity.subject}
+                            </span>
+                            {activity.attachmentUrl && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openScreenshotViewer(activity);
+                                }}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: '2px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
+                                  marginLeft: 'auto',
+                                }}
+                                title="View screenshot"
+                              >
+                                <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M14.25 3H3.75C2.92157 3 2.25 3.67157 2.25 4.5V13.5C2.25 14.3284 2.92157 15 3.75 15H14.25C15.0784 15 15.75 14.3284 15.75 13.5V4.5C15.75 3.67157 15.0784 3 14.25 3Z" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M6.75 7.5C7.57843 7.5 8.25 6.82843 8.25 6C8.25 5.17157 7.57843 4.5 6.75 4.5C5.92157 4.5 5.25 5.17157 5.25 6C5.25 6.82843 5.92157 7.5 6.75 7.5Z" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M15.75 10.5L12 7.5L3.75 13.5" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
+                            )}
                           </div>
                           <div className="deal-history-meta">
                             {/* Date: when activity was created */}
@@ -1865,6 +2230,293 @@ export default function DealDetail() {
           }
         }}
       />
+
+      {/* Pending Done Modal for Call Activities */}
+      {pendingDoneActivity && createPortal(
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.2)',
+              zIndex: 1499,
+            }}
+            onClick={handlePendingDoneCancel}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: pendingDialogPosition?.top ?? window.innerHeight / 2,
+              left: pendingDialogPosition?.left ?? window.innerWidth / 2,
+              transform:
+                pendingDialogPosition ? 'translateY(0)' : 'translate(-50%, -50%)',
+              background: '#fff',
+              borderRadius: 12,
+              width: 280,
+              boxShadow: '0 20px 45px rgba(15,23,42,0.25)',
+              zIndex: 1500,
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ 
+              background: '#e4e7ec', 
+              padding: '12px 16px', 
+              borderBottom: '1px solid #e5e7eb',
+              margin: 0,
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>Complete call activity</h3>
+            </div>
+            <div style={{ padding: 16 }}>
+            <label style={{ display: 'block', marginBottom: 10, fontWeight: 500, fontSize: '13px' }}>
+              Please Enter Duration In Minutes
+              <input
+                type="text"
+                value={pendingDurationValue}
+                onChange={(e) => setPendingDurationValue(e.target.value)}
+                placeholder="15"
+                style={{
+                  width: '100%',
+                  marginTop: 4,
+                  padding: '8px 10px',
+                  border: '1px solid #f5d867',
+                  borderRadius: 6,
+                  fontSize: '13px',
+                  background: '#fff9e6',
+                }}
+              />
+            </label>
+            <label style={{ display: 'block', marginBottom: 16, fontWeight: 500, fontSize: '13px' }}>
+              Attach image
+              <div style={{ marginTop: 4 }}>
+                {pendingAttachmentPreview && (
+                  <div style={{ marginBottom: 8, position: 'relative' }}>
+                    <img
+                      src={pendingAttachmentPreview}
+                      alt="Screenshot preview"
+                      style={{
+                        width: '100%',
+                        maxHeight: '150px',
+                        objectFit: 'contain',
+                        borderRadius: 6,
+                        border: '1px solid #e5e7eb',
+                      }}
+                      onError={(e) => {
+                        console.error('Failed to load image:', pendingAttachmentPreview);
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )}
+                <label
+                  style={{
+                    color: '#2563eb',
+                    cursor: pendingUploading ? 'not-allowed' : 'pointer',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    opacity: pendingUploading ? 0.6 : 1,
+                    display: 'inline-block',
+                  }}
+                >
+                  {pendingAttachmentFile ? pendingAttachmentFile.name : pendingAttachmentPreview ? 'Replace image' : 'Select image'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={(e) => handlePendingAttachmentInput(e.target.files)}
+                    disabled={pendingUploading}
+                  />
+                </label>
+              </div>
+            </label>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                onClick={handlePendingDoneCancel}
+                style={{
+                  border: '1px solid #d1d5db',
+                  background: '#fff',
+                  borderRadius: 6,
+                  padding: '6px 12px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePendingDoneConfirm}
+                disabled={pendingUploading}
+                style={{
+                  border: 'none',
+                  background: pendingUploading ? '#9ca3af' : '#2563eb',
+                  color: '#fff',
+                  borderRadius: 6,
+                  padding: '6px 12px',
+                  cursor: pendingUploading ? 'not-allowed' : 'pointer',
+                  fontSize: '13px',
+                  opacity: pendingUploading ? 0.6 : 1,
+                }}
+              >
+                {pendingUploading ? 'Uploading...' : 'Save'}
+              </button>
+            </div>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
+
+      {/* Screenshot Viewer Modal */}
+      {screenshotViewerActivity && screenshotViewerImageUrl && createPortal(
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              zIndex: 1599,
+            }}
+            onClick={closeScreenshotViewer}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: '#fff',
+              borderRadius: 12,
+              width: '90%',
+              maxWidth: '800px',
+              maxHeight: '90vh',
+              boxShadow: '0 20px 45px rgba(15,23,42,0.25)',
+              zIndex: 1600,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ 
+              background: '#e4e7ec', 
+              padding: '12px 16px', 
+              borderBottom: '1px solid #e5e7eb',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>
+                Screenshot - {screenshotViewerActivity.subject}
+              </h3>
+              <button
+                onClick={closeScreenshotViewer}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M15 5L5 15M5 5L15 15" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <div style={{ padding: 16, overflow: 'auto', flex: 1 }}>
+              <div style={{ marginBottom: 16 }}>
+                <img
+                  src={screenshotReplacementPreview || screenshotViewerImageUrl}
+                  alt="Screenshot"
+                  style={{
+                    width: '100%',
+                    maxHeight: '60vh',
+                    objectFit: 'contain',
+                    borderRadius: 6,
+                    border: '1px solid #e5e7eb',
+                  }}
+                  onError={(e) => {
+                    console.error('Failed to load image:', screenshotReplacementPreview || screenshotViewerImageUrl);
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              </div>
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
+                <label style={{ display: 'block', marginBottom: 10, fontWeight: 500, fontSize: '13px' }}>
+                  Replace Screenshot
+                  <div style={{ marginTop: 8 }}>
+                    <label
+                      style={{
+                        color: '#2563eb',
+                        cursor: screenshotReplacing ? 'not-allowed' : 'pointer',
+                        fontWeight: 600,
+                        fontSize: '13px',
+                        opacity: screenshotReplacing ? 0.6 : 1,
+                        display: 'inline-block',
+                        padding: '8px 12px',
+                        border: '1px solid #2563eb',
+                        borderRadius: 6,
+                        background: '#fff',
+                      }}
+                    >
+                      {screenshotReplacementFile ? screenshotReplacementFile.name : 'Select new image'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={(e) => handleScreenshotReplacementInput(e.target.files)}
+                        disabled={screenshotReplacing}
+                      />
+                    </label>
+                  </div>
+                </label>
+                {screenshotReplacementFile && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                    <button
+                      onClick={() => {
+                        if (screenshotReplacementPreview && screenshotReplacementPreview.startsWith('blob:')) {
+                          URL.revokeObjectURL(screenshotReplacementPreview);
+                        }
+                        setScreenshotReplacementFile(null);
+                        setScreenshotReplacementPreview(null);
+                      }}
+                      style={{
+                        border: '1px solid #d1d5db',
+                        background: '#fff',
+                        borderRadius: 6,
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleScreenshotReplacement}
+                      disabled={screenshotReplacing}
+                      style={{
+                        border: 'none',
+                        background: screenshotReplacing ? '#9ca3af' : '#2563eb',
+                        color: '#fff',
+                        borderRadius: 6,
+                        padding: '6px 12px',
+                        cursor: screenshotReplacing ? 'not-allowed' : 'pointer',
+                        fontSize: '13px',
+                        opacity: screenshotReplacing ? 0.6 : 1,
+                      }}
+                    >
+                      {screenshotReplacing ? 'Replacing...' : 'Replace'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
     </div>
   );
 }

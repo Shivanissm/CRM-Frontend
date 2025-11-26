@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import './Users.css';
 import { usersApi } from '../services/users';
 import type { User } from '../types/user';
@@ -80,6 +81,7 @@ export default function Users() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+  const [showDuplicateEmailToast, setShowDuplicateEmailToast] = useState(false);
   const [inviteForm, setInviteForm] = useState(INVITE_FORM_INITIAL);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isDetailVisible, setIsDetailVisible] = useState(false);
@@ -357,7 +359,16 @@ const filteredUsers = useMemo(() => {
       await loadUsers();
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Failed to invite user.';
+      const errorMessage = message.toLowerCase();
+      
+      // Check if error is related to duplicate email
+      if (errorMessage.includes('already exists') || 
+          errorMessage.includes('duplicate') || 
+          errorMessage.includes('email') && (errorMessage.includes('exist') || errorMessage.includes('taken'))) {
+        setShowDuplicateEmailToast(true);
+      } else {
       setInviteError(message);
+      }
     } finally {
       setInviteLoading(false);
     }
@@ -946,6 +957,31 @@ const filteredUsers = useMemo(() => {
           </div>
         )}
 
+      {/* Duplicate Email Toast Notification */}
+      {showDuplicateEmailToast && createPortal(
+        <div className="users-toast-overlay" onClick={() => setShowDuplicateEmailToast(false)}>
+          <div className="users-toast users-toast-error" onClick={(e) => e.stopPropagation()}>
+            <div className="users-toast-icon-wrapper">
+              <svg className="users-toast-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" stroke="#DC2626" strokeWidth="2" fill="none"/>
+                <path d="M12 8V12M12 16H12.01" stroke="#DC2626" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div className="users-toast-content">
+              <div className="users-toast-message">The user is already exist with the provided email Address</div>
+            </div>
+            <div className="users-toast-actions">
+              <button 
+                className="users-toast-ok-btn" 
+                onClick={() => setShowDuplicateEmailToast(false)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
         </div>
   );
 }
