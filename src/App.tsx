@@ -18,6 +18,8 @@ import ResetPassword from './pages/ResetPassword';
 import SalesDashboard from './pages/SalesDashboard';
 import CategoryManagerDashboard from './pages/CategoryManagerDashboard';
 import PreSalesDashboard from './pages/PreSalesDashboard';
+import Targets from './pages/Targets';
+import TargetUserDetail from './pages/TargetUserDetail';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const location = useLocation();
@@ -75,6 +77,8 @@ function App() {
           <Route path="/deals" element={<Deals />} />
           <Route path="/deals/:id" element={<DealDetail />} />
           <Route path="/users" element={<Users />} />
+          <Route path="/targets" element={<Targets />} />
+          <Route path="/targets/users/:userId" element={<TargetUserDetail />} />
           
           {/* Catch all for protected routes - redirect to deals if route not found */}
           <Route path="*" element={<Navigate to="/deals" replace />} />

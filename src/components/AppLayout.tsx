@@ -19,6 +19,7 @@ const baseNavItems: NavItem[] = [
   { label: 'Activities', to: '/activities', icon: '🗓️' },
   { label: 'Organizations', to: '/organizations', icon: '🏢' },
   { label: 'Users', to: '/users', icon: '🧑‍💼' },
+  { label: 'Targets', to: '/targets', icon: '🎯' },
 ];
 
 export default function AppLayout() {

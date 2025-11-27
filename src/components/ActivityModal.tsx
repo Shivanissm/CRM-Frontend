@@ -102,6 +102,9 @@ export default function ActivityModal({
   const [dealOptions, setDealOptions] = useState<Deal[]>([]);
   const [personOptions, setPersonOptions] = useState<Person[]>([]);
   const [organizationLookup, setOrganizationLookup] = useState<Record<number, string>>({});
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [filteredOrganizations, setFilteredOrganizations] = useState<Organization[]>([]);
+  const [showOrgSuggestions, setShowOrgSuggestions] = useState(false);
   const [dealInput, setDealInput] = useState('');
   const [personInput, setPersonInput] = useState('');
   const [serviceCategory, setServiceCategory] = useState<string>(initialServiceCategory);
@@ -143,6 +146,18 @@ export default function ActivityModal({
     }
   };
 
+  const loadOrganizations = async () => {
+    try {
+      const orgs = await organizationsApi.list();
+      setOrganizations(orgs ?? []);
+      setFilteredOrganizations(orgs ?? []);
+    } catch (err: any) {
+      console.error('Failed to load organizations:', err);
+      setOrganizations([]);
+      setFilteredOrganizations([]);
+    }
+  };
+
   const deriveTypeFromCategory = (cat?: string) => {
     if (cat === 'Call') return 'CALL';
     if (cat === 'Meeting scheduler') return 'MEETING';
@@ -158,6 +173,24 @@ export default function ActivityModal({
       }
     }
     return value;
+  };
+
+  const mapActivityTypeToCategory = (activityType?: string): string | undefined => {
+    if (!activityType) return undefined;
+    switch (activityType.toUpperCase()) {
+      case 'CALL':
+        return 'CALL';
+      case 'MEETING':
+      case 'MEETING_SCHEDULER':
+        return 'MEETING_SCHEDULER';
+      case 'FOLLOW_UP':
+      case 'SEND_QUOTES':
+      case 'TASK':
+      case 'OTHER':
+      case 'ACTIVITY':
+      default:
+        return 'ACTIVITY';
+    }
   };
 
   useEffect(() => {
@@ -213,8 +246,11 @@ export default function ActivityModal({
         if (cancelled) return;
         setDealOptions(deals ?? []);
         setPersonOptions(personsResponse?.content ?? []);
+        const orgs = organizations ?? [];
+        setOrganizations(orgs);
+        setFilteredOrganizations(orgs);
         const lookup: Record<number, string> = {};
-        (organizations ?? []).forEach((org: Organization) => {
+        orgs.forEach((org: Organization) => {
           if (org?.id) {
             lookup[org.id] = org.name;
           }
@@ -249,24 +285,6 @@ export default function ActivityModal({
   }, [showNotesInfo]);
 
   if (!isOpen) return null;
-
-  const mapActivityTypeToCategory = (activityType?: string): string | undefined => {
-    if (!activityType) return undefined;
-    switch (activityType.toUpperCase()) {
-      case 'CALL':
-        return 'CALL';
-      case 'MEETING':
-      case 'MEETING_SCHEDULER':
-        return 'MEETING_SCHEDULER';
-      case 'FOLLOW_UP':
-      case 'SEND_QUOTES':
-      case 'TASK':
-      case 'OTHER':
-      case 'ACTIVITY':
-      default:
-        return 'ACTIVITY';
-    }
-  };
 
   const toIsoDate = (dateStr?: string): string | undefined => {
     if (!dateStr) return undefined;
