@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { dealsApi } from '../services/deals';
 import { personsApi } from '../services/api';
@@ -6,14 +7,31 @@ import { organizationsApi } from '../services/organizations';
 import { pipelinesApi } from '../services/pipelines';
 import { activitiesApi, type Activity } from '../services/activities';
 import { clearAuthSession } from '../utils/authToken';
-import type { Deal, DealCreateRequest } from '../types/deal';
+import type { Deal, DealCreateRequest, DealUpdateRequest, DealSource, DealSubSource } from '../types/deal';
 import type { Person } from '../types/person';
 import type { Organization } from '../types/organization';
 import type { Pipeline } from '../types/pipeline';
 import ActivityModal, { type ActivityFormValues } from '../components/ActivityModal';
+import MarkAsLostModal from '../components/MarkAsLostModal';
+import DealValueModal from '../components/DealValueModal';
 import './DealDetail.css';
 
 type ActiveTab = 'Activity' | 'Notes' | 'Meeting scheduler' | 'Call' | 'Email' | 'Send quote' | 'Send Contract' | 'Share Worklinks';
+
+// Source and Sub-Source constants
+const DEAL_SOURCE_OPTIONS: Array<{ value: DealSource; label: string }> = [
+  { value: 'Direct', label: 'Direct' },
+  { value: 'Divert', label: 'Divert' },
+  { value: 'Reference', label: 'Reference' },
+  { value: 'Planner', label: 'Planner' },
+];
+
+const DEAL_SUB_SOURCE_OPTIONS: Array<{ value: DealSubSource; label: string }> = [
+  { value: 'Instagram', label: 'Instagram' },
+  { value: 'Whatsapp', label: 'Whatsapp' },
+  { value: 'Landing Page', label: 'Landing Page' },
+  { value: 'Email', label: 'Email' },
+];
 
 export default function DealDetail() {
   const { id } = useParams<{ id: string }>();
@@ -28,12 +46,30 @@ export default function DealDetail() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('Activity');
+  const [showErrorToast, setShowErrorToast] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [showMarkAsLostModal, setShowMarkAsLostModal] = useState(false);
+  const [showDealValueModal, setShowDealValueModal] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
   const [_focusedActivities, _setFocusedActivities] = useState<Set<number>>(new Set());
   const [expandAllFocus, setExpandAllFocus] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [pendingDoneActivity, setPendingDoneActivity] = useState<Activity | null>(null);
+  const [pendingDoneValue, setPendingDoneValue] = useState(false);
+  const [pendingDurationValue, setPendingDurationValue] = useState('');
+  const [pendingAttachmentFile, setPendingAttachmentFile] = useState<File | null>(null);
+  const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null);
+  const [pendingUploading, setPendingUploading] = useState(false);
+  const [pendingDialogPosition, setPendingDialogPosition] = useState<{ top: number; left: number } | null>(null);
+  const [durationEntries, setDurationEntries] = useState<Record<number, string>>({});
+  const [screenshotViewerActivity, setScreenshotViewerActivity] = useState<Activity | null>(null);
+  const [screenshotViewerImageUrl, setScreenshotViewerImageUrl] = useState<string | null>(null);
+  const [screenshotReplacementFile, setScreenshotReplacementFile] = useState<File | null>(null);
+  const [screenshotReplacementPreview, setScreenshotReplacementPreview] = useState<string | null>(null);
+  const [screenshotReplacing, setScreenshotReplacing] = useState(false);
 
   // Collapsible sections state
   const [summaryExpanded, setSummaryExpanded] = useState(true);
@@ -65,6 +101,8 @@ export default function DealDetail() {
     commissionAmount?: string;
     probability?: number | null;
     expectedCloseDate?: string | null;
+    source?: string;
+    subSource?: string;
   }>({
     name: '',
     value: '',
@@ -82,6 +120,8 @@ export default function DealDetail() {
     commissionAmount: '',
     probability: null,
     expectedCloseDate: null,
+    source: '',
+    subSource: '',
   });
 
   useEffect(() => {
@@ -160,6 +200,9 @@ export default function DealDetail() {
     try {
       const dealData = await dealsApi.get(dealId);
       setDeal(dealData);
+      console.log('Loaded deal data:', dealData);
+      console.log('Deal source:', dealData.source);
+      console.log('Deal subSource:', dealData.subSource);
 
       // Load person data if personId exists
       let personEmail = '';
@@ -192,6 +235,8 @@ export default function DealDetail() {
         email: dealData.email || personEmail || '',
         eventDate: dealData.eventDate ? formatDateForInput(dealData.eventDate) : '',
         commissionAmount: dealData.commissionAmount?.toString() || '',
+        source: dealData.source || '',
+        subSource: dealData.subSource || '',
       });
     } catch (error) {
       console.error('Failed to load deal:', error);
@@ -228,7 +273,8 @@ export default function DealDetail() {
       month: 'short', 
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: true
     });
   };
 
@@ -353,8 +399,167 @@ export default function DealDetail() {
     return 'deal-activity-future';
   };
 
-  // Mark activity as done and move to history (or undo and move back to focus)
-  const markActivityDone = async (activityId: number, done: boolean) => {
+  // Helper function to normalize category label
+  const normalizeCategoryLabel = (cat?: string | null): 'Activity' | 'Call' | 'Meeting scheduler' => {
+    if (!cat) return 'Activity';
+    if (cat === 'CALL') return 'Call';
+    if (cat === 'MEETING_SCHEDULER') return 'Meeting scheduler';
+    return 'Activity';
+  };
+
+  // Helper function to parse time string to minutes
+  const parseTimeToMinutes = (time?: string | null): number | null => {
+    if (!time) return null;
+    const [hoursStr, minutesStr] = time.split(':');
+    const hours = Number(hoursStr);
+    const minutes = Number(minutesStr);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+    return hours * 60 + minutes;
+  };
+
+  // Helper function to parse duration input to minutes
+  const parseDurationInputToMinutes = (value: string): number | null => {
+    const trimmed = value?.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.includes(':')) {
+      const parts = trimmed.split(':').map((p) => p.trim());
+      if (parts.length < 2 || parts.length > 3) {
+        return null;
+      }
+      const [hoursStr, minutesStr, secondsStr] = parts;
+      const hours = Number(hoursStr);
+      const minutes = Number(minutesStr);
+      const seconds = parts.length === 3 ? Number(secondsStr) : 0;
+      if ([hours, minutes, seconds].some((n) => Number.isNaN(n))) {
+        return null;
+      }
+      return hours * 60 + minutes + Math.floor(seconds / 60);
+    }
+
+    const numericMinutes = Number(trimmed);
+    if (Number.isNaN(numericMinutes)) {
+      return null;
+    }
+    return numericMinutes;
+  };
+
+  // Helper function to format minutes to HH:MM
+  const formatMinutesToHHMM = (minutes: number): string => {
+    const safeMinutes = Math.max(0, minutes);
+    const hours = Math.floor(safeMinutes / 60);
+    const remainingMinutes = safeMinutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(remainingMinutes).padStart(2, '0')}`;
+  };
+
+  // Handle pending attachment input
+  const handlePendingAttachmentInput = (files?: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    
+    // Validate file size (10MB = 10 * 1024 * 1024 bytes)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+    
+    setPendingAttachmentFile(file);
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setPendingAttachmentPreview(previewUrl);
+  };
+
+  // Handle pending done cancel
+  const handlePendingDoneCancel = () => {
+    // Clean up preview URL if it exists
+    if (pendingAttachmentPreview && pendingAttachmentPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(pendingAttachmentPreview);
+    }
+    setPendingDoneActivity(null);
+    setPendingDoneValue(false);
+    setPendingDurationValue('');
+    setPendingAttachmentFile(null);
+    setPendingAttachmentPreview(null);
+    setPendingUploading(false);
+    setPendingDialogPosition(null);
+  };
+
+  // Handle pending done confirm
+  const handlePendingDoneConfirm = async () => {
+    if (!pendingDoneActivity) return;
+    const duration = pendingDurationValue.trim();
+    if (!duration) {
+      alert('Please enter a duration.');
+      return;
+    }
+    if (!pendingAttachmentFile && !pendingDoneActivity.attachmentUrl) {
+      alert('Please attach an image.');
+      return;
+    }
+    const durationMinutes = parseDurationInputToMinutes(duration);
+    if (durationMinutes === null || durationMinutes <= 0) {
+      alert('Please enter a valid duration (e.g., 15 or 00:15:00).');
+      return;
+    }
+    
+    setPendingUploading(true);
+    
+    try {
+      // Upload screenshot if a new file is selected
+      if (pendingAttachmentFile) {
+        try {
+          await activitiesApi.uploadScreenshot(pendingDoneActivity.id, pendingAttachmentFile);
+        } catch (error: any) {
+          console.error('Failed to upload screenshot:', error);
+          alert(`Failed to upload screenshot: ${error?.message || 'Unknown error'}`);
+          setPendingUploading(false);
+          return;
+        }
+      }
+      
+      const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
+      const startMinutes = existingStartMinutes ?? 0;
+      const endMinutes = startMinutes + durationMinutes;
+      const startTimeFormatted =
+        existingStartMinutes !== null && pendingDoneActivity.startTime
+          ? pendingDoneActivity.startTime
+          : formatMinutesToHHMM(startMinutes);
+      const endTimeFormatted = formatMinutesToHHMM(endMinutes);
+      
+      const updatedActivity = await activitiesApi.update(pendingDoneActivity.id, {
+        startTime: startTimeFormatted,
+        endTime: endTimeFormatted,
+      });
+      if (updatedActivity && id) {
+        await loadActivities(Number(id));
+      }
+      
+      const durationDisplay = duration.includes(':')
+        ? duration
+        : formatMinutesToHHMM(durationMinutes);
+      setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
+      await completeToggleDone(pendingDoneActivity.id, pendingDoneValue);
+      handlePendingDoneCancel();
+    } catch (error: any) {
+      console.error('Failed to save call duration:', error);
+      alert(
+        `Failed to save call duration: ${
+          error?.response?.data?.message || error?.message || 'Unknown error'
+        }`,
+      );
+      setPendingUploading(false);
+    }
+  };
+
+  // Complete toggle done (without modal)
+  const completeToggleDone = async (activityId: number, done: boolean) => {
     try {
       await activitiesApi.markDone(activityId, done);
       // Reload activities to get updated status
@@ -369,6 +574,107 @@ export default function DealDetail() {
       console.error('Failed to update activity:', error);
       alert('Failed to update activity');
     }
+  };
+
+  // Open screenshot viewer
+  const openScreenshotViewer = (activity: Activity) => {
+    if (activity.attachmentUrl) {
+      setScreenshotViewerActivity(activity);
+      setScreenshotViewerImageUrl(activity.attachmentUrl);
+      setScreenshotReplacementFile(null);
+      setScreenshotReplacementPreview(null);
+    }
+  };
+
+  // Close screenshot viewer
+  const closeScreenshotViewer = () => {
+    // Clean up preview URL if it exists
+    if (screenshotReplacementPreview && screenshotReplacementPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(screenshotReplacementPreview);
+    }
+    setScreenshotViewerActivity(null);
+    setScreenshotViewerImageUrl(null);
+    setScreenshotReplacementFile(null);
+    setScreenshotReplacementPreview(null);
+    setScreenshotReplacing(false);
+  };
+
+  // Handle screenshot replacement file input
+  const handleScreenshotReplacementInput = (files?: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    
+    // Validate file size (10MB = 10 * 1024 * 1024 bytes)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+    
+    setScreenshotReplacementFile(file);
+    // Create preview URL
+    const previewUrl = URL.createObjectURL(file);
+    setScreenshotReplacementPreview(previewUrl);
+  };
+
+  // Handle screenshot replacement
+  const handleScreenshotReplacement = async () => {
+    if (!screenshotViewerActivity || !screenshotReplacementFile) return;
+    
+    setScreenshotReplacing(true);
+    
+    try {
+      const newImageUrl = await activitiesApi.uploadScreenshot(screenshotViewerActivity.id, screenshotReplacementFile);
+      // Update the image URL
+      setScreenshotViewerImageUrl(newImageUrl);
+      // Clean up old preview
+      if (screenshotReplacementPreview && screenshotReplacementPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(screenshotReplacementPreview);
+      }
+      setScreenshotReplacementFile(null);
+      setScreenshotReplacementPreview(null);
+      // Reload activities to get updated data
+      if (id) {
+        await loadActivities(Number(id));
+      }
+      alert('Screenshot replaced successfully!');
+    } catch (error: any) {
+      console.error('Failed to replace screenshot:', error);
+      alert(`Failed to replace screenshot: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setScreenshotReplacing(false);
+    }
+  };
+
+  // Mark activity as done and move to history (or undo and move back to focus)
+  const markActivityDone = async (activityId: number, done: boolean, clickPosition?: { top: number; left: number }) => {
+    const activity = activities.find(a => a.id === activityId);
+    if (!activity) {
+      await completeToggleDone(activityId, done);
+      return;
+    }
+
+    // Check if it's a call activity being marked as done
+    const category = normalizeCategoryLabel(activity.category);
+    if (category === 'Call' && done) {
+      setPendingDoneActivity(activity);
+      setPendingDoneValue(done);
+      setPendingDurationValue(durationEntries[activity.id] ?? '');
+      setPendingAttachmentFile(null);
+      // If activity already has an attachment URL, use it as preview
+      setPendingAttachmentPreview(activity.attachmentUrl || null);
+      setPendingDialogPosition(clickPosition || null);
+      setOpenMenuId(null); // Close menu when modal opens
+      return;
+    }
+    
+    await completeToggleDone(activityId, done);
   };
 
   // Delete activity
@@ -434,7 +740,14 @@ export default function DealDetail() {
   };
 
   const handleFieldChange = (field: string, value: any) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      const newData = { ...prev, [field]: value };
+      // If source changes, clear subSource if source is not "Direct"
+      if (field === 'source' && value !== 'Direct') {
+        newData.subSource = '';
+      }
+      return newData;
+    });
   };
 
   const handleSave = async () => {
@@ -482,13 +795,68 @@ export default function DealDetail() {
         // Navigate to deals page
         navigate('/deals');
       } else if (id) {
-        // Update existing deal
-        console.log('Updating deal ID:', id, 'with payload:', payload);
-        const updatedDeal = await dealsApi.update(Number(id), payload);
+        // Helper function to parse deal value - if empty, return 0 (not null) to clear the deal value
+        const parseDealValue = (value: string | null | undefined): number => {
+          if (value === null || value === undefined || value.trim() === '') return 0;
+          const parsed = parseFloat(value);
+          return isNaN(parsed) ? 0 : parsed;
+        };
+
+        // Helper function to parse commission amount - if empty, return null (optional field)
+        const parseCommissionAmount = (value: string | null | undefined): number | null => {
+          if (value === null || value === undefined || value.trim() === '') return null;
+          const parsed = parseFloat(value);
+          return isNaN(parsed) ? null : parsed;
+        };
+
+        // Update existing deal - use DealUpdateRequest (all fields optional)
+        const updatePayload: DealUpdateRequest = {
+          name: formData.name.trim(),
+          value: parseDealValue(formData.value),
+          status: formData.status as any,
+          personId: formData.personId || null,
+          organizationId: formData.organizationId !== undefined && formData.organizationId !== null ? formData.organizationId : null,
+          pipelineId: formData.pipelineId || null,
+          stageId: formData.stageId || null,
+          categoryId: formData.categoryId || null,
+          eventType: toNullIfEmpty(formData.eventType),
+          venue: toNullIfEmpty(formData.venue),
+          phoneNumber: toNullIfEmpty(formData.phoneNumber),
+          email: toNullIfEmpty(formData.email),
+          eventDate: toNullIfEmpty(formData.eventDate),
+          commissionAmount: parseCommissionAmount(formData.commissionAmount),
+          source: formData.source ? (formData.source as DealSource) : undefined,
+          subSource: (formData.source === 'Direct' && formData.subSource) ? (formData.subSource as DealSubSource) : undefined,
+        };
+        console.log('Updating deal ID:', id, 'with payload:', updatePayload);
+        const updatedDeal = await dealsApi.update(Number(id), updatePayload);
         console.log('Deal updated successfully:', updatedDeal);
-        // Reload deal data to reflect changes
-        await loadDealData(Number(id));
-        alert('Deal updated successfully');
+        
+        // Update local state with the response from API to ensure UI reflects saved values
+        setDeal(updatedDeal);
+        
+        // Update formData with the response to keep form in sync
+        setFormData((prev) => ({
+          ...prev,
+          name: updatedDeal.name || prev.name,
+          value: updatedDeal.value?.toString() || '0',
+          status: updatedDeal.status || prev.status,
+          personId: updatedDeal.personId || null,
+          organizationId: updatedDeal.organizationId || null,
+          pipelineId: updatedDeal.pipelineId || null,
+          stageId: updatedDeal.stageId || null,
+          categoryId: typeof updatedDeal.categoryId === 'number' ? updatedDeal.categoryId : (typeof updatedDeal.categoryId === 'string' ? Number(updatedDeal.categoryId) || null : null),
+          eventType: updatedDeal.eventType || '',
+          venue: updatedDeal.venue || '',
+          phoneNumber: updatedDeal.phoneNumber || '',
+          email: updatedDeal.email || '',
+          eventDate: updatedDeal.eventDate ? formatDateForInput(updatedDeal.eventDate) : '',
+          commissionAmount: updatedDeal.commissionAmount?.toString() || '',
+          source: updatedDeal.source || '',
+          subSource: updatedDeal.subSource || '',
+        }));
+        
+        setShowSuccessToast(true);
       }
     } catch (error: any) {
       console.error('Failed to save deal:', error);
@@ -555,9 +923,92 @@ export default function DealDetail() {
     return selectedPipeline.stages?.find((s) => s.id === formData.stageId) || null;
   }, [formData.stageId, selectedPipeline]);
 
+  // Function to check if a deal has incomplete required activities
+  const checkIncompleteActivities = async (deal: Deal): Promise<boolean> => {
+    if (!deal.pipelineId || !deal.stageId) return false;
+
+    const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+    if (!pipeline) return false;
+
+    // Check if deal is in "Qualified" stage
+    const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+    if (!currentStage) return false;
+
+    const stageName = currentStage.name.toLowerCase().trim();
+    const isQualified = stageName === 'qualified';
+    
+    // Only check for deals in Qualified stage
+    if (!isQualified) return false;
+
+    try {
+      // Get all activities - we'll filter by dealId in the response
+      const activitiesResponse = await activitiesApi.list({ page: 0, size: 1000 });
+      const allActivities = activitiesResponse.content || [];
+      // Filter activities for this deal
+      const dealActivities = allActivities.filter(activity => activity.dealId === deal.id);
+
+      // Check for the two required activities
+      const requiredActivities = ['Make the 1st call', 'Send the quote'];
+      const incompleteActivities = dealActivities.filter(activity => 
+        requiredActivities.includes(activity.subject || '') && !activity.done
+      );
+
+      return incompleteActivities.length > 0;
+    } catch (err) {
+      console.error(`Failed to check activities for deal ${deal.id}:`, err);
+      // If we can't check, allow the operation (fail open)
+      return false;
+    }
+  };
+
   // Handle status update (WON/LOST/Reopen)
   const handleStatusUpdate = async (newStatus: 'WON' | 'LOST' | 'IN_PROGRESS') => {
-    if (!id || isNewDeal) return;
+    if (!id || isNewDeal || !deal) return;
+    
+    // If marking as LOST, show the modal to select a reason
+    if (newStatus === 'LOST') {
+      setShowMarkAsLostModal(true);
+      return;
+    }
+    
+    // Only validate when marking as WON (not when reopening)
+    if (newStatus === 'WON') {
+      // Note: We'll always show the modal to allow editing value, so no need to check hasDealValue here
+      
+      // Check if deal is in Qualified stage (only validate activities for deals in Qualified stage)
+      const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+      let hasIncompleteActivities = false;
+      
+      if (pipeline) {
+        const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+        if (currentStage) {
+          const currentStageName = currentStage.name.toLowerCase().trim();
+          const isCurrentlyQualified = currentStageName === 'qualified';
+          
+          // Only validate activities if deal is in Qualified stage
+          if (isCurrentlyQualified) {
+            // Check if deal has incomplete activities
+            hasIncompleteActivities = await checkIncompleteActivities(deal);
+            
+            if (hasIncompleteActivities) {
+              const errorMessage = 'Please complete the assigned activities first to mark the deal as WON.';
+              setErrorMessage(errorMessage);
+              setShowErrorToast(true);
+              // Auto-hide after 5 seconds
+              setTimeout(() => {
+                setShowErrorToast(false);
+                setErrorMessage(null);
+              }, 5000);
+              return;
+            }
+          }
+        }
+      }
+      
+      // Always show modal when marking as WON to allow editing value and commission
+      setShowDealValueModal(true);
+      return;
+    }
     
     try {
       const updatedDeal = await dealsApi.updateStatus(Number(id), { status: newStatus });
@@ -568,7 +1019,66 @@ export default function DealDetail() {
     } catch (error: any) {
       console.error('Failed to update status:', error);
       const errorMessage = error?.response?.data?.message || error?.message || 'Failed to update status.';
-      alert(errorMessage);
+      setErrorMessage(errorMessage);
+      setShowErrorToast(true);
+      setTimeout(() => {
+        setShowErrorToast(false);
+        setErrorMessage(null);
+      }, 5000);
+    }
+  };
+
+  const handleMarkAsLost = async (lostReason: string) => {
+    if (!id || isNewDeal || !deal) return;
+    
+    // Check if deal is in Qualified stage (only validate for deals in Qualified stage)
+    const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+    if (pipeline) {
+      const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+      if (currentStage) {
+        const currentStageName = currentStage.name.toLowerCase().trim();
+        const isCurrentlyQualified = currentStageName === 'qualified';
+        
+        // Only validate if deal is in Qualified stage
+        if (isCurrentlyQualified) {
+          // Check if deal has incomplete activities
+          const hasIncompleteActivities = await checkIncompleteActivities(deal);
+          
+          // Check if deal has a value (value should be > 0) - only required if lost reason is "Budget"
+          const hasDealValue = deal.value != null && deal.value > 0;
+          const isBudgetReason = lostReason === 'Budget';
+          
+          // Build error messages based on what's missing
+          const errorMessages: string[] = [];
+          
+          if (hasIncompleteActivities) {
+            errorMessages.push('Please complete the assigned activities first to mark the deal as LOST.');
+          }
+          
+          // Only check deal value if the lost reason is "Budget"
+          if (isBudgetReason && !hasDealValue) {
+            errorMessages.push('Please add the deal value to mark the deal as LOST.');
+          }
+          
+          // If there are any validation errors, throw them
+          if (errorMessages.length > 0) {
+            throw new Error(errorMessages.join(' '));
+          }
+        }
+      }
+    }
+    
+    try {
+      const updatedDeal = await dealsApi.updateStatus(Number(id), { status: 'LOST', lostReason });
+      setDeal(updatedDeal);
+      setFormData((prev) => ({ ...prev, status: 'LOST' }));
+      // Reload deal data to get latest state
+      await loadDealData(Number(id));
+      setShowMarkAsLostModal(false);
+    } catch (error: any) {
+      console.error('Failed to mark deal as lost:', error);
+      const errorMsg = error?.response?.data?.message || error?.message || 'Failed to mark deal as lost.';
+      throw new Error(errorMsg);
     }
   };
 
@@ -597,6 +1107,58 @@ export default function DealDetail() {
 
   return (
     <div className="deal-detail-container">
+      {/* Toast Notification for Errors */}
+      {showErrorToast && errorMessage && createPortal(
+        <div className="deal-detail-toast-overlay" onClick={() => { setShowErrorToast(false); setErrorMessage(null); }}>
+          <div className="deal-detail-toast" onClick={(e) => e.stopPropagation()}>
+            <div className="deal-detail-toast-icon-wrapper">
+              <svg className="deal-detail-toast-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L1 21H23L12 2Z" fill="#FCD34D" stroke="#F59E0B" strokeWidth="1.5"/>
+                <path d="M12 9V13M12 17H12.01" stroke="#92400E" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div className="deal-detail-toast-content">
+              <div className="deal-detail-toast-message">{errorMessage}</div>
+            </div>
+            <button 
+              className="deal-detail-toast-close" 
+              onClick={() => { setShowErrorToast(false); setErrorMessage(null); }}
+              aria-label="Close"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 4L4 12M4 4L12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Toast Notification for Success */}
+      {showSuccessToast && createPortal(
+        <div className="deal-detail-toast-overlay" onClick={() => setShowSuccessToast(false)}>
+          <div className="deal-detail-toast deal-detail-toast-success" onClick={(e) => e.stopPropagation()}>
+            <div className="deal-detail-toast-icon-wrapper">
+              <svg className="deal-detail-toast-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M20 6L9 17l-5-5" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="#10B981" strokeWidth="2" fill="none"/>
+              </svg>
+            </div>
+            <div className="deal-detail-toast-content">
+              <div className="deal-detail-toast-message">Deal updated successfully!</div>
+            </div>
+            <div className="deal-detail-toast-actions">
+              <button 
+                className="deal-detail-toast-ok-btn" 
+                onClick={() => setShowSuccessToast(false)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
       {/* Top Header Bar - Full Width */}
       <div className="deal-detail-header-bar">
         <div className="deal-header-left">
@@ -1030,6 +1592,50 @@ export default function DealDetail() {
                   )}
                 </div>
                 <div className="deal-field-row">
+                  <span className="deal-field-label">Source</span>
+                  {editingField === 'source' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                      <select
+                        className="deal-field-input"
+                        value={formData.source || ''}
+                        onChange={(e) => handleFieldChange('source', e.target.value)}
+                        onBlur={() => setEditingField(null)}
+                        autoFocus
+                      >
+                        <option value="">Select Source</option>
+                        {DEAL_SOURCE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      {formData.source === 'Direct' && (
+                        <select
+                          className="deal-field-input"
+                          value={formData.subSource || ''}
+                          onChange={(e) => handleFieldChange('subSource', e.target.value)}
+                          onBlur={() => setEditingField(null)}
+                        >
+                          <option value="">Select Sub-Source (Optional)</option>
+                          {DEAL_SUB_SOURCE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="deal-field-text" onClick={() => setEditingField('source')}>
+                      {formData.source 
+                        ? (formData.source === 'Direct' && formData.subSource 
+                            ? `${formData.source} (${formData.subSource})` 
+                            : formData.source)
+                        : '—'}
+                      </span>
+                  )}
+                </div>
+                <div className="deal-field-row">
                   <span className="deal-field-label">Created</span>
                   <div className="deal-field-text">
                     {deal ? formatDateForDisplay(deal.createdAt) : ''}
@@ -1156,11 +1762,53 @@ export default function DealDetail() {
                         <input
                           type="checkbox"
                           checked={activity.done}
-                          onChange={(e) => markActivityDone(activity.id, e.target.checked)}
+                          onChange={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const clickPosition = {
+                              top: rect.top + window.scrollY,
+                              left: rect.left + window.scrollX,
+                            };
+                            markActivityDone(activity.id, e.target.checked, clickPosition);
+                          }}
                         />
                       </div>
-                      <div className="deal-activity-content">
-                        <div className="deal-activity-subject">{activity.subject}</div>
+                      <div className="deal-activity-content" style={{ flex: 1 }}>
+                        <div 
+                          className="deal-activity-subject" 
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const activityCategory = normalizeCategoryLabel(activity.category);
+                            navigate(`/activities?activityId=${activity.id}&category=${encodeURIComponent(activityCategory)}`);
+                          }}
+                        >
+                          {activity.subject}
+                          {activity.attachmentUrl && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openScreenshotViewer(activity);
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: '2px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}
+                              title="View screenshot"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M14.25 3H3.75C2.92157 3 2.25 3.67157 2.25 4.5V13.5C2.25 14.3284 2.92157 15 3.75 15H14.25C15.0784 15 15.75 14.3284 15.75 13.5V4.5C15.75 3.67157 15.0784 3 14.25 3Z" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M6.75 7.5C7.57843 7.5 8.25 6.82843 8.25 6C8.25 5.17157 7.57843 4.5 6.75 4.5C5.92157 4.5 5.25 5.17157 5.25 6C5.25 6.82843 5.92157 7.5 6.75 7.5Z" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M15.75 10.5L12 7.5L3.75 13.5" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                         <div className="deal-activity-meta">
                           {/* Date: when activity was created */}
                           <span className="deal-activity-date">
@@ -1223,7 +1871,14 @@ export default function DealDetail() {
                           <div className="deal-activity-menu-dropdown">
                             <div 
                               className="deal-activity-menu-item"
-                              onClick={() => markActivityDone(activity.id, !activity.done)}
+                              onClick={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const clickPosition = {
+                                  top: rect.top + window.scrollY,
+                                  left: rect.left + window.scrollX,
+                                };
+                                markActivityDone(activity.id, !activity.done, clickPosition);
+                              }}
                             >
                               {activity.done ? 'Mark as undone' : 'Mark as done'}
                             </div>
@@ -1273,13 +1928,56 @@ export default function DealDetail() {
                           <input
                             type="checkbox"
                             checked={activity.done}
-                            onChange={(e) => markActivityDone(activity.id, e.target.checked)}
+                            onChange={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const clickPosition = {
+                                top: rect.top + window.scrollY,
+                                left: rect.left + window.scrollX,
+                              };
+                              markActivityDone(activity.id, e.target.checked, clickPosition);
+                            }}
                           />
                         </div>
                         <div className="deal-history-content-wrapper">
-                          <div className="deal-history-header-row">
+                          <div className="deal-history-header-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {activity.done && <span className="deal-history-checkmark">✓</span>}
-                            <span className="deal-history-subject">{activity.subject}</span>
+                            <span 
+                              className="deal-history-subject" 
+                              style={{ cursor: 'pointer' }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const activityCategory = normalizeCategoryLabel(activity.category);
+                                navigate(`/activities?activityId=${activity.id}&category=${activityCategory}`);
+                              }}
+                            >
+                              {activity.subject}
+                            </span>
+                            {activity.attachmentUrl && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openScreenshotViewer(activity);
+                                }}
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: '2px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
+                                  marginLeft: 'auto',
+                                }}
+                                title="View screenshot"
+                              >
+                                <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M14.25 3H3.75C2.92157 3 2.25 3.67157 2.25 4.5V13.5C2.25 14.3284 2.92157 15 3.75 15H14.25C15.0784 15 15.75 14.3284 15.75 13.5V4.5C15.75 3.67157 15.0784 3 14.25 3Z" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M6.75 7.5C7.57843 7.5 8.25 6.82843 8.25 6C8.25 5.17157 7.57843 4.5 6.75 4.5C5.92157 4.5 5.25 5.17157 5.25 6C5.25 6.82843 5.92157 7.5 6.75 7.5Z" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M15.75 10.5L12 7.5L3.75 13.5" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
+                            )}
                           </div>
                           <div className="deal-history-meta">
                             {/* Date: when activity was created */}
@@ -1376,6 +2074,75 @@ export default function DealDetail() {
         </button>
       </div>
 
+      {/* Mark as Lost Modal */}
+      {showMarkAsLostModal && (
+        <MarkAsLostModal
+          isOpen={true}
+          onClose={() => setShowMarkAsLostModal(false)}
+          onConfirm={handleMarkAsLost}
+          dealName={deal?.name}
+        />
+      )}
+      {showDealValueModal && deal && (
+        <DealValueModal
+          isOpen={true}
+          onClose={() => setShowDealValueModal(false)}
+          onConfirm={async (dealValue, commissionAmount, source, subSource) => {
+            try {
+              // Combine all updates into a single request
+              const updatePayload: any = {
+                status: 'WON',
+                value: dealValue,
+              };
+              
+              if (commissionAmount !== undefined && commissionAmount !== null) {
+                updatePayload.commissionAmount = commissionAmount;
+              }
+              
+              // Add source and subSource if provided
+              if (source) {
+                updatePayload.source = source;
+                if (source === 'Direct' && subSource) {
+                  updatePayload.subSource = subSource;
+                } else {
+                  // Clear subSource if source is not Direct
+                  updatePayload.subSource = null;
+                }
+              }
+              
+              // Use the update endpoint which accepts all these fields including status
+              const wonDeal = await dealsApi.update(Number(id), updatePayload);
+              setDeal(wonDeal);
+              setFormData((prev) => ({ 
+                ...prev, 
+                status: 'WON',
+                value: dealValue.toString(),
+                commissionAmount: commissionAmount?.toString() || wonDeal.commissionAmount?.toString() || '',
+                source: source || wonDeal.source || '',
+                subSource: (source === 'Direct' && subSource) ? subSource : '',
+              }));
+              
+              setShowDealValueModal(false);
+            } catch (error: any) {
+              console.error('Failed to update deal value:', error);
+              const errorMsg = error?.response?.data?.message || error?.message || 'Failed to update deal value.';
+              setErrorMessage(errorMsg);
+              setShowErrorToast(true);
+              setTimeout(() => {
+                setShowErrorToast(false);
+                setErrorMessage(null);
+              }, 5000);
+              throw error;
+            }
+          }}
+          dealName={deal.name}
+          currentValue={deal.value}
+          currentCommission={deal.commissionAmount}
+          dealSource={deal.source || null}
+          dealSubSource={deal.subSource || null}
+        />
+      )}
+
       {/* Activity Modal */}
       <ActivityModal
         isOpen={isActivityModalOpen}
@@ -1463,6 +2230,293 @@ export default function DealDetail() {
           }
         }}
       />
+
+      {/* Pending Done Modal for Call Activities */}
+      {pendingDoneActivity && createPortal(
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.2)',
+              zIndex: 1499,
+            }}
+            onClick={handlePendingDoneCancel}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: pendingDialogPosition?.top ?? window.innerHeight / 2,
+              left: pendingDialogPosition?.left ?? window.innerWidth / 2,
+              transform:
+                pendingDialogPosition ? 'translateY(0)' : 'translate(-50%, -50%)',
+              background: '#fff',
+              borderRadius: 12,
+              width: 280,
+              boxShadow: '0 20px 45px rgba(15,23,42,0.25)',
+              zIndex: 1500,
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ 
+              background: '#e4e7ec', 
+              padding: '12px 16px', 
+              borderBottom: '1px solid #e5e7eb',
+              margin: 0,
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>Complete call activity</h3>
+            </div>
+            <div style={{ padding: 16 }}>
+            <label style={{ display: 'block', marginBottom: 10, fontWeight: 500, fontSize: '13px' }}>
+              Please Enter Duration In Minutes
+              <input
+                type="text"
+                value={pendingDurationValue}
+                onChange={(e) => setPendingDurationValue(e.target.value)}
+                placeholder="15"
+                style={{
+                  width: '100%',
+                  marginTop: 4,
+                  padding: '8px 10px',
+                  border: '1px solid #f5d867',
+                  borderRadius: 6,
+                  fontSize: '13px',
+                  background: '#fff9e6',
+                }}
+              />
+            </label>
+            <label style={{ display: 'block', marginBottom: 16, fontWeight: 500, fontSize: '13px' }}>
+              Attach image
+              <div style={{ marginTop: 4 }}>
+                {pendingAttachmentPreview && (
+                  <div style={{ marginBottom: 8, position: 'relative' }}>
+                    <img
+                      src={pendingAttachmentPreview}
+                      alt="Screenshot preview"
+                      style={{
+                        width: '100%',
+                        maxHeight: '150px',
+                        objectFit: 'contain',
+                        borderRadius: 6,
+                        border: '1px solid #e5e7eb',
+                      }}
+                      onError={(e) => {
+                        console.error('Failed to load image:', pendingAttachmentPreview);
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )}
+                <label
+                  style={{
+                    color: '#2563eb',
+                    cursor: pendingUploading ? 'not-allowed' : 'pointer',
+                    fontWeight: 600,
+                    fontSize: '13px',
+                    opacity: pendingUploading ? 0.6 : 1,
+                    display: 'inline-block',
+                  }}
+                >
+                  {pendingAttachmentFile ? pendingAttachmentFile.name : pendingAttachmentPreview ? 'Replace image' : 'Select image'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={(e) => handlePendingAttachmentInput(e.target.files)}
+                    disabled={pendingUploading}
+                  />
+                </label>
+              </div>
+            </label>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                onClick={handlePendingDoneCancel}
+                style={{
+                  border: '1px solid #d1d5db',
+                  background: '#fff',
+                  borderRadius: 6,
+                  padding: '6px 12px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePendingDoneConfirm}
+                disabled={pendingUploading}
+                style={{
+                  border: 'none',
+                  background: pendingUploading ? '#9ca3af' : '#2563eb',
+                  color: '#fff',
+                  borderRadius: 6,
+                  padding: '6px 12px',
+                  cursor: pendingUploading ? 'not-allowed' : 'pointer',
+                  fontSize: '13px',
+                  opacity: pendingUploading ? 0.6 : 1,
+                }}
+              >
+                {pendingUploading ? 'Uploading...' : 'Save'}
+              </button>
+            </div>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
+
+      {/* Screenshot Viewer Modal */}
+      {screenshotViewerActivity && screenshotViewerImageUrl && createPortal(
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'rgba(0,0,0,0.7)',
+              zIndex: 1599,
+            }}
+            onClick={closeScreenshotViewer}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: '#fff',
+              borderRadius: 12,
+              width: '90%',
+              maxWidth: '800px',
+              maxHeight: '90vh',
+              boxShadow: '0 20px 45px rgba(15,23,42,0.25)',
+              zIndex: 1600,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ 
+              background: '#e4e7ec', 
+              padding: '12px 16px', 
+              borderBottom: '1px solid #e5e7eb',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>
+                Screenshot - {screenshotViewerActivity.subject}
+              </h3>
+              <button
+                onClick={closeScreenshotViewer}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M15 5L5 15M5 5L15 15" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <div style={{ padding: 16, overflow: 'auto', flex: 1 }}>
+              <div style={{ marginBottom: 16 }}>
+                <img
+                  src={screenshotReplacementPreview || screenshotViewerImageUrl}
+                  alt="Screenshot"
+                  style={{
+                    width: '100%',
+                    maxHeight: '60vh',
+                    objectFit: 'contain',
+                    borderRadius: 6,
+                    border: '1px solid #e5e7eb',
+                  }}
+                  onError={(e) => {
+                    console.error('Failed to load image:', screenshotReplacementPreview || screenshotViewerImageUrl);
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              </div>
+              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
+                <label style={{ display: 'block', marginBottom: 10, fontWeight: 500, fontSize: '13px' }}>
+                  Replace Screenshot
+                  <div style={{ marginTop: 8 }}>
+                    <label
+                      style={{
+                        color: '#2563eb',
+                        cursor: screenshotReplacing ? 'not-allowed' : 'pointer',
+                        fontWeight: 600,
+                        fontSize: '13px',
+                        opacity: screenshotReplacing ? 0.6 : 1,
+                        display: 'inline-block',
+                        padding: '8px 12px',
+                        border: '1px solid #2563eb',
+                        borderRadius: 6,
+                        background: '#fff',
+                      }}
+                    >
+                      {screenshotReplacementFile ? screenshotReplacementFile.name : 'Select new image'}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={(e) => handleScreenshotReplacementInput(e.target.files)}
+                        disabled={screenshotReplacing}
+                      />
+                    </label>
+                  </div>
+                </label>
+                {screenshotReplacementFile && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                    <button
+                      onClick={() => {
+                        if (screenshotReplacementPreview && screenshotReplacementPreview.startsWith('blob:')) {
+                          URL.revokeObjectURL(screenshotReplacementPreview);
+                        }
+                        setScreenshotReplacementFile(null);
+                        setScreenshotReplacementPreview(null);
+                      }}
+                      style={{
+                        border: '1px solid #d1d5db',
+                        background: '#fff',
+                        borderRadius: 6,
+                        padding: '6px 12px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleScreenshotReplacement}
+                      disabled={screenshotReplacing}
+                      style={{
+                        border: 'none',
+                        background: screenshotReplacing ? '#9ca3af' : '#2563eb',
+                        color: '#fff',
+                        borderRadius: 6,
+                        padding: '6px 12px',
+                        cursor: screenshotReplacing ? 'not-allowed' : 'pointer',
+                        fontSize: '13px',
+                        opacity: screenshotReplacing ? 0.6 : 1,
+                      }}
+                    >
+                      {screenshotReplacing ? 'Replacing...' : 'Replace'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
     </div>
   );
 }

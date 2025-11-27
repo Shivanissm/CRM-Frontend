@@ -4,6 +4,7 @@ import './DivertDealModal.css';
 import { pipelinesApi } from '../services/pipelines';
 import { dealsApi } from '../services/deals';
 import type { Pipeline } from '../types/pipeline';
+import type { DealStatus } from '../types/deal';
 
 interface DivertDealModalProps {
   isOpen: boolean;
@@ -114,15 +115,18 @@ export default function DivertDealModal({
         }
 
         // Create a new diverted deal in the selected pipeline
+        // Use the new pipeline's organization, or fall back to current deal's organization if pipeline doesn't have one
+        const newOrganizationId = pipeline.organization?.id ?? currentDeal.organizationId;
+        
         const dealData = {
           name: currentDeal.name,
           value: currentDeal.value,
-          organizationId: currentDeal.organizationId,
+          organizationId: newOrganizationId,
           personId: currentDeal.personId,
           categoryId: currentDeal.categoryId,
           pipelineId: pipelineId,
           stageId: diversionStageId,
-          status: currentDeal.status,
+          status: 'IN_PROGRESS' as DealStatus, // Always set to IN_PROGRESS when diverting
           venue: currentDeal.venue,
           phoneNumber: currentDeal.phoneNumber,
           email: currentDeal.email,

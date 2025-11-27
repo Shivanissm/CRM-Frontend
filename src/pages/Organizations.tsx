@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import OrganizationModal from '../components/OrganizationModal';
 import { organizationsApi } from '../services/organizations';
+import { dealsApi } from '../services/deals';
 import type { Organization, OrganizationCategory, OrganizationOwner, OrganizationRequest } from '../types/organization';
+import type { Deal } from '../types/deal';
 import './Organizations.css';
 import { clearAuthSession } from '../utils/authToken';
 
@@ -19,15 +21,168 @@ export default function Organizations() {
   const [search, setSearch] = useState('');
   const [owners, setOwners] = useState<OrganizationOwner[]>([]);
   const [categories, setCategories] = useState<OrganizationCategory[]>([]);
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [isDateRangeModalOpen, setIsDateRangeModalOpen] = useState(false);
+  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
+  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('');
+  const [isDateRangeDropdownOpen, setIsDateRangeDropdownOpen] = useState(false);
+  const dateRangeDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Helper function to format date as YYYY-MM-DD
+  const formatDateYYYYMMDD = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Filter deals by date range
+  const filteredDeals = useMemo(() => {
+    if (!dateRange.start || !dateRange.end) {
+      return deals;
+    }
+    const startDate = new Date(dateRange.start);
+    const endDate = new Date(dateRange.end);
+    endDate.setHours(23, 59, 59, 999); // Include the entire end date
+    
+    return deals.filter((deal) => {
+      const dealDate = new Date(deal.createdAt);
+      return dealDate >= startDate && dealDate <= endDate;
+    });
+  }, [deals, dateRange]);
+
+  // Handle date range option selection
+  const handleDateRangeOption = (option: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let startDate: Date;
+    let endDate: Date = new Date(today);
+    endDate.setHours(23, 59, 59, 999);
+
+    switch (option) {
+      case 'today':
+        startDate = new Date(today);
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('Today');
+        break;
+      case 'yesterday':
+        startDate = new Date(today);
+        startDate.setDate(startDate.getDate() - 1);
+        endDate = new Date(startDate);
+        endDate.setHours(23, 59, 59, 999);
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('Yesterday');
+        break;
+      case 'thisWeek':
+        startDate = new Date(today);
+        startDate.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('This week');
+        break;
+      case 'lastWeek':
+        startDate = new Date(today);
+        startDate.setDate(today.getDate() - today.getDay() - 7); // Start of last week
+        endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 6); // End of last week
+        endDate.setHours(23, 59, 59, 999);
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('Last week');
+        break;
+      case 'thisMonth':
+        startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('This month');
+        break;
+      case 'lastMonth':
+        startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+        endDate.setHours(23, 59, 59, 999);
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('Last month');
+        break;
+      case 'last30Days':
+        startDate = new Date(today);
+        startDate.setDate(startDate.getDate() - 30);
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('Last 30 days');
+        break;
+      case 'custom':
+        setIsDateRangeModalOpen(true);
+        setIsDateRangeDropdownOpen(false);
+        return;
+      default:
+        return;
+    }
+    setIsDateRangeDropdownOpen(false);
+  };
+
+  const getDateRangeDisplayText = () => {
+    if (selectedDateRangeOption) {
+      return selectedDateRangeOption;
+    }
+    if (dateRange.start && dateRange.end) {
+      const start = new Date(dateRange.start).toLocaleDateString();
+      const end = new Date(dateRange.end).toLocaleDateString();
+      return `${start} - ${end}`;
+    }
+    return 'Select Date Range';
+  };
+
+  // Calculate deal counts per organization
+  const organizationDealCounts = useMemo(() => {
+    const counts: Record<number, { total: number; won: number; lost: number; open: number }> = {};
+    
+    filteredDeals.forEach((deal) => {
+      if (deal.organizationId) {
+        if (!counts[deal.organizationId]) {
+          counts[deal.organizationId] = { total: 0, won: 0, lost: 0, open: 0 };
+        }
+        counts[deal.organizationId].total++;
+        if (deal.status === 'WON') {
+          counts[deal.organizationId].won++;
+        } else if (deal.status === 'LOST') {
+          counts[deal.organizationId].lost++;
+        } else if (deal.status === 'IN_PROGRESS') {
+          counts[deal.organizationId].open++;
+        }
+      }
+    });
+    
+    return counts;
+  }, [filteredDeals]);
 
   const filteredOrganizations = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return organizations;
     return organizations.filter((org) => {
       const category = org.category ?? '';
+      const calendarEmail = org.googleCalendarId ?? '';
       return (
         org.name.toLowerCase().includes(term) ||
-        category.toLowerCase().includes(term)
+        category.toLowerCase().includes(term) ||
+        calendarEmail.toLowerCase().includes(term)
       );
     });
   }, [organizations, search]);
@@ -36,7 +191,38 @@ export default function Organizations() {
     void loadOrganizations();
     void loadOwners();
     void loadCategories();
+    void loadDeals();
   }, []);
+
+  // Close date range dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dateRangeDropdownRef.current && !dateRangeDropdownRef.current.contains(event.target as Node)) {
+        setIsDateRangeDropdownOpen(false);
+      }
+    };
+
+    if (isDateRangeDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDateRangeDropdownOpen]);
+
+  const loadDeals = async () => {
+    try {
+      const data = await dealsApi.list();
+      setDeals(data);
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        handleAuthRedirect();
+        return;
+      }
+      console.warn('Failed to load deals', err);
+    }
+  };
 
   const handleAuthRedirect = () => {
     clearAuthSession();
@@ -154,12 +340,199 @@ export default function Organizations() {
               placeholder="Search organizations…"
             />
           </div>
+          <div style={{ position: 'relative' }} ref={dateRangeDropdownRef}>
+            <button 
+              className="organizations-date-range-btn"
+              onClick={() => setIsDateRangeDropdownOpen(!isDateRangeDropdownOpen)}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                background: '#fff',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 500,
+                color: '#374151',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <span>{getDateRangeDisplayText()}</span>
+              <span style={{ fontSize: '10px' }}>▾</span>
+            </button>
+            {isDateRangeDropdownOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  left: 0,
+                  backgroundColor: '#fff',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                  minWidth: '200px',
+                  zIndex: 1000,
+                  overflow: 'hidden',
+                }}
+              >
+                <button
+                  onClick={() => handleDateRangeOption('today')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  Today
+                </button>
+                <button
+                  onClick={() => handleDateRangeOption('yesterday')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  Yesterday
+                </button>
+                <button
+                  onClick={() => handleDateRangeOption('thisWeek')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  This week
+                </button>
+                <button
+                  onClick={() => handleDateRangeOption('lastWeek')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  Last week
+                </button>
+                <button
+                  onClick={() => handleDateRangeOption('thisMonth')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  This month
+                </button>
+                <button
+                  onClick={() => handleDateRangeOption('lastMonth')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  Last month
+                </button>
+                <button
+                  onClick={() => handleDateRangeOption('last30Days')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  Last 30 days
+                </button>
+                <div style={{ height: '1px', background: '#e5e7eb', margin: '4px 0' }}></div>
+                <button
+                  onClick={() => handleDateRangeOption('custom')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  Select date range
+                </button>
+              </div>
+            )}
+          </div>
           <button className="organizations-add" onClick={() => setModalState({ mode: 'create' })}>
             + Organization
           </button>
           <button
             className="organizations-refresh"
-            onClick={() => void refreshOrganizations()}
+            onClick={() => {
+              void refreshOrganizations();
+              void loadDeals();
+            }}
             disabled={refreshing}
           >
             {refreshing ? 'Refreshing…' : 'Refresh'}
@@ -185,17 +558,39 @@ export default function Organizations() {
               <th style={{ width: '80px' }}>ID</th>
               <th>Name</th>
               <th style={{ width: '200px' }}>Category</th>
+              <th style={{ width: '150px' }}>Owner</th>
+              <th style={{ width: '100px', textAlign: 'center' }}>Total Deals</th>
+              <th style={{ width: '80px', textAlign: 'center' }}>WON</th>
+              <th style={{ width: '80px', textAlign: 'center' }}>LOST</th>
+              <th style={{ width: '80px', textAlign: 'center' }}>Open</th>
+              <th style={{ width: '240px' }}>Calendar email</th>
               <th style={{ width: '180px' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredOrganizations.map((organization) => {
               const isBusy = busyId === organization.id;
+              const dealCounts = organizationDealCounts[organization.id] || { total: 0, won: 0, lost: 0, open: 0 };
+              const owner = organization.owner;
               return (
                 <tr key={organization.id}>
                   <td>{organization.id}</td>
                   <td>{organization.name}</td>
                   <td>{organization.category ?? '—'}</td>
+                  <td>{owner ? owner.displayName || `${owner.firstName} ${owner.lastName}` : '—'}</td>
+                  <td style={{ textAlign: 'center' }}>{dealCounts.total}</td>
+                  <td style={{ textAlign: 'center' }}>{dealCounts.won}</td>
+                  <td style={{ textAlign: 'center' }}>{dealCounts.lost}</td>
+                  <td style={{ textAlign: 'center' }}>{dealCounts.open}</td>
+                  <td>
+                    {organization.googleCalendarId ? (
+                      <span className="organizations-calendar-pill" title="This organization syncs to Google Calendar">
+                        {organization.googleCalendarId}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td>
                     <div className="organizations-row-actions">
                       <button
@@ -231,6 +626,115 @@ export default function Organizations() {
           owners={owners}
           categories={categories}
         />
+      )}
+
+      {/* Date Range Modal */}
+      {isDateRangeModalOpen && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setIsDateRangeModalOpen(false)}
+        >
+          <div 
+            style={{
+              backgroundColor: 'white',
+              padding: '24px',
+              borderRadius: '8px',
+              minWidth: '400px',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: 600 }}>Select Date Range</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: 500 }}>
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  value={dateRange.start}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: 500 }}>
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  value={dateRange.end}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                  min={dateRange.start || undefined}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                  }}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '20px', justifyContent: 'flex-end' }}>
+              <button
+                  onClick={() => {
+                    setIsDateRangeModalOpen(false);
+                    setDateRange({ start: '', end: '' });
+                    setSelectedDateRangeOption('');
+                  }}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #ddd',
+                  borderRadius: '4px',
+                  backgroundColor: 'white',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                }}
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => {
+                  if (dateRange.start && dateRange.end) {
+                    setIsDateRangeModalOpen(false);
+                    setSelectedDateRangeOption(''); // Clear preset option when using custom range
+                  }
+                }}
+                disabled={!dateRange.start || !dateRange.end}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderRadius: '4px',
+                  backgroundColor: (!dateRange.start || !dateRange.end) ? '#ccc' : '#2563eb',
+                  color: 'white',
+                  cursor: (!dateRange.start || !dateRange.end) ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                }}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

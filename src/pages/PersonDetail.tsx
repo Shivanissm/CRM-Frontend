@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
 import { personsApi } from '../services/api';
 import { organizationsApi } from '../services/organizations';
@@ -20,6 +21,7 @@ export default function PersonDetail() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTab>('Activity');
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
   const [_filterMeta, setFilterMeta] = useState<FilterMeta | null>(null);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [_owners, setOwners] = useState<PersonOwner[]>([]);
@@ -35,10 +37,11 @@ export default function PersonDetail() {
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const [weddingDetailsMenuOpen, setWeddingDetailsMenuOpen] = useState(false);
   const [showOnlyFilledFields, setShowOnlyFilledFields] = useState(false);
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [weddingDatePickerOpen, setWeddingDatePickerOpen] = useState(false);
+  const [editingSection, setEditingSection] = useState<string | null>(null);
+  const [editingField, setEditingField] = useState<string | null>(null); // Keep for date pickers
+  const [_weddingDatePickerOpen, _setWeddingDatePickerOpen] = useState(false);
   const [leadDatePickerOpen, setLeadDatePickerOpen] = useState(false);
-  const [weddingDateCalendarMonth, setWeddingDateCalendarMonth] = useState(new Date());
+  const [_weddingDateCalendarMonth, _setWeddingDateCalendarMonth] = useState(new Date());
   const [leadDateCalendarMonth, setLeadDateCalendarMonth] = useState(new Date());
   const [labelsDropdownOpen, setLabelsDropdownOpen] = useState(false);
   const [orgLabelsDropdownOpen, setOrgLabelsDropdownOpen] = useState(false);
@@ -421,22 +424,59 @@ export default function PersonDetail() {
 
     setSaving(true);
     try {
+      // Helper to process field: if empty string, send undefined; if has value, send trimmed value
+      const processField = (value: string | undefined | null): string | undefined => {
+        if (value === undefined) return undefined; // Field not in formData, don't include
+        const trimmed = (value || '').trim();
+        return trimmed === '' ? undefined : trimmed; // Send undefined for empty strings
+      };
+      
+      // Helper for enum fields: convert empty strings to undefined (backend expects null/undefined, not empty string)
+      const processEnumField = (value: string | undefined | null): string | undefined => {
+        if (value === undefined) return undefined;
+        const trimmed = (value || '').trim();
+        return trimmed === '' ? undefined : trimmed; // Enum fields must be undefined/null, not empty string
+      };
+
       const payload: PersonRequest = {
         name: formData.name.trim(),
         organizationId: formData.organizationId,
         ownerId: formData.ownerId,
-        phone: formData.phone?.trim() || undefined,
-        email: formData.email?.trim() || undefined,
-        instagramId: formData.instagramId?.trim() || undefined,
-        leadDate: formData.leadDate || undefined,
-        label: formData.label || undefined,
-        source: formData.source || undefined,
+        phone: processField(formData.phone),
+        email: processField(formData.email),
+        instagramId: processField(formData.instagramId),
+        leadDate: processField(formData.leadDate),
+        // Enum fields: use processEnumField to ensure empty strings become undefined
+        label: processEnumField(formData.label),
+        source: processEnumField(formData.source),
       };
 
-      await personsApi.update(Number(id), payload);
+      // Remove undefined fields from payload (but keep null values to explicitly clear fields)
+      Object.keys(payload).forEach(key => {
+        if (payload[key as keyof PersonRequest] === undefined) {
+          delete payload[key as keyof PersonRequest];
+        }
+      });
+
+      // Log payload for debugging
+      console.log('Saving payload:', JSON.stringify(payload, null, 2));
+      
+      const updatedPerson = await personsApi.update(Number(id), payload);
+      
+      // Log response for debugging
+      console.log('Updated person response:', updatedPerson);
+      
       // Reload data after save
       await loadPersonData(Number(id));
-      alert('Person updated successfully!');
+      
+      // Notify other pages (like Deals) that a person was updated
+      // This triggers a refresh of persons list in Deals.tsx
+      window.dispatchEvent(new CustomEvent('personUpdated', { detail: { personId: Number(id) } }));
+      
+      // Also set a flag in localStorage to trigger refresh in other tabs/pages
+      localStorage.setItem('personUpdated', Date.now().toString());
+      
+      setShowSuccessToast(true);
     } catch (error: any) {
       console.error('Failed to save person:', error);
       alert(`Failed to save: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
@@ -559,6 +599,32 @@ export default function PersonDetail() {
         </div>
       </div>
 
+      {/* Toast Notification for Success */}
+      {showSuccessToast && createPortal(
+        <div className="person-detail-toast-overlay" onClick={() => setShowSuccessToast(false)}>
+          <div className="person-detail-toast person-detail-toast-success" onClick={(e) => e.stopPropagation()}>
+            <div className="person-detail-toast-icon-wrapper">
+              <svg className="person-detail-toast-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M20 6L9 17l-5-5" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="#10B981" strokeWidth="2" fill="none"/>
+              </svg>
+            </div>
+            <div className="person-detail-toast-content">
+              <div className="person-detail-toast-message">Person updated successfully!</div>
+            </div>
+            <div className="person-detail-toast-actions">
+              <button 
+                className="person-detail-toast-ok-btn" 
+                onClick={() => setShowSuccessToast(false)}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* Main Content - Two Halves */}
       <div className="person-detail-main">
         {/* Left Sidebar */}
@@ -566,10 +632,55 @@ export default function PersonDetail() {
 
         {/* Summary Section */}
         <div className="person-section">
-          <div className="person-section-header" onClick={() => setSummaryExpanded(!summaryExpanded)}>
-            <span className="person-section-title">
+          <div className="person-section-header">
+            <span 
+              className="person-section-title"
+              onClick={() => setSummaryExpanded(!summaryExpanded)}
+            >
               {summaryExpanded ? '▼' : '▶'} Summary
             </span>
+            <div className="person-section-actions">
+              {editingSection !== 'summary' ? (
+                <button
+                  type="button"
+                  className="person-section-edit-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingSection('summary');
+                  }}
+                  title="Edit summary section"
+                >
+                  ✏️ Edit
+                </button>
+              ) : (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="person-section-save-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingSection(null);
+                      void handleSave();
+                    }}
+                    title="Save changes"
+                  >
+                    ✓ Save
+                  </button>
+                  <button
+                    type="button"
+                    className="person-section-cancel-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingSection(null);
+                      handleCancel();
+                    }}
+                    title="Cancel editing"
+                  >
+                    ✕ Cancel
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           {summaryExpanded && (
             <div className="person-section-content">
@@ -645,19 +756,13 @@ export default function PersonDetail() {
                 </div>
               </div>
               <div className="person-field-row">
-                {editingField === 'email' ? (
+                {editingSection === 'summary' ? (
                   <input
                     type="email"
                     className="person-field-input"
                     value={formData.email || ''}
                     onChange={(e) => handleFieldChange('email', e.target.value)}
-                    onBlur={() => setEditingField(null)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        setEditingField(null);
-                      }
-                    }}
-                    autoFocus
+                    placeholder="Email"
                   />
                 ) : formData.email ? (
                   <div className="person-field-display">
@@ -665,28 +770,20 @@ export default function PersonDetail() {
                     <span className="person-field-value">{formData.email}</span>
                   </div>
                 ) : (
-                  <button 
-                    className="person-add-button"
-                    onClick={() => setEditingField('email')}
-                  >
-                    <span>✉️</span> Add email
-                  </button>
+                  <div className="person-field-display">
+                    <span className="person-field-icon">✉️</span>
+                    <span className="person-field-placeholder">No email</span>
+                  </div>
                 )}
               </div>
               <div className="person-field-row">
-                {editingField === 'phone' ? (
+                {editingSection === 'summary' ? (
                   <input
                     type="tel"
                     className="person-field-input"
                     value={formData.phone || ''}
                     onChange={(e) => handleFieldChange('phone', e.target.value)}
-                    onBlur={() => setEditingField(null)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        setEditingField(null);
-                      }
-                    }}
-                    autoFocus
+                    placeholder="Phone number"
                   />
                 ) : formData.phone ? (
                   <div className="person-field-display">
@@ -694,40 +791,23 @@ export default function PersonDetail() {
                     <span className="person-field-value">{formData.phone}</span>
                   </div>
                 ) : (
-                  <button 
-                    className="person-add-button"
-                    onClick={() => setEditingField('phone')}
-                  >
-                    <span>📞</span> Add phone
-                  </button>
+                  <div className="person-field-display">
+                    <span className="person-field-icon">📞</span>
+                    <span className="person-field-placeholder">No phone</span>
+                  </div>
                 )}
               </div>
               <div className="person-field-row">
-                {editingField === 'summaryOrganization' ? (
-                  <select
-                    className="person-field-input"
-                    value={formData.organizationId || ''}
-                    onChange={(e) => handleFieldChange('organizationId', e.target.value ? Number(e.target.value) : undefined)}
-                    onBlur={() => setEditingField(null)}
-                    autoFocus
-                  >
-                    <option value=""></option>
-                    {organizations.map((org) => (
-                      <option key={org.id} value={org.id}>{org.name}</option>
-                    ))}
-                  </select>
-                ) : selectedOrganization ? (
+                {selectedOrganization ? (
                   <div className="person-field-display">
                     <span className="person-field-icon">+</span>
                     <span className="person-field-value">{selectedOrganization.name}</span>
                   </div>
                 ) : (
-                  <button 
-                    className="person-add-button"
-                    onClick={() => setEditingField('summaryOrganization')}
-                  >
-                    <span>+</span> Organization
-                  </button>
+                  <div className="person-field-display">
+                    <span className="person-field-icon">+</span>
+                    <span className="person-field-placeholder">No organization</span>
+                  </div>
                 )}
               </div>
             </div>
@@ -784,9 +864,47 @@ export default function PersonDetail() {
                     </div>
                   </>
                 )}
-            </div>
-              <span className="person-section-icon">✏️</span>
-              <span className="person-section-icon">⋯</span>
+              </div>
+              {editingSection !== 'weddingDetails' ? (
+                <button
+                  type="button"
+                  className="person-section-edit-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingSection('weddingDetails');
+                  }}
+                  title="Edit wedding details"
+                >
+                  ✏️ Edit
+                </button>
+              ) : (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="person-section-save-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingSection(null);
+                      void handleSave();
+                    }}
+                    title="Save changes"
+                  >
+                    ✓ Save
+                  </button>
+                  <button
+                    type="button"
+                    className="person-section-cancel-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingSection(null);
+                      handleCancel();
+                    }}
+                    title="Cancel editing"
+                  >
+                    ✕ Cancel
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           {weddingDetailsExpanded && (
@@ -794,25 +912,16 @@ export default function PersonDetail() {
               {(shouldShowField(formData.firstName) || !showOnlyFilledFields) && (
                 <div className="person-field-row">
                   <label className="person-field-label">First name</label>
-                  {editingField === 'firstName' ? (
+                  {editingSection === 'weddingDetails' ? (
                     <input
                       type="text"
                       className="person-field-input"
                       value={formData.firstName || ''}
                       onChange={(e) => handleFieldChange('firstName', e.target.value)}
-                      onBlur={() => setEditingField(null)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          setEditingField(null);
-                        }
-                      }}
-                      autoFocus
+                      placeholder="First name"
                     />
                   ) : (
-                    <span 
-                      className="person-field-value person-field-clickable"
-                      onClick={() => setEditingField('firstName')}
-                    >
+                    <span className="person-field-value">
                       {formData.firstName || ''}
                     </span>
                   )}
@@ -821,160 +930,44 @@ export default function PersonDetail() {
               {(shouldShowField(formData.weddingDate) || !showOnlyFilledFields) && (
                 <div className="person-field-row">
                   <label className="person-field-label">Wedding Date only</label>
-                  <div className="person-field-with-edit">
-                    {editingField === 'weddingDate' || weddingDatePickerOpen ? (
-                      <div className="person-date-input-container">
-                        <input
-                          type="text"
-                          className="person-field-input"
-                          placeholder=""
-                          value={getDateForDisplay(formData.weddingDate)}
-                          onChange={(e) => {
-                            const parsed = parseDateDDMMYYYY(e.target.value);
-                            if (parsed) {
-                              handleFieldChange('weddingDate', formatDateYYYYMMDD(parsed));
-                              setWeddingDateCalendarMonth(parsed);
-                            }
-                          }}
-                          onFocus={() => setWeddingDatePickerOpen(true)}
-                          autoFocus
-                        />
-                        <span className="person-edit-icon">✏️</span>
-                        {weddingDatePickerOpen && (
-                          <>
-                            <div 
-                              className="person-date-picker-overlay"
-                              onClick={() => {
-                                setWeddingDatePickerOpen(false);
-                                setEditingField(null);
-                              }}
-                            />
-                            <div className="person-date-picker">
-                              <div className="person-date-picker-header">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const prev = new Date(weddingDateCalendarMonth);
-                                    prev.setMonth(prev.getMonth() - 1);
-                                    setWeddingDateCalendarMonth(prev);
-                                  }}
-                                  className="person-date-picker-nav"
-                                >
-                                  ▲
-                                </button>
-                                <div className="person-date-picker-month">
-                                  {weddingDateCalendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                                  <span className="person-date-picker-dropdown">▼</span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const next = new Date(weddingDateCalendarMonth);
-                                    next.setMonth(next.getMonth() + 1);
-                                    setWeddingDateCalendarMonth(next);
-                                  }}
-                                  className="person-date-picker-nav"
-                                >
-                                  ▼
-                                </button>
-                              </div>
-                              <div className="person-date-picker-weekdays">
-                                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, idx) => (
-                                  <div key={idx} className="person-date-picker-weekday">{day}</div>
-                                ))}
-                              </div>
-                              <div className="person-date-picker-days">
-                                {getCalendarDays(weddingDateCalendarMonth).map((day, idx) => {
-                                  const isCurrentMonth = day.getMonth() === weddingDateCalendarMonth.getMonth();
-                                  const isSelected = formData.weddingDate && formatDateYYYYMMDD(day) === formData.weddingDate;
-                                  const isToday = formatDateYYYYMMDD(day) === formatDateYYYYMMDD(new Date());
-                                  return (
-                                    <div
-                                      key={idx}
-                                      className={`person-date-picker-day ${isCurrentMonth ? '' : 'other-month'} ${isSelected ? 'selected' : ''} ${isToday ? 'today' : ''}`}
-                                      onClick={() => {
-                                        handleFieldChange('weddingDate', formatDateYYYYMMDD(day));
-                                        setWeddingDatePickerOpen(false);
-                                        setEditingField(null);
-                                      }}
-                                    >
-                                      {day.getDate()}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              <div className="person-date-picker-footer">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    handleFieldChange('weddingDate', undefined);
-                                    setWeddingDatePickerOpen(false);
-                                    setEditingField(null);
-                                  }}
-                                  className="person-date-picker-clear"
-                                >
-                                  Clear
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const today = new Date();
-                                    handleFieldChange('weddingDate', formatDateYYYYMMDD(today));
-                                    setWeddingDateCalendarMonth(today);
-                                    setWeddingDatePickerOpen(false);
-                                    setEditingField(null);
-                                  }}
-                                  className="person-date-picker-today"
-                                >
-                                  Today
-                                </button>
-                              </div>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    ) : (
-                      <span 
-                        className="person-field-value person-field-clickable"
-                        onClick={() => {
-                          setEditingField('weddingDate');
-                          setWeddingDatePickerOpen(true);
-                          if (formData.weddingDate) {
-                            const date = parseDateDDMMYYYY(formData.weddingDate);
-                            if (date) {
-                              setWeddingDateCalendarMonth(date);
-                            }
-                          }
-                        }}
-                      >
-                        {getDateForDisplay(formData.weddingDate) || ''}
-                      </span>
-                    )}
-                  </div>
+                  {editingSection === 'weddingDetails' ? (
+                    <input
+                      type="date"
+                      className="person-field-input"
+                      value={formData.weddingDate ? (() => {
+                        const parsed = parseDateDDMMYYYY(formData.weddingDate);
+                        return parsed ? formatDateYYYYMMDD(parsed) : '';
+                      })() : ''}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const date = new Date(e.target.value);
+                          handleFieldChange('weddingDate', formatDateYYYYMMDD(date));
+                        } else {
+                          handleFieldChange('weddingDate', undefined);
+                        }
+                      }}
+                      placeholder="Wedding date"
+                    />
+                  ) : (
+                    <span className="person-field-value">
+                      {getDateForDisplay(formData.weddingDate) || ''}
+                    </span>
+                  )}
                 </div>
               )}
               {(shouldShowField(formData.weddingVenue) || !showOnlyFilledFields) && (
                 <div className="person-field-row">
                   <label className="person-field-label">Wedding Venue</label>
-                  {editingField === 'weddingVenue' ? (
+                  {editingSection === 'weddingDetails' ? (
                     <input
                       type="text"
                       className="person-field-input"
                       value={formData.weddingVenue || ''}
                       onChange={(e) => handleFieldChange('weddingVenue', e.target.value)}
-                      onBlur={() => setEditingField(null)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          setEditingField(null);
-                        }
-                      }}
-                      autoFocus
+                      placeholder="Wedding venue"
                     />
                   ) : (
-                    <span 
-                      className="person-field-value person-field-clickable"
-                      onClick={() => setEditingField('weddingVenue')}
-                    >
+                    <span className="person-field-value">
                       {formData.weddingVenue || ''}
                     </span>
                   )}
@@ -983,25 +976,16 @@ export default function PersonDetail() {
               {(shouldShowField(formData.lastName) || !showOnlyFilledFields) && (
                 <div className="person-field-row">
                   <label className="person-field-label">Last name</label>
-                  {editingField === 'lastName' ? (
+                  {editingSection === 'weddingDetails' ? (
                     <input
                       type="text"
                       className="person-field-input"
                       value={formData.lastName || ''}
                       onChange={(e) => handleFieldChange('lastName', e.target.value)}
-                      onBlur={() => setEditingField(null)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          setEditingField(null);
-                        }
-                      }}
-                      autoFocus
+                      placeholder="Last name"
                     />
                   ) : (
-                    <span 
-                      className="person-field-value person-field-clickable"
-                      onClick={() => setEditingField('lastName')}
-                    >
+                    <span className="person-field-value">
                       {formData.lastName || ''}
                     </span>
                   )}
@@ -1010,25 +994,16 @@ export default function PersonDetail() {
               {(shouldShowField(formData.weddingItinerary) || !showOnlyFilledFields) && (
                 <div className="person-field-row">
                   <label className="person-field-label">Wedding Itinerary</label>
-                  {editingField === 'weddingItinerary' ? (
+                  {editingSection === 'weddingDetails' ? (
                     <input
                       type="text"
                       className="person-field-input"
                       value={formData.weddingItinerary || ''}
                       onChange={(e) => handleFieldChange('weddingItinerary', e.target.value)}
-                      onBlur={() => setEditingField(null)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          setEditingField(null);
-                        }
-                      }}
-                      autoFocus
+                      placeholder="Wedding itinerary"
                     />
                   ) : (
-                    <span 
-                      className="person-field-value person-field-clickable"
-                      onClick={() => setEditingField('weddingItinerary')}
-                    >
+                    <span className="person-field-value">
                       {formData.weddingItinerary || ''}
                     </span>
                   )}
@@ -1037,51 +1012,58 @@ export default function PersonDetail() {
               {(shouldShowField(formData.instagramId) || !showOnlyFilledFields) && (
                 <div className="person-field-row">
                   <label className="person-field-label">Instagram ID</label>
-                  {editingField === 'instagramId' ? (
-                    <input
-                      type="text"
-                      className="person-field-input"
-                      value={formData.instagramId || ''}
-                      onChange={(e) => handleFieldChange('instagramId', e.target.value)}
-                      onBlur={() => setEditingField(null)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          setEditingField(null);
-                        }
-                      }}
-                      autoFocus
-                    />
-                  ) : (
-                    <span 
-                      className="person-field-value person-field-clickable"
-                      onClick={() => setEditingField('instagramId')}
-                    >
-                      {formData.instagramId || ''}
-                    </span>
-                  )}
+                  <div className="person-field-input-wrapper">
+                    {editingField === 'instagramId' ? (
+                      <input
+                        type="text"
+                        className="person-field-input"
+                        value={formData.instagramId || ''}
+                        onChange={(e) => handleFieldChange('instagramId', e.target.value)}
+                        onBlur={() => setEditingField(null)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setEditingField(null);
+                          }
+                        }}
+                        autoFocus
+                      />
+                    ) : (
+                      <>
+                        <span className="person-field-value">
+                          {formData.instagramId || ''}
+                        </span>
+                        <button
+                          type="button"
+                          className="person-field-edit-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingField('instagramId');
+                          }}
+                          title="Edit Instagram ID"
+                        >
+                          ✏️
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
               {(shouldShowField(formData.source) || !showOnlyFilledFields) && (
                 <div className="person-field-row">
                   <label className="person-field-label">Person Source</label>
-                  {editingField === 'source' ? (
+                  {editingSection === 'weddingDetails' ? (
                     <select
                       className="person-field-input"
                       value={formData.source || ''}
                       onChange={(e) => handleFieldChange('source', e.target.value)}
-                      onBlur={() => setEditingField(null)}
-                      autoFocus
                     >
-                      <option value=""></option>
+                      <option value="">Select Source</option>
                       {sources.map((option) => (
                         <option key={option.code} value={option.code}>{option.label}</option>
                       ))}
                     </select>
                   ) : (
-                    <span 
-                      className="person-field-value person-field-clickable"
-                      onClick={() => setEditingField('source')}
-                    >
+                    <span className="person-field-value">
                       {formData.source ? (
                         <span className="person-source-badge">{sources.find(s => s.code === formData.source)?.label || formData.source}</span>
                       ) : (
@@ -1094,7 +1076,7 @@ export default function PersonDetail() {
               {(shouldShowField(formData.leadDate) || !showOnlyFilledFields) && (
                 <div className="person-field-row">
                   <label className="person-field-label">Lead Date</label>
-                  {editingField === 'leadDate' || leadDatePickerOpen ? (
+                  {editingSection === 'weddingDetails' && (editingField === 'leadDate' || leadDatePickerOpen) ? (
                     <div className="person-date-input-container">
                       <input
                         type="text"
@@ -1204,20 +1186,23 @@ export default function PersonDetail() {
                         </>
                       )}
                     </div>
-                  ) : (
-                    <span 
-                      className="person-field-value person-field-clickable"
-                      onClick={() => {
-                        setEditingField('leadDate');
-                        setLeadDatePickerOpen(true);
-                        if (formData.leadDate) {
-                          const date = parseDateDDMMYYYY(formData.leadDate);
-                          if (date) {
-                            setLeadDateCalendarMonth(date);
-                          }
+                  ) : editingSection === 'weddingDetails' ? (
+                    <input
+                      type="date"
+                      className="person-field-input"
+                      value={formData.leadDate ? formatDateYYYYMMDD(parseDateDDMMYYYY(formData.leadDate) || new Date()) : ''}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const date = new Date(e.target.value);
+                          handleFieldChange('leadDate', formatDateYYYYMMDD(date));
+                        } else {
+                          handleFieldChange('leadDate', undefined);
                         }
                       }}
-                    >
+                      placeholder="Lead date"
+                    />
+                  ) : (
+                    <span className="person-field-value">
                       {getDateForDisplay(formData.leadDate) || ''}
                     </span>
                   )}
@@ -1233,36 +1218,20 @@ export default function PersonDetail() {
             <span className="person-section-title">
               {organizationExpanded ? '▼' : '▶'} Organization
             </span>
-            <div className="person-section-actions">
-              <span className="person-section-icon">☰</span>
-              <span className="person-section-icon">✏️</span>
-              <span className="person-section-icon">⋯</span>
-            </div>
           </div>
           {organizationExpanded && (
             <div className="person-section-content">
               <div className="person-field-row">
                 <span className="person-field-icon">🏢</span>
-                <select
-                  className="person-field-input"
-                  value={formData.organizationId || ''}
-                  onChange={(e) => handleFieldChange('organizationId', e.target.value ? Number(e.target.value) : undefined)}
-                >
-                  <option value="">Select organization...</option>
-                  {organizations.map((org) => (
-                    <option key={org.id} value={org.id}>{org.name}</option>
-                  ))}
-                </select>
+                <span className="person-field-value">
+                  {selectedOrganization?.name || 'No organization'}
+                </span>
             </div>
               <div className="person-field-row">
                 <label className="person-field-label">Address</label>
-                <input
-                  type="text"
-                  className="person-field-input"
-                  value={formData.organizationAddress || ''}
-                  onChange={(e) => handleFieldChange('organizationAddress', e.target.value)}
-                  placeholder="Address"
-                />
+                <span className="person-field-value">
+                  {formData.organizationAddress || ''}
+                </span>
             </div>
               <div className="person-field-row">
                 <label className="person-field-label">Labels</label>

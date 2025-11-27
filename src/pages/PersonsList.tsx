@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { personsApi } from '../services/api';
 import type { Person, PersonFilters, FilterMeta, PersonFilterCondition, SavedPersonFilter } from '../types/person';
@@ -71,7 +71,9 @@ export default function PersonsList() {
   const navigate = useNavigate();
   const [persons, setPersons] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reloading, setReloading] = useState(false);
   const [filters, setFilters] = useState<PersonFilters>({ page: 0, size: 25 });
+  const hasLoadedOnce = useRef(false);
   const [filterMeta, setFilterMeta] = useState<FilterMeta | null>(null);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -183,7 +185,12 @@ export default function PersonsList() {
   };
 
   const loadPersons = async () => {
-    setLoading(true);
+    // Use loading state only for initial load, reloading for subsequent loads
+    if (!hasLoadedOnce.current) {
+      setLoading(true);
+    } else {
+      setReloading(true);
+    }
     try {
       console.log('Loading persons with filters:', filters);
       const response = await personsApi.list(filters);
@@ -196,6 +203,7 @@ export default function PersonsList() {
       setPersons(response.content);
       setTotalPages(response.totalPages);
       setCurrentPage(response.number);
+      hasLoadedOnce.current = true;
     } catch (error) {
       console.error('Failed to load persons:', error);
       if ((error as any)?.response?.status === 401) {
@@ -203,6 +211,7 @@ export default function PersonsList() {
       }
     } finally {
       setLoading(false);
+      setReloading(false);
     }
   };
 
@@ -922,7 +931,12 @@ export default function PersonsList() {
       {loading ? (
         <div className="loading">Loading...</div>
       ) : (
-        <>
+        <div style={{ position: 'relative' }}>
+          {reloading && (
+            <div className="table-reloading-overlay">
+              <div className="table-reloading-spinner">Loading...</div>
+            </div>
+          )}
           <table className="persons-table">
             <thead>
               <tr>
@@ -1083,7 +1097,7 @@ export default function PersonsList() {
               Next
             </button>
           </div>
-        </>
+        </div>
       )}
 
       <FilterModal

@@ -18,8 +18,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error?.response?.status === 401) {
-      console.warn('Unauthorized (401) when calling activities API. Logging out.');
+    if (error?.response?.status === 401 || error?.response?.status === 403) {
+      console.warn(`Unauthorized (${error?.response?.status}) when calling activities API. Logging out.`);
       logoutAndRedirect();
     }
     return Promise.reject(error);
@@ -54,6 +54,7 @@ export interface Activity {
   phone?: string | null;
   callType?: ActivityCallType | null;
   done: boolean;
+  attachmentUrl?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }
@@ -89,6 +90,50 @@ export const activitiesApi = {
   delete: (id: number) => api.delete(`/${id}`).then(() => {}),
   markDone: (id: number, value: boolean) =>
     api.post<Activity>(`/${id}/done`, undefined, { params: { value } }).then(r => r.data),
+  uploadScreenshot: async (id: number, file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Create a separate axios instance for multipart/form-data
+    const uploadApi = axios.create({
+      baseURL: withApiBase('/api/activities'),
+    });
+    
+    uploadApi.interceptors.request.use((config) => {
+      const token = getStoredToken();
+      if (token) {
+        (config.headers = config.headers || {}).Authorization = `Bearer ${token}`;
+      }
+      // Don't set Content-Type for FormData - let browser set it with boundary
+      return config;
+    });
+    
+    uploadApi.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error?.response?.status === 401 || error?.response?.status === 403) {
+          console.warn(`Unauthorized (${error?.response?.status}) when calling activities API. Logging out.`);
+          logoutAndRedirect();
+        }
+        return Promise.reject(error);
+      },
+    );
+    
+    const response = await uploadApi.post<{ success: boolean; message: string; data: string }>(
+      `/${id}/upload-screenshot`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    );
+    
+    if (response.data.success && response.data.data) {
+      return response.data.data;
+    }
+    throw new Error(response.data.message || 'Failed to upload screenshot');
+  },
   listCategories: async () => {
     const response = await api.get('/categories');
     const payload = response.data;
