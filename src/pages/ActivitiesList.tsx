@@ -1826,6 +1826,60 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           );
         }
       case 'attachment':
+        // Show image thumbnail if attachmentUrl exists, otherwise show file input
+        if (a.attachmentUrl) {
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div
+                style={{
+                  position: 'relative',
+                  cursor: 'pointer',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openScreenshotViewer(a);
+                }}
+                title="Click to view full image"
+              >
+                <img
+                  src={a.attachmentUrl}
+                  alt="Screenshot"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    objectFit: 'cover',
+                    borderRadius: 4,
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                  }}
+                  onError={(e) => {
+                    console.error('Failed to load image:', a.attachmentUrl);
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openScreenshotViewer(a);
+                }}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: 12,
+                  color: '#2563eb',
+                  background: 'transparent',
+                  border: '1px solid #2563eb',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                }}
+                title="Edit/Replace image"
+              >
+                Edit
+              </button>
+            </div>
+          );
+        }
         return (
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <label
