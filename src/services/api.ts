@@ -118,9 +118,9 @@ export const personsApi = {
   },
 
   bulkDelete: async (ids: number[]): Promise<number> => {
-    const params = new URLSearchParams();
-    ids.forEach((id) => params.append('ids', id.toString()));
-    const response = await api.delete<number>(`?${params.toString()}`);
+    // Backend expects comma-separated IDs: ?ids=1,2,3
+    const idsParam = ids.join(',');
+    const response = await api.delete<number>('', { params: { ids: idsParam } });
     return response.data;
   },
 

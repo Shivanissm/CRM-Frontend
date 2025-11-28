@@ -119,12 +119,13 @@ interface DashboardFilterParams {
   toYear?: number;
 }
 
-const formatMonthLabel = (month: number, year: number): string => {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(year, month - 1));
-};
+// Unused function - kept for potential future use
+// const formatMonthLabel = (month: number, year: number): string => {
+//   return new Intl.DateTimeFormat('en-US', {
+//     month: 'long',
+//     year: 'numeric',
+//   }).format(new Date(year, month - 1));
+// };
 
 const formatMonthName = (month: number): string => {
   return new Intl.DateTimeFormat('en-US', {
@@ -403,7 +404,7 @@ export default function Targets() {
   };
 
   // Group deals by category
-  const dealsByCategory = useMemo(() => {
+  const dealsByCategory = useMemo((): Partial<Record<TargetCategory, DealSummary[]>> => {
     if (!dashboardData) return {};
     const grouped: Record<TargetCategory, DealSummary[]> = {
       PHOTOGRAPHY: [],
@@ -785,7 +786,7 @@ export default function Targets() {
             </div>
 
             {/* Deals List for this Category */}
-            {dealsByCategory[categoryTable.category] && dealsByCategory[categoryTable.category].length > 0 && (
+            {dealsByCategory[categoryTable.category] && (dealsByCategory[categoryTable.category]?.length ?? 0) > 0 && (
               <div className="targets-deals-section">
                 <h3 className="targets-deals-title">Won Deals - {categoryTable.categoryLabel}</h3>
                 <div className="targets-deals-table-wrapper">
@@ -805,7 +806,7 @@ export default function Targets() {
                       </tr>
                     </thead>
                     <tbody>
-                      {dealsByCategory[categoryTable.category].map((deal) => (
+                      {(dealsByCategory[categoryTable.category] || []).map((deal: DealSummary) => (
                         <tr key={deal.dealId} className="targets-deals-row">
                           <td className="targets-deals-cell">{deal.dealName}</td>
                           <td className="targets-deals-cell">{deal.userName || '-'}</td>

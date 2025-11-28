@@ -1130,25 +1130,27 @@ const Deals = () => {
 
   // Function to create activities when deal is moved to Qualified stage
   const createQualifiedStageActivities = useCallback(async (deal: Deal) => {
-    if (!deal.pipelineId) return;
+    console.log(`[createQualifiedStageActivities] Called for deal ${deal.id}`);
+    
+    if (!deal.pipelineId) {
+      console.warn(`[createQualifiedStageActivities] Deal ${deal.id} has no pipelineId, skipping activity creation`);
+      return;
+    }
 
     const pipeline = pipelines.find(p => p.id === deal.pipelineId);
-    if (!pipeline) return;
+    if (!pipeline) {
+      console.warn(`[createQualifiedStageActivities] Pipeline ${deal.pipelineId} not found for deal ${deal.id}, skipping activity creation`);
+      return;
+    }
 
     // Get team manager from pipeline
     const teamManagerId = getTeamManagerFromPipeline(pipeline);
-    if (!teamManagerId) {
-      console.warn(`No team manager found for pipeline ${pipeline.id}`);
-      return;
-    }
+    let assignedUserName = 'Unassigned';
 
+    if (teamManagerId) {
     // Find the team manager user to get their display name for assignedUser
     const teamManager = users.find(u => u.id === teamManagerId);
-    if (!teamManager) {
-      console.warn(`Team manager user ${teamManagerId} not found`);
-      return;
-    }
-
+      if (teamManager) {
     // Get user display name (first name + last name, fallback to email)
     const getUserDisplayName = (user: User) => {
       const first = (user.firstName || '').trim();
@@ -1156,20 +1158,65 @@ const Deals = () => {
       const fullName = [first, last].filter(Boolean).join(' ');
       return fullName || user.email || `User ${user.id}`;
     };
-    const assignedUserName = getUserDisplayName(teamManager);
+        assignedUserName = getUserDisplayName(teamManager);
+        console.log(`[createQualifiedStageActivities] Assigned user for activities: ${assignedUserName}`);
+      } else {
+        console.warn(`[createQualifiedStageActivities] Team manager user ${teamManagerId} not found in users array, using 'Unassigned'`);
+        // Continue with 'Unassigned' instead of returning
+      }
+    } else {
+      console.warn(`[createQualifiedStageActivities] No team manager found for pipeline ${pipeline.id}, using 'Unassigned'`);
+      // Continue with 'Unassigned' instead of returning
+    }
+
 
     // Get today's date in YYYY-MM-DD format
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
 
     // Get person details for the activities
-    const person = persons.find(p => p.id === deal.personId);
+    // Try to find person in local array first, but if not found or phone is missing, fetch from API
+    let person = persons.find(p => p.id === deal.personId);
+    if ((!person || !person.phone) && deal.personId) {
+      console.log(`[createQualifiedStageActivities] Person not found in local array or missing phone, fetching from API...`);
+      try {
+        person = await personsApi.get(deal.personId);
+        console.log(`[createQualifiedStageActivities] Fetched person from API:`, { id: person.id, name: person.name, phone: person.phone });
+      } catch (err) {
+        console.warn(`[createQualifiedStageActivities] Failed to fetch person ${deal.personId} from API:`, err);
+        // Continue with person from local array or null
+      }
+    }
+    
     const organization = organizations.find(o => o.id === deal.organizationId);
+    
+    console.log(`[createQualifiedStageActivities] Person for deal ${deal.id}:`, person ? { id: person.id, name: person.name, phone: person.phone } : 'not found');
+    console.log(`[createQualifiedStageActivities] Organization for deal ${deal.id}:`, organization ? { id: organization.id, name: organization.name } : 'not found');
+
+    // Check if activities already exist to avoid duplicates
+    let existingActivities: Activity[] = [];
+    try {
+      const existingActivitiesResponse = await activitiesApi.list({ page: 0, size: 1000 });
+      existingActivities = (existingActivitiesResponse.content || []).filter((a: Activity) => a.dealId === deal.id);
+      const hasMakeFirstCall = existingActivities.some((a: Activity) => a.subject === 'Make first call' && a.dealId === deal.id);
+      const hasSendQuotes = existingActivities.some((a: Activity) => a.subject === 'Send Quotes' && a.dealId === deal.id);
+      
+      if (hasMakeFirstCall && hasSendQuotes) {
+        console.log(`[createQualifiedStageActivities] Activities already exist for deal ${deal.id}, skipping creation`);
+        return;
+      }
+      
+      console.log(`[createQualifiedStageActivities] Existing activities check: Make first call=${hasMakeFirstCall}, Send Quotes=${hasSendQuotes}`);
+    } catch (checkErr) {
+      console.warn(`[createQualifiedStageActivities] Failed to check existing activities, proceeding with creation:`, checkErr);
+    }
 
     try {
-      // Create "Make the 1st call" activity
-      await activitiesApi.create({
-        subject: 'Make the 1st call',
+      // Create "Make first call" activity
+      if (!existingActivities.some((a: Activity) => a.subject === 'Make first call' && a.dealId === deal.id)) {
+        console.log(`[createQualifiedStageActivities] Creating "Make first call" activity for deal ${deal.id}`);
+        const callActivity = await activitiesApi.create({
+        subject: 'Make first call',
         type: 'CALL',
         category: 'CALL',
         priority: 'MEDIUM',
@@ -1182,10 +1229,16 @@ const Deals = () => {
         phone: person?.phone || null,
         instagramId: person?.instagramId || null,
       });
+        console.log(`[createQualifiedStageActivities] ✓ Created "Make first call" activity:`, callActivity);
+      } else {
+        console.log(`[createQualifiedStageActivities] "Make first call" activity already exists for deal ${deal.id}, skipping`);
+      }
 
-      // Create "Send the quote" activity
-      await activitiesApi.create({
-        subject: 'Send the quote',
+      // Create "Send Quotes" activity
+      if (!existingActivities.some((a: Activity) => a.subject === 'Send Quotes' && a.dealId === deal.id)) {
+        console.log(`[createQualifiedStageActivities] Creating "Send Quotes" activity for deal ${deal.id}`);
+        const quoteActivity = await activitiesApi.create({
+        subject: 'Send Quotes',
         type: 'ACTIVITY',
         category: 'ACTIVITY',
         priority: 'MEDIUM',
@@ -1198,14 +1251,20 @@ const Deals = () => {
         phone: person?.phone || null,
         instagramId: person?.instagramId || null,
       });
+        console.log(`[createQualifiedStageActivities] ✓ Created "Send Quotes" activity:`, quoteActivity);
+      } else {
+        console.log(`[createQualifiedStageActivities] "Send Quotes" activity already exists for deal ${deal.id}, skipping`);
+      }
 
-      console.log(`Created activities for deal ${deal.id} in Qualified stage`);
+      console.log(`[createQualifiedStageActivities] ✓✓✓ Successfully processed activities for deal ${deal.id} in Qualified stage`);
       // Reload activities to update the warning icon
       await loadActivities();
-    } catch (err) {
-      console.error(`Failed to create activities for deal ${deal.id}:`, err);
+    } catch (err: any) {
+      console.error(`[createQualifiedStageActivities] ❌ Failed to create activities for deal ${deal.id}:`, err);
+      console.error('[createQualifiedStageActivities] Error response:', err?.response?.data);
+      console.error('[createQualifiedStageActivities] Error message:', err?.message);
     }
-  }, [pipelines, teams, persons, organizations, users, getTeamManagerFromPipeline]);
+  }, [pipelines, teams, persons, organizations, users, getTeamManagerFromPipeline, loadActivities]);
 
   // Function to check if a deal has incomplete required activities
   const checkIncompleteActivities = useCallback(async (deal: Deal): Promise<boolean> => {
@@ -1232,7 +1291,7 @@ const Deals = () => {
       const dealActivities = allActivities.filter(activity => activity.dealId === deal.id);
 
       // Check for the two required activities
-      const requiredActivities = ['Make the 1st call', 'Send the quote'];
+      const requiredActivities = ['Make first call', 'Send Quotes'];
       const incompleteActivities = dealActivities.filter(activity => 
         requiredActivities.includes(activity.subject || '') && !activity.done
       );
@@ -1251,19 +1310,49 @@ const Deals = () => {
   
   // Function to check and move deals
   const checkAndMoveDeals = useCallback(async () => {
-    if (!deals.length || !persons.length || !pipelines.length || loading) return;
+    if (!deals.length || !pipelines.length || loading) return;
     if (processingMovesRef.current) return; // Prevent concurrent executions
 
     processingMovesRef.current = true;
     let needsReload = false;
 
     try {
-      for (const person of persons) {
+      // Get unique person IDs from deals
+      const personIds = new Set<number>();
+      deals.forEach(deal => {
+        if (deal.personId) {
+          personIds.add(deal.personId);
+        }
+      });
+
+      // Fetch latest person data from API for all persons with deals
+      const personMap = new Map<number, Person>();
+      for (const personId of personIds) {
+        try {
+          const latestPerson = await personsApi.get(personId);
+          personMap.set(personId, latestPerson);
+          console.log(`[checkAndMoveDeals] Fetched latest person ${personId}:`, { name: latestPerson.name, phone: latestPerson.phone });
+        } catch (err) {
+          console.warn(`[checkAndMoveDeals] Failed to fetch person ${personId} from API:`, err);
+          // Fall back to local person data if available
+          const localPerson = persons.find(p => p.id === personId);
+          if (localPerson) {
+            personMap.set(personId, localPerson);
+          }
+        }
+      }
+
+      // Process each person that has a phone number
+      for (const [personId, person] of personMap.entries()) {
         // Only process persons that have a phone number
-        if (!person.phone || person.phone.trim().length === 0) continue;
+        if (!person.phone || person.phone.trim().length === 0) {
+          console.log(`[checkAndMoveDeals] Person ${personId} (${person.name}) has no phone, skipping`);
+          continue;
+        }
 
         // Find all deals for this person that are in "Lead In" stage
-        const personDeals = deals.filter(deal => deal.personId === person.id);
+        const personDeals = deals.filter(deal => deal.personId === personId);
+        console.log(`[checkAndMoveDeals] Person ${personId} (${person.name}) has ${personDeals.length} deals`);
         
         for (const deal of personDeals) {
           if (!deal.pipelineId || !deal.stageId) continue;
@@ -1289,13 +1378,23 @@ const Deals = () => {
             if (qualifiedStage && qualifiedStage.id !== deal.stageId) {
               try {
                 // Move deal to "Qualified" stage
+                console.log(`[checkAndMoveDeals] Moving deal ${deal.id} from Lead In to Qualified stage`);
                 const updatedDeal = await dealsApi.moveToStage(deal.id, { stageId: qualifiedStage.id });
                 needsReload = true;
                 
+                console.log(`[checkAndMoveDeals] Deal ${deal.id} moved to Qualified stage, creating activities...`);
                 // Create activities for the deal in Qualified stage
+                try {
                 await createQualifiedStageActivities(updatedDeal);
-              } catch (err) {
-                console.error(`Failed to move deal ${deal.id} to Qualified stage:`, err);
+                  console.log(`[checkAndMoveDeals] Activities creation completed for deal ${deal.id}`);
+                } catch (activityErr: any) {
+                  console.error(`[checkAndMoveDeals] Failed to create activities for deal ${deal.id}:`, activityErr);
+                  console.error('[checkAndMoveDeals] Activity error details:', activityErr?.response?.data || activityErr?.message);
+                  // Don't throw - we still want the deal to be moved even if activities fail
+                }
+              } catch (err: any) {
+                console.error(`[checkAndMoveDeals] Failed to move deal ${deal.id} to Qualified stage:`, err);
+                console.error('[checkAndMoveDeals] Error details:', err?.response?.data || err?.message);
               }
             }
           }
@@ -1309,26 +1408,52 @@ const Deals = () => {
     } finally {
       processingMovesRef.current = false;
     }
-  }, [deals, persons, pipelines, loading, loadDeals]);
+  }, [deals, persons, pipelines, loading, loadDeals, createQualifiedStageActivities]);
 
-  // Monitor persons array for changes and trigger deal movement
+  // Monitor deals and persons for changes and trigger deal movement
+  // Since we fetch person data from API in checkAndMoveDeals, we can trigger on deals changes too
   useEffect(() => {
-    if (!deals.length || !persons.length || !pipelines.length || loading) return;
+    if (!deals.length || !pipelines.length || loading) return;
     
-    // Create a hash of person IDs and phone numbers to detect changes
-    const personsHash = persons.map(p => `${p.id}:${p.phone || ''}`).join('|');
+    // Create a hash of deal IDs and stage IDs to detect changes
+    const dealsHash = deals.map(d => `${d.id}:${d.stageId || ''}:${d.personId || ''}`).join('|');
     
-    // Only check if persons have actually changed
-    if (personsHash === lastPersonsHashRef.current) return;
-    lastPersonsHashRef.current = personsHash;
+    // Also check persons hash if persons array is available
+    const personsHash = persons.length > 0 
+      ? persons.map(p => `${p.id}:${p.phone || ''}`).join('|')
+      : '';
+    const combinedHash = `${dealsHash}|${personsHash}`;
+    
+    // Only check if deals or persons have actually changed
+    if (combinedHash === lastPersonsHashRef.current) return;
+    lastPersonsHashRef.current = combinedHash;
 
     // Debounce the check with a shorter delay for faster response
     const timeoutId = setTimeout(() => {
+      console.log('[useEffect] Triggering checkAndMoveDeals due to deals/persons change');
       void checkAndMoveDeals();
-    }, 100); // Reduced to 100ms for faster response
+    }, 500); // Increased to 500ms to allow for API calls to complete
 
     return () => clearTimeout(timeoutId);
   }, [persons, deals, pipelines, loading, checkAndMoveDeals]);
+
+  // Periodically check for deal movements (in case person was updated in another tab/page)
+  // This ensures we catch updates even if the persons array hasn't changed locally
+  useEffect(() => {
+    if (!deals.length || !pipelines.length || loading) return;
+    
+    // Check immediately when deals/pipelines are loaded
+    console.log('[Periodic check] Initial checkAndMoveDeals on deals/pipelines load');
+    void checkAndMoveDeals();
+    
+    // Then check every 5 seconds if there are deals that might need to be moved
+    const intervalId = setInterval(() => {
+      console.log('[Periodic check] Running periodic checkAndMoveDeals');
+      void checkAndMoveDeals();
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(intervalId);
+  }, [deals.length, pipelines.length, loading, checkAndMoveDeals]);
 
   // Refresh persons when window becomes active (in case person was updated in another tab/page)
   useEffect(() => {
@@ -2432,8 +2557,13 @@ const Deals = () => {
         );
         if (associatedPipeline) {
           newData.pipelineId = String(associatedPipeline.id);
-          // Clear stageId since pipeline changed
-          newData.stageId = '';
+          // Auto-select the first stage of the pipeline
+          if (associatedPipeline.stages && associatedPipeline.stages.length > 0) {
+            const firstStage = associatedPipeline.stages.sort((a, b) => a.order - b.order)[0];
+            newData.stageId = String(firstStage.id);
+          } else {
+        newData.stageId = '';
+          }
         }
         
         // Auto-select category based on organization's category
@@ -2449,9 +2579,16 @@ const Deals = () => {
         }
       }
       
-      // If pipeline changes, clear the stageId since stages are pipeline-specific
-      if (name === 'pipelineId') {
-        newData.stageId = '';
+      // If pipeline changes, auto-select the first stage of the new pipeline
+      if (name === 'pipelineId' && value) {
+        const pipelineId = Number(value);
+        const selectedPipeline = allPipelines.find(p => p.id === pipelineId);
+        if (selectedPipeline && selectedPipeline.stages && selectedPipeline.stages.length > 0) {
+          const firstStage = selectedPipeline.stages.sort((a, b) => a.order - b.order)[0];
+          newData.stageId = String(firstStage.id);
+        } else {
+          newData.stageId = '';
+        }
       }
       
       // If source changes, clear subSource if source is not "Direct"
@@ -2483,6 +2620,24 @@ const Deals = () => {
     event.preventDefault();
     if (!formData.name.trim()) {
       setModalError('Deal name is required.');
+      return;
+    }
+
+    // Validate that contact person is provided
+    if (!formData.personName.trim()) {
+      setModalError('Contact person is required.');
+      return;
+    }
+
+    // Validate that deal source is provided
+    if (!formData.source.trim()) {
+      setModalError('Deal source is required.');
+      return;
+    }
+
+    // Validate that deal sub-source is provided if source is "Direct"
+    if (formData.source === 'Direct' && !formData.subSource.trim()) {
+      setModalError('Deal sub-source is required when source is Direct.');
       return;
     }
 
@@ -2586,14 +2741,14 @@ const Deals = () => {
         // If person has phone, use Qualified stage; otherwise use Lead In stage
         if (personHasPhone) {
           if (qualifiedStage) {
-            stageId = qualifiedStage.id;
+          stageId = qualifiedStage.id;
             console.log(`✓✓✓ Person has phone (${personHasPhone}), FORCING stage to Qualified (ID: ${qualifiedStage.id}, Name: "${qualifiedStage.name}")`);
           } else {
             console.error(`❌ Person has phone but Qualified stage not found in pipeline "${selectedPipeline.name}"!`);
             console.error(`Available stages: ${selectedPipeline.stages.map(s => s.name).join(', ')}`);
             // If qualified stage not found but person has phone, still try to use lead in or fallback
             if (leadInStage) {
-              stageId = leadInStage.id;
+          stageId = leadInStage.id;
               console.warn(`⚠ Using Lead In stage as fallback: ${leadInStage.id}`);
             } else if (formData.stageId) {
               stageId = Number(formData.stageId);
@@ -2609,22 +2764,22 @@ const Deals = () => {
             console.log(`✓ Person has no phone, setting stage to Lead In (ID: ${leadInStage.id}, Name: "${leadInStage.name}")`);
           } else {
             console.warn(`⚠ Person has no phone but Lead In stage not found in pipeline. Available stages: ${selectedPipeline.stages.map(s => s.name).join(', ')}`);
-            // Fallback: use manually selected stage if available, or first stage
-            if (formData.stageId) {
-              stageId = Number(formData.stageId);
-              console.log(`Using manually selected stage: ${stageId}`);
-            } else if (selectedPipeline.stages.length > 0) {
-              stageId = selectedPipeline.stages[0].id;
-              console.log(`Using first stage as fallback: ${stageId}`);
-            }
+          // Fallback: use manually selected stage if available, or first stage
+          if (formData.stageId) {
+            stageId = Number(formData.stageId);
+            console.log(`Using manually selected stage: ${stageId}`);
+          } else if (selectedPipeline.stages.length > 0) {
+            stageId = selectedPipeline.stages[0].id;
+            console.log(`Using first stage as fallback: ${stageId}`);
           }
         }
+      }
       } else {
         console.error(`❌ Pipeline ${formData.pipelineId} not found in pipelines list!`);
         console.log(`Available pipelines:`, pipelines.map(p => ({ id: p.id, name: p.name })));
         // Fallback to manual stage if pipeline not found
         if (formData.stageId) {
-          stageId = Number(formData.stageId);
+      stageId = Number(formData.stageId);
           console.log(`Using manually selected stage as fallback: ${stageId}`);
         }
       }
@@ -2635,10 +2790,18 @@ const Deals = () => {
       if (!formData.pipelineId) {
         console.log(`No pipeline ID, cannot auto-assign stage based on phone`);
       }
-      // If no person or pipeline, use manually selected stage
+      // If no person or pipeline, use manually selected stage or first stage of pipeline
       if (formData.stageId) {
         stageId = Number(formData.stageId);
         console.log(`Using manually selected stage: ${stageId}`);
+      } else if (formData.pipelineId) {
+        // If no manual stage selected but pipeline is selected, use first stage
+        const selectedPipeline = pipelines.find(p => p.id === Number(formData.pipelineId));
+        if (selectedPipeline && selectedPipeline.stages && selectedPipeline.stages.length > 0) {
+          const firstStage = selectedPipeline.stages.sort((a, b) => a.order - b.order)[0];
+          stageId = firstStage.id;
+          console.log(`No manual stage selected, using first stage of pipeline: ${stageId} (${firstStage.name})`);
+        }
       }
     }
     
@@ -2651,7 +2814,7 @@ const Deals = () => {
     console.log(`Pipeline ID: ${formData.pipelineId ? Number(formData.pipelineId) : undefined}`);
     console.log(`Stage ID: ${stageId} ${stageId ? '(AUTO-ASSIGNED)' : '(NOT SET!)'}`);
     console.log(`Organization ID: ${organizationId}`);
-    
+
     const payload: any = {
       name: formData.name.trim(),
       status: formData.status,
@@ -3058,17 +3221,23 @@ const Deals = () => {
         setDeals((prev) => prev.filter((deal) => deal.id !== id));
         setSelectedDeal((prev) => (prev && prev.id === id ? null : prev));
       } catch (err: any) {
-        const message = err?.response?.data?.message || err?.message || 'Failed to delete deal.';
+        console.error(`Failed to delete deal ${id}:`, err);
+        // Handle backend error response format: { success: false, message: "...", data: null }
+        const errorResponse = err?.response?.data;
+        const message = errorResponse?.message || err?.message || 'Failed to delete deal.';
         failures.push({ id, message });
       }
     }
     setBulkDeleteLoading(false);
     if (failures.length > 0) {
-      setBulkDeleteError(
-        failures.length === ids.length
+      const errorMessage = failures.length === ids.length
           ? failures[0]?.message ?? 'Failed to delete selected deals.'
-          : `Deleted ${ids.length - failures.length} deals, but ${failures.length} failed.`,
-      );
+        : failures.length === 1
+          ? failures[0]?.message
+          : `Deleted ${ids.length - failures.length} deals, but ${failures.length} failed: ${failures.map(f => f.message).join('; ')}`;
+      setBulkDeleteError(errorMessage);
+      // Show alert for bulk delete errors
+      window.alert(errorMessage);
     } else {
       setBulkDeleteError(null);
     }
@@ -3103,11 +3272,13 @@ const Deals = () => {
       return next;
     });
     } catch (err: any) {
-      const message = err?.response?.data?.message || err?.message || 'Failed to delete deal.';
+      console.error('Failed to delete deal:', err);
+      // Handle backend error response format: { success: false, message: "...", data: null }
+      const errorResponse = err?.response?.data;
+      const message = errorResponse?.message || err?.message || 'Failed to delete deal.';
       setDetailError(message);
-      if (viewMode !== 'pipeline') {
+      // Always show alert for delete errors so user knows what went wrong
         window.alert(message);
-      }
     } finally {
       setDeleteLoadingId(null);
     }
@@ -4696,7 +4867,7 @@ const Deals = () => {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Contact Person</label>
+                  <label className="form-label">Contact Person <span style={{ color: '#ef4444' }}>*</span></label>
                   <div style={{ position: 'relative' }}>
                     <input
                       ref={personInputRef}
@@ -4710,6 +4881,7 @@ const Deals = () => {
                           setShowPersonSuggestions(true);
                         }
                       }}
+                      required
                       disabled={isSubmitting}
                       placeholder="Enter contact person name"
                     />
@@ -4916,12 +5088,13 @@ const Deals = () => {
 
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Deal Source</label>
+                  <label className="form-label">Deal Source <span style={{ color: '#ef4444' }}>*</span></label>
                   <select
                     name="source"
                     className="form-input"
                     value={formData.source}
                     onChange={handleInputChange}
+                    required
                     disabled={isSubmitting}
                   >
                     <option value="">Select Source</option>
@@ -4934,15 +5107,16 @@ const Deals = () => {
                 </div>
                 {formData.source === 'Direct' && (
                   <div className="form-group">
-                    <label className="form-label">Sub-Source</label>
+                    <label className="form-label">Sub-Source <span style={{ color: '#ef4444' }}>*</span></label>
                     <select
                       name="subSource"
                       className="form-input"
                       value={formData.subSource}
                       onChange={handleInputChange}
+                      required={formData.source === 'Direct'}
                       disabled={isSubmitting}
                     >
-                      <option value="">Select Sub-Source (Optional)</option>
+                      <option value="">Select Sub-Source</option>
                       {DEAL_SUB_SOURCE_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
@@ -5057,11 +5231,12 @@ const Deals = () => {
           className="kanban-card-rsp-tooltip"
           style={{
             position: 'fixed',
-            top: `${tooltipPosition.top - 10}px`,
+            top: `${tooltipPosition.top}px`,
             left: `${tooltipPosition.left}px`,
             transform: 'translate(-50%, -100%)',
             pointerEvents: 'none',
             zIndex: 10001,
+            marginTop: '-8px',
           }}
         >
           {tooltipPosition.organizationName && (

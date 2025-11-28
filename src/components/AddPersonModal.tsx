@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Person, PersonOwner, PersonLabelOption, PersonSourceOption, PersonRequest, FilterMeta } from '../types/person';
+import type { Person, PersonOwner, PersonLabelOption, PersonRequest, FilterMeta } from '../types/person';
 import { personsApi } from '../services/api';
 import { organizationsApi } from '../services/organizations';
+import { dealsApi } from '../services/deals';
 import type { Organization } from '../types/organization';
 import { getStoredUser } from '../utils/authToken';
 import './AddPersonModal.css';
@@ -23,6 +24,7 @@ type PersonFormState = {
   instagramId: string;
   label: string;
   source: string;
+  subSource: string;
   ownerId: string;
   leadDate: string;
 };
@@ -46,6 +48,7 @@ export default function AddPersonModal({
     instagramId: '',
     label: '',
     source: '',
+    subSource: '',
     ownerId: '',
     leadDate: todayIsoDate(),
   });
@@ -55,23 +58,46 @@ export default function AddPersonModal({
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [owners, setOwners] = useState<PersonOwner[]>([]);
   const [labels, setLabels] = useState<PersonLabelOption[]>([]);
-  const [sources, setSources] = useState<PersonSourceOption[]>([]);
+  const [sources, setSources] = useState<Array<{ code: string; label: string }>>([]);
+  const [subSources, setSubSources] = useState<Array<{ code: string; label: string }>>([]);
 
   useEffect(() => {
     if (!isOpen) return;
 
     const loadOptions = async () => {
       try {
-        const [orgs, ownerOptions, labelOptions, sourceOptions] = await Promise.all([
+        const [orgs, ownerOptions, labelOptions, sourceOptions, subSourceOptions] = await Promise.all([
           organizationsApi.list(),
           personsApi.listOwners(),
           personsApi.listLabels(),
-          personsApi.listSources(),
+          dealsApi.listSources().catch((err) => {
+            console.error('Failed to load deal sources from API, using fallback:', err);
+            // Fallback to hardcoded deal sources if API fails
+            return [
+              { code: 'Direct', label: 'Direct' },
+              { code: 'Divert', label: 'Divert' },
+              { code: 'Reference', label: 'Reference' },
+              { code: 'Planner', label: 'Planner' },
+            ];
+          }),
+          dealsApi.listSubSources().catch((err) => {
+            console.error('Failed to load deal sub sources from API, using fallback:', err);
+            // Fallback to hardcoded deal sub sources if API fails
+            return [
+              { code: 'Instagram', label: 'Instagram' },
+              { code: 'Whatsapp', label: 'Whatsapp' },
+              { code: 'Landing Page', label: 'Landing Page' },
+              { code: 'Email', label: 'Email' },
+            ];
+          }),
         ]);
         setOrganizations(orgs);
         setOwners(ownerOptions);
         setLabels(labelOptions);
         setSources(sourceOptions);
+        setSubSources(subSourceOptions);
+        console.log('Loaded deal sources:', sourceOptions);
+        console.log('Loaded deal sub sources:', subSourceOptions);
       } catch (err) {
         console.error('Failed to load person dropdown data', err);
       }
@@ -91,6 +117,7 @@ export default function AddPersonModal({
       instagramId: person?.instagramId || '',
       label: person?.label || '',
       source: person?.source || '',
+      subSource: (person as any)?.subSource || '',
       ownerId: person?.ownerId ? String(person.ownerId) : '',
       leadDate: person?.leadDate || todayIsoDate(),
     });
@@ -98,22 +125,48 @@ export default function AddPersonModal({
     setSaving(false);
   }, [isOpen, person]);
 
+  // Auto-select owner when organization is selected
   useEffect(() => {
-    if (!isOpen || !!form.ownerId || !storedUser?.email) return;
+    if (!isOpen || !form.organizationId || !organizations.length) return;
+    
+    const selectedOrg = organizations.find(org => org.id === Number(form.organizationId));
+    if (selectedOrg?.owner?.id) {
+      const ownerId = selectedOrg.owner.id;
+      // Check if the owner exists in the owners list
+      const ownerExists = owners.some(owner => owner.id === ownerId);
+      if (ownerExists) {
+        setForm((prev) => ({ ...prev, ownerId: String(ownerId) }));
+      }
+    }
+  }, [isOpen, form.organizationId, organizations, owners]);
+
+  // Auto-select default owner (logged-in user) if no owner is set and no organization is selected
+  useEffect(() => {
+    if (!isOpen || !!form.ownerId || !storedUser?.email || form.organizationId) return;
     const defaultOwner = owners.find((owner) => owner.email === storedUser.email);
     if (defaultOwner) {
       setForm((prev) => ({ ...prev, ownerId: String(defaultOwner.id) }));
     }
-  }, [isOpen, owners, storedUser, form.ownerId]);
+  }, [isOpen, owners, storedUser, form.ownerId, form.organizationId]);
 
   const handleChange = (field: keyof PersonFormState, value: string) => {
-    setForm(prev => ({ ...prev, [field]: value }));
+    setForm(prev => {
+      // If source is changing and it's not "Direct", clear subSource
+      if (field === 'source' && value !== 'Direct') {
+        return { ...prev, [field]: value, subSource: '' };
+      }
+      return { ...prev, [field]: value };
+    });
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!form.name.trim()) {
       setError('Name is required.');
+      return;
+    }
+    if (!form.source || !form.source.trim()) {
+      setError('Source is required.');
       return;
     }
     
@@ -131,6 +184,7 @@ export default function AddPersonModal({
         // Convert empty strings to undefined for enum fields - backend expects null/undefined, not empty string
         label: form.label && form.label.trim() ? form.label.trim() : undefined,
         source: form.source && form.source.trim() ? form.source.trim() : undefined,
+        subSource: form.subSource && form.subSource.trim() ? form.subSource.trim() : undefined,
       };
 
       if (mode === 'edit' && person?.id != null) {
@@ -253,11 +307,12 @@ export default function AddPersonModal({
                   </select>
                 </div>
             <div className="person-field">
-              <label htmlFor="person-source">Person Source</label>
+              <label htmlFor="person-source">Person Source <span style={{ color: 'red' }}>*</span></label>
                   <select
                 id="person-source"
                 value={form.source}
                 onChange={(event) => handleChange('source', event.target.value)}
+                required
               >
                 <option value="">Select source…</option>
                 {sources.map((option) => (
@@ -265,6 +320,21 @@ export default function AddPersonModal({
                     ))}
                   </select>
                 </div>
+            {form.source === 'Direct' && (
+              <div className="person-field">
+                <label htmlFor="person-sub-source">Person Sub Source</label>
+                    <select
+                  id="person-sub-source"
+                  value={form.subSource}
+                  onChange={(event) => handleChange('subSource', event.target.value)}
+                >
+                  <option value="">Select sub source…</option>
+                  {subSources.map((option) => (
+                    <option key={option.code} value={option.code}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+            )}
                 </div>
 
           <div className="person-field">
