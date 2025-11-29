@@ -12,6 +12,7 @@ import type { Pipeline, Stage } from '../types/pipeline';
 import { personsApi } from '../services/api';
 import type { Person, PersonOwner } from '../types/person';
 import ActivityModal, { type ActivityFormValues } from '../components/ActivityModal';
+import AddPersonModal from '../components/AddPersonModal';
 import { activitiesApi, type Activity } from '../services/activities';
 import DivertDealModal from '../components/DivertDealModal';
 import MarkAsLostModal from '../components/MarkAsLostModal';
@@ -123,6 +124,8 @@ const Deals = () => {
   const [searchQuery, _setSearchQuery] = useState<string>('');
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [showSuccessConfirmation, setShowSuccessConfirmation] = useState<boolean>(false);
+  const [createdDealName, setCreatedDealName] = useState<string>('');
   const [viewMode, setViewMode] = useState<'pipeline' | 'list'>('pipeline');
   const [selectedPipelineId, setSelectedPipelineId] = useState<number | null>(() => {
     const saved = localStorage.getItem('selectedPipelineId');
@@ -227,6 +230,8 @@ const Deals = () => {
   const [filteredPersons, setFilteredPersons] = useState<Person[]>([]);
   const personInputRef = useRef<HTMLInputElement>(null);
   const personSuggestionsRef = useRef<HTMLDivElement>(null);
+  const [isAddPersonModalOpen, setIsAddPersonModalOpen] = useState(false);
+  const [newPersonName, setNewPersonName] = useState<string>('');
   const [pendingDoneActivity, setPendingDoneActivity] = useState<Activity | null>(null);
   const [pendingDoneValue, setPendingDoneValue] = useState(false);
   const [pendingDurationValue, setPendingDurationValue] = useState('');
@@ -998,21 +1003,75 @@ const Deals = () => {
 
   // Auto-open modal if coming from Person page
   useEffect(() => {
+    // Don't open modal if it's already open, if we're submitting, or if we just showed success confirmation
+    if (isModalOpen || isSubmitting || showSuccessConfirmation) return;
+    
     const personNameFromState = (location.state as any)?.personName;
     const shouldOpenModal = (location.state as any)?.openModal;
     
     if (shouldOpenModal && personNameFromState) {
       let initialData = { ...initialFormState, personName: personNameFromState };
       
+      // Auto-select pipeline, organization, and category based on selectedPipelineId
+      if (selectedPipelineId) {
+        const selectedPipeline = pipelines.find(p => p.id === selectedPipelineId);
+        if (selectedPipeline) {
+          initialData.pipelineId = String(selectedPipeline.id);
+          // Auto-select the organization from the selected pipeline
+          if (selectedPipeline.organization?.id) {
+            initialData.organizationId = String(selectedPipeline.organization.id);
+          }
+          // Auto-select the category from the selected pipeline
+          if (selectedPipeline.category && categoryOptions.length > 0) {
+            // Find matching category by comparing pipeline category with category label or id
+            const matchingCategory = categoryOptions.find(cat => 
+              cat.label === selectedPipeline.category || cat.id === selectedPipeline.category
+            );
+            if (matchingCategory) {
+              initialData.categoryId = matchingCategory.id;
+            }
+          }
+          // Auto-select the first stage of the pipeline
+          if (selectedPipeline.stages && selectedPipeline.stages.length > 0) {
+            const firstStage = selectedPipeline.stages.sort((a, b) => a.order - b.order)[0];
+            initialData.stageId = String(firstStage.id);
+          }
+        }
+      } else if (!initialData.pipelineId && pipelines.length > 0) {
       // Auto-select the first pipeline (or RSP if available) if no pipeline is selected
-      if (!initialData.pipelineId && pipelines.length > 0) {
         // Try to find RSP pipeline first
         const rspPipeline = pipelines.find(p => p.name.toLowerCase() === 'rsp');
         if (rspPipeline) {
           initialData.pipelineId = String(rspPipeline.id);
+          // Auto-select the organization from RSP pipeline
+          if (rspPipeline.organization?.id) {
+            initialData.organizationId = String(rspPipeline.organization.id);
+          }
+          // Auto-select the category from RSP pipeline
+          if (rspPipeline.category && categoryOptions.length > 0) {
+            const matchingCategory = categoryOptions.find(cat => 
+              cat.label === rspPipeline.category || cat.id === rspPipeline.category
+            );
+            if (matchingCategory) {
+              initialData.categoryId = matchingCategory.id;
+            }
+          }
         } else {
           // Otherwise, select the first pipeline
           initialData.pipelineId = String(pipelines[0].id);
+          // Auto-select the organization from the first pipeline
+          if (pipelines[0].organization?.id) {
+            initialData.organizationId = String(pipelines[0].organization.id);
+          }
+          // Auto-select the category from the first pipeline
+          if (pipelines[0].category && categoryOptions.length > 0) {
+            const matchingCategory = categoryOptions.find(cat => 
+              cat.label === pipelines[0].category || cat.id === pipelines[0].category
+            );
+            if (matchingCategory) {
+              initialData.categoryId = matchingCategory.id;
+            }
+          }
         }
       }
       
@@ -1021,7 +1080,7 @@ const Deals = () => {
       // Clear the state after using it
       window.history.replaceState({}, document.title);
     }
-  }, [location.state, pipelines]);
+  }, [location.state, pipelines, categoryOptions, isModalOpen, isSubmitting, selectedPipelineId, showSuccessConfirmation]);
 
   const fetchCategories = async (force = false) => {
     if (categoryLoading) return;
@@ -1189,7 +1248,7 @@ const Deals = () => {
     }
     
     const organization = organizations.find(o => o.id === deal.organizationId);
-    
+
     console.log(`[createQualifiedStageActivities] Person for deal ${deal.id}:`, person ? { id: person.id, name: person.name, phone: person.phone } : 'not found');
     console.log(`[createQualifiedStageActivities] Organization for deal ${deal.id}:`, organization ? { id: organization.id, name: organization.name } : 'not found');
 
@@ -2509,15 +2568,66 @@ const Deals = () => {
       ? { ...initialFormState, personName: personNameFromState }
       : initialFormState;
     
+    // Auto-select pipeline, organization, and category based on selectedPipelineId
+    if (selectedPipelineId) {
+      const selectedPipeline = pipelines.find(p => p.id === selectedPipelineId);
+      if (selectedPipeline) {
+        initialData.pipelineId = String(selectedPipeline.id);
+        // Auto-select the organization from the selected pipeline
+        if (selectedPipeline.organization?.id) {
+          initialData.organizationId = String(selectedPipeline.organization.id);
+        }
+        // Auto-select the category from the selected pipeline
+        if (selectedPipeline.category && categoryOptions.length > 0) {
+          // Find matching category by comparing pipeline category with category label or id
+          const matchingCategory = categoryOptions.find(cat => 
+            cat.label === selectedPipeline.category || cat.id === selectedPipeline.category
+          );
+          if (matchingCategory) {
+            initialData.categoryId = matchingCategory.id;
+          }
+        }
+        // Auto-select the first stage of the pipeline
+        if (selectedPipeline.stages && selectedPipeline.stages.length > 0) {
+          const firstStage = selectedPipeline.stages.sort((a, b) => a.order - b.order)[0];
+          initialData.stageId = String(firstStage.id);
+        }
+      }
+    } else if (!initialData.pipelineId && pipelines.length > 0) {
     // Auto-select the first pipeline (or RSP if available) if no pipeline is selected
-    if (!initialData.pipelineId && pipelines.length > 0) {
       // Try to find RSP pipeline first
       const rspPipeline = pipelines.find(p => p.name.toLowerCase() === 'rsp');
       if (rspPipeline) {
         initialData.pipelineId = String(rspPipeline.id);
+        // Auto-select the organization from RSP pipeline
+        if (rspPipeline.organization?.id) {
+          initialData.organizationId = String(rspPipeline.organization.id);
+        }
+        // Auto-select the category from RSP pipeline
+        if (rspPipeline.category && categoryOptions.length > 0) {
+          const matchingCategory = categoryOptions.find(cat => 
+            cat.label === rspPipeline.category || cat.id === rspPipeline.category
+          );
+          if (matchingCategory) {
+            initialData.categoryId = matchingCategory.id;
+          }
+        }
       } else {
         // Otherwise, select the first pipeline
         initialData.pipelineId = String(pipelines[0].id);
+        // Auto-select the organization from the first pipeline
+        if (pipelines[0].organization?.id) {
+          initialData.organizationId = String(pipelines[0].organization.id);
+        }
+        // Auto-select the category from the first pipeline
+        if (pipelines[0].category && categoryOptions.length > 0) {
+          const matchingCategory = categoryOptions.find(cat => 
+            cat.label === pipelines[0].category || cat.id === pipelines[0].category
+          );
+          if (matchingCategory) {
+            initialData.categoryId = matchingCategory.id;
+          }
+        }
       }
     }
     
@@ -2599,13 +2709,19 @@ const Deals = () => {
       }
       
       // If personName is being changed, filter persons for autocomplete
+      // Search by name, phone, instagramId, or email (exact or partial match)
       if (name === 'personName') {
         if (value.trim().length > 0) {
-          const filtered = persons.filter(p =>
-            p.name.toLowerCase().includes(value.toLowerCase())
-          );
+          const searchValue = value.toLowerCase().trim();
+          const filtered = persons.filter(p => {
+            const nameMatch = p.name.toLowerCase().includes(searchValue);
+            const phoneMatch = p.phone?.toLowerCase().includes(searchValue) || p.phone?.replace(/\s+/g, '').includes(searchValue.replace(/\s+/g, ''));
+            const instagramMatch = p.instagramId?.toLowerCase().includes(searchValue);
+            const emailMatch = p.email?.toLowerCase().includes(searchValue);
+            return nameMatch || phoneMatch || instagramMatch || emailMatch;
+          });
           setFilteredPersons(filtered);
-          setShowPersonSuggestions(filtered.length > 0);
+          setShowPersonSuggestions(true); // Always show suggestions to allow "Create new person" option
         } else {
           setFilteredPersons([]);
           setShowPersonSuggestions(false);
@@ -2862,6 +2978,11 @@ const Deals = () => {
       setIsModalOpen(false);
       setFormData(initialFormState);
       setSelectedDeal(createdDeal);
+      // Clear location state to prevent modal from reopening
+      window.history.replaceState({}, document.title);
+      // Show success confirmation pop-up
+      setCreatedDealName(createdDeal.name);
+      setShowSuccessConfirmation(true);
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Failed to create deal.';
       setModalError(message);
@@ -4885,28 +5006,68 @@ const Deals = () => {
                       disabled={isSubmitting}
                       placeholder="Enter contact person name"
                     />
-                    {showPersonSuggestions && filteredPersons.length > 0 && (
+                    {showPersonSuggestions && formData.personName.trim().length > 0 && (
                       <div
                         ref={personSuggestionsRef}
                         className="form-person-suggestions"
                       >
-                        {filteredPersons.slice(0, 10).map((person) => (
-                          <div
-                            key={person.id}
-                            className="form-person-suggestion-item"
-                            onClick={() => {
-                              setFormData(prev => ({ ...prev, personName: person.name }));
-                              setShowPersonSuggestions(false);
-                            }}
-                          >
-                            {person.name}
-                          </div>
-                        ))}
-                        {filteredPersons.length > 10 && (
-                          <div className="form-person-suggestion-item" style={{ color: '#64748b', fontStyle: 'italic', cursor: 'default' }}>
-                            +{filteredPersons.length - 10} more...
-                          </div>
+                        {filteredPersons.length > 0 && (
+                          <>
+                            {filteredPersons.slice(0, 10).map((person) => (
+                              <div
+                                key={person.id}
+                                className="form-person-suggestion-item"
+                                onClick={() => {
+                                  setFormData(prev => ({ ...prev, personName: person.name, personId: String(person.id) }));
+                                  setShowPersonSuggestions(false);
+                                }}
+                              >
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                  <span style={{ fontWeight: 500 }}>{person.name}</span>
+                                  {(person.phone || person.instagramId || person.email) && (
+                                    <span style={{ fontSize: '12px', color: '#64748b' }}>
+                                      {[person.phone, person.instagramId, person.email].filter(Boolean).join(' • ')}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                            {filteredPersons.length > 10 && (
+                              <div className="form-person-suggestion-item" style={{ color: '#64748b', fontStyle: 'italic', cursor: 'default' }}>
+                                +{filteredPersons.length - 10} more...
+                              </div>
+                            )}
+                          </>
                         )}
+                        {/* Show "Create new person" option if entered value doesn't exactly match any person's name */}
+                        {(() => {
+                          const enteredValue = formData.personName.trim().toLowerCase();
+                          const exactNameMatch = persons.some(p => p.name.toLowerCase().trim() === enteredValue);
+                          // Show "Create new person" if no exact name match
+                          if (!exactNameMatch && enteredValue.length > 0) {
+                            return (
+                              <div
+                                className="form-person-suggestion-item"
+                                style={{
+                                  borderTop: filteredPersons.length > 0 ? '1px solid #e5e7eb' : 'none',
+                                  paddingTop: filteredPersons.length > 0 ? '8px' : '0',
+                                  marginTop: filteredPersons.length > 0 ? '4px' : '0',
+                                  color: '#2563eb',
+                                  fontWeight: 500,
+                                  cursor: 'pointer'
+                                }}
+                                onClick={() => {
+                                  setNewPersonName(formData.personName.trim());
+                                  setIsAddPersonModalOpen(true);
+                                  setShowPersonSuggestions(false);
+                                }}
+                              >
+                                + Create new person: &quot;{formData.personName.trim()}&quot;
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                     )}
                   </div>
@@ -5681,6 +5842,37 @@ const Deals = () => {
         />
       )}
 
+      {/* Add Person Modal */}
+      {isAddPersonModalOpen && (
+        <AddPersonModal
+          isOpen={isAddPersonModalOpen}
+          initialName={newPersonName}
+          onClose={() => {
+            setIsAddPersonModalOpen(false);
+            setNewPersonName('');
+          }}
+          onSuccess={async () => {
+            // Reload persons list to include the new person
+            try {
+              const personsPage = await personsApi.list({ page: 0, size: 200, sort: 'name,asc' });
+              setPersons(personsPage.content ?? []);
+              // Find the newly created person by name
+              const newPerson = personsPage.content?.find(p => p.name === newPersonName);
+              if (newPerson) {
+                // Update the personName in formData with the created person's name and ID
+                setFormData(prev => ({ ...prev, personName: newPerson.name, personId: String(newPerson.id) }));
+              }
+              setIsAddPersonModalOpen(false);
+              setNewPersonName('');
+            } catch (err: any) {
+              console.error('Failed to reload persons:', err);
+            }
+          }}
+          mode="create"
+          person={newPersonName ? { name: newPersonName, id: 0, organizationId: null, ownerId: null, createdAt: '', updatedAt: '' } as Person : null}
+        />
+      )}
+
       {/* Delete Confirmation Modal */}
       {deleteConfirmDeal && createPortal(
         <div 
@@ -6332,6 +6524,174 @@ const Deals = () => {
             </div>
           </div>
         </>,
+        document.body
+      )}
+
+      {/* Success Confirmation Modal */}
+      {showSuccessConfirmation && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="success-confirmation-title"
+          className="success-modal-overlay"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(4px)',
+            WebkitBackdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100001,
+            padding: '20px'
+          }}
+          onClick={() => setShowSuccessConfirmation(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setShowSuccessConfirmation(false);
+            }
+          }}
+        >
+          <div
+            className="success-modal-content"
+            style={{
+              backgroundColor: '#ffffff',
+              borderRadius: '12px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(0, 0, 0, 0.05)',
+              maxWidth: '420px',
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              border: '1px solid rgba(229, 231, 235, 0.5)',
+              overflow: 'hidden'
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setShowSuccessConfirmation(false);
+              }
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                padding: '20px 24px',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '50%',
+                      backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}
+                  >
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="white"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </div>
+                  <h2
+                    id="success-confirmation-title"
+                    style={{
+                      margin: 0,
+                      fontSize: '20px',
+                      fontWeight: 600,
+                      color: '#ffffff',
+                      lineHeight: '1.2'
+                    }}
+                  >
+                    Deal Created Successfully!
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setShowSuccessConfirmation(false)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontSize: '24px',
+                    cursor: 'pointer',
+                    padding: '4px 8px',
+                    lineHeight: 1,
+                    opacity: 0.8,
+                    transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0.8'}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div style={{ padding: '24px' }}>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: '16px',
+                  color: '#374151',
+                  lineHeight: '1.5'
+                }}
+              >
+                Deal <strong>"{createdDealName}"</strong> has been created successfully!
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                padding: '16px 24px',
+                borderTop: '1px solid #e5e7eb',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '12px',
+                background: '#f9fafb'
+              }}
+            >
+              <button
+                onClick={() => setShowSuccessConfirmation(false)}
+                style={{
+                  padding: '10px 20px',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                  color: '#ffffff',
+                  backgroundColor: '#10b981',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>,
         document.body
       )}
     </div>

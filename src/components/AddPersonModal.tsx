@@ -14,6 +14,7 @@ interface AddPersonModalProps {
   mode?: 'create' | 'edit';
   person?: Person | null;
   filterMeta?: FilterMeta | null;
+  initialName?: string; // Pre-fill name when creating from deal form
 }
 
 type PersonFormState = {
@@ -37,6 +38,7 @@ export default function AddPersonModal({
   onSuccess,
   mode = 'create',
   person,
+  initialName,
 }: AddPersonModalProps) {
   const storedUser = useMemo(() => getStoredUser(), []);
 
@@ -110,7 +112,7 @@ export default function AddPersonModal({
     if (!isOpen) return;
 
     setForm({
-      name: person?.name || '',
+      name: person?.name || initialName || '',
       organizationId: person?.organizationId ? String(person.organizationId) : '',
       phone: person?.phone || '',
       email: person?.email || '',
@@ -123,7 +125,7 @@ export default function AddPersonModal({
     });
     setError(null);
     setSaving(false);
-  }, [isOpen, person]);
+  }, [isOpen, person, initialName]);
 
   // Auto-select owner when organization is selected
   useEffect(() => {
