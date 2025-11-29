@@ -335,7 +335,8 @@ export default function PersonDetail() {
         personId: id ? Number(id) : null,
         dealId: values.dealId || null,
         organization: values.organization || null,
-        assignedUserId: values.assignedUser ? Number(values.assignedUser) : null,
+        assignedUser: values.assignedUser || null,
+        assignedUserId: values.assignedUserId || null,
         date: values.date || null,
         dueDate: values.date || null,
       };

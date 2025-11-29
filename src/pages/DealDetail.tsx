@@ -2208,6 +2208,7 @@ export default function DealDetail() {
               endTime: v.endTime || undefined,
               priority: v.priority ? v.priority.toUpperCase() : undefined,
               assignedUser: v.assignedUser || undefined,
+              assignedUserId: v.assignedUserId || undefined,
               notes: v.notes || undefined,
               organization: v.organization || undefined,
               personId: v.personId || undefined,
