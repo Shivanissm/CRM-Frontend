@@ -150,18 +150,13 @@ const Deals = () => {
   const sortDropdownRef = useRef<HTMLDivElement>(null);
   const [isDateRangeModalOpen, setIsDateRangeModalOpen] = useState(false);
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>(() => {
-    // Default to current month
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const monthEnd = new Date(today);
-    monthEnd.setHours(23, 59, 59, 999);
+    // Default to no date filter (show all deals)
     return {
-      start: `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}-${String(monthStart.getDate()).padStart(2, '0')}`,
-      end: `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, '0')}-${String(monthEnd.getDate()).padStart(2, '0')}`,
+      start: '',
+      end: '',
     };
   });
-  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('This month');
+  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('');
   const [isDateRangeDropdownOpen, setIsDateRangeDropdownOpen] = useState(false);
   const dateRangeDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -1157,6 +1152,16 @@ const Deals = () => {
             localStorage.removeItem('selectedPipelineId');
           }
         }
+        // Auto-select first pipeline if none is selected
+        if (selectedPipelineId === null && pipelineData.length > 0) {
+          // Try to find RSP pipeline first
+          const rspPipeline = pipelineData.find(p => p.name.toLowerCase() === 'rsp');
+          const pipelineToSelect = rspPipeline || pipelineData[0];
+          if (pipelineToSelect) {
+            setSelectedPipelineId(pipelineToSelect.id);
+            localStorage.setItem('selectedPipelineId', String(pipelineToSelect.id));
+          }
+        }
       } catch (err) {
         console.error('Failed to load organizations or pipelines', err);
       }
@@ -1424,41 +1429,64 @@ const Deals = () => {
         }
       });
 
-      // Fetch latest person data from API for all persons with deals in a single call
+      // Use local persons data first, only fetch from API if we're missing person data
       const personMap = new Map<number, Person>();
       if (personIds.size > 0) {
-        try {
-          // Fetch all persons in a single API call
-          const personsPage = await personsApi.list({ page: 0, size: 1000, sort: 'name,asc' });
-          const allPersons = personsPage.content || [];
-          
-          // Create a map of persons by ID for quick lookup
-          allPersons.forEach(person => {
-            if (personIds.has(person.id)) {
-              personMap.set(person.id, person);
-              console.log(`[checkAndMoveDeals] Found person ${person.id}:`, { name: person.name, phone: person.phone });
-            }
-          });
-          
-          // For any person IDs not found in the API response, fall back to local data
-          for (const personId of personIds) {
-            if (!personMap.has(personId)) {
-              const localPerson = persons.find(p => p.id === personId);
-              if (localPerson) {
-                personMap.set(personId, localPerson);
-                console.log(`[checkAndMoveDeals] Using local person data for ${personId}`);
+        // First, try to use local persons data
+        for (const personId of personIds) {
+          const localPerson = persons.find(p => p.id === personId);
+          if (localPerson) {
+            personMap.set(personId, localPerson);
+          }
+        }
+        
+        // Only fetch from API if we're missing any persons
+        const missingPersonIds = Array.from(personIds).filter(id => !personMap.has(id));
+        if (missingPersonIds.length > 0) {
+          try {
+            console.log(`[checkAndMoveDeals] Missing ${missingPersonIds.length} persons in local data, fetching from API...`);
+            // Fetch all persons in a single API call
+            const personsPage = await personsApi.list({ page: 0, size: 1000, sort: 'name,asc' });
+            const allPersons = personsPage.content || [];
+            
+            // Add missing persons to the map
+            allPersons.forEach(person => {
+              if (missingPersonIds.includes(person.id)) {
+                personMap.set(person.id, person);
+                console.log(`[checkAndMoveDeals] Found person ${person.id}:`, { name: person.name, phone: person.phone });
+              }
+            });
+            
+            // Update local persons state with newly fetched persons
+            setPersons(prev => {
+              const updated = [...prev];
+              allPersons.forEach(person => {
+                if (missingPersonIds.includes(person.id)) {
+                  const existingIndex = updated.findIndex(p => p.id === person.id);
+                  if (existingIndex >= 0) {
+                    updated[existingIndex] = person;
+                  } else {
+                    updated.push(person);
+                  }
+                }
+              });
+              return updated;
+            });
+          } catch (err) {
+            console.warn(`[checkAndMoveDeals] Failed to fetch persons from API, using local data:`, err);
+            // Fall back to local person data for missing persons
+            for (const personId of missingPersonIds) {
+              if (!personMap.has(personId)) {
+                const localPerson = persons.find(p => p.id === personId);
+                if (localPerson) {
+                  personMap.set(personId, localPerson);
+                }
               }
             }
           }
-        } catch (err) {
-          console.warn(`[checkAndMoveDeals] Failed to fetch persons from API, using local data:`, err);
-          // Fall back to local person data for all persons
-          for (const personId of personIds) {
-            const localPerson = persons.find(p => p.id === personId);
-            if (localPerson) {
-              personMap.set(personId, localPerson);
-            }
-          }
+        } else {
+          // All persons found in local data, no API call needed
+          console.log(`[checkAndMoveDeals] All ${personIds.size} persons found in local data, skipping API call`);
         }
       }
 
@@ -1566,11 +1594,11 @@ const Deals = () => {
     console.log('[Periodic check] Initial checkAndMoveDeals on deals/pipelines load');
     void checkAndMoveDeals();
     
-    // Then check every 5 seconds if there are deals that might need to be moved
+    // Then check every 30 seconds if there are deals that might need to be moved (reduced frequency)
     const intervalId = setInterval(() => {
       console.log('[Periodic check] Running periodic checkAndMoveDeals');
       void checkAndMoveDeals();
-    }, 5000); // Check every 5 seconds
+    }, 30000); // Check every 30 seconds instead of 5 seconds
 
     return () => clearInterval(intervalId);
   }, [deals.length, pipelines.length, loading, checkAndMoveDeals]);
@@ -2412,7 +2440,7 @@ const Deals = () => {
   };
 
   const filteredDeals = useMemo(() => {
-    return deals.filter((deal) => {
+    const result = deals.filter((deal) => {
       // Filter by status
       const statusMatch = filterStatus === 'all' || deal.status === filterStatus;
       
@@ -2457,7 +2485,31 @@ const Deals = () => {
         (deal.venue && deal.venue.toLowerCase().includes(query));
       return statusMatch && organizationMatch && categoryMatch && managerMatch && dateMatch && searchMatch;
     });
-  }, [deals, filterStatus, filterOrganization, filterCategory, filterManager, searchQuery, persons, dateRange]);
+    
+    // Debug logging to identify which filter is excluding deals
+    if (result.length === 0 && deals.length > 0) {
+      console.log('FilteredDeals Debug - All deals filtered out:', {
+        totalDeals: deals.length,
+        filterStatus,
+        filterOrganization,
+        filterCategory,
+        filterManager,
+        dateRange,
+        searchQuery,
+        sampleDeal: {
+          id: deals[0].id,
+          status: deals[0].status,
+          organizationId: deals[0].organizationId,
+          categoryId: deals[0].categoryId,
+          pipelineId: deals[0].pipelineId,
+          createdAt: deals[0].createdAt,
+          name: deals[0].name
+        }
+      });
+    }
+    
+    return result;
+  }, [deals, filterStatus, filterOrganization, filterCategory, filterManager, searchQuery, persons, dateRange, categoryLabelById, pipelines]);
 
 
   // Get selected pipeline
@@ -2563,8 +2615,38 @@ const Deals = () => {
       }
     });
 
+    // Debug logging
+    console.log('DealsByStage Debug:', {
+      selectedPipelineId,
+      filteredDealsCount: filteredDeals.length,
+      totalDeals: deals.length,
+      dealsInPipeline: filteredDeals.filter(d => d.pipelineId === selectedPipelineId).length,
+      dealsByStageCount: Array.from(grouped.entries()).map(([stageId, deals]) => ({ stageId, count: deals.length })),
+      sampleDeal: filteredDeals[0] ? {
+        id: filteredDeals[0].id,
+        pipelineId: filteredDeals[0].pipelineId,
+        stageId: filteredDeals[0].stageId,
+        name: filteredDeals[0].name
+      } : null,
+      filters: {
+        filterStatus,
+        filterOrganization,
+        filterCategory,
+        filterManager,
+        dateRange,
+        searchQuery
+      },
+      sampleAllDeal: deals[0] ? {
+        id: deals[0].id,
+        pipelineId: deals[0].pipelineId,
+        stageId: deals[0].stageId,
+        status: deals[0].status,
+        name: deals[0].name
+      } : null
+    });
+
     return grouped;
-  }, [filteredDeals, selectedPipelineId, pipelineStages]);
+  }, [filteredDeals, selectedPipelineId, pipelineStages, deals]);
 
   // Calculate totals for each stage
   const stageTotals = useMemo(() => {
@@ -3399,6 +3481,7 @@ const Deals = () => {
         setDeals((prev) => prev.filter((deal) => deal.id !== id));
         setSelectedDeal((prev) => (prev && prev.id === id ? null : prev));
       } catch (err: any) {
+        // Log error for debugging
         console.error(`Failed to delete deal ${id}:`, err);
         // Handle backend error response format: { success: false, message: "...", data: null }
         const errorResponse = err?.response?.data;
