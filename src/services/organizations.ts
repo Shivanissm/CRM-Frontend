@@ -42,6 +42,11 @@ export const organizationsApi = {
     return unwrap<Organization[]>(response.data);
   },
 
+  listAccessibleForCurrentUser: async (): Promise<Organization[]> => {
+    const response = await api.get('/accessible-for-current-user');
+    return unwrap<Organization[]>(response.data);
+  },
+
   listCategories: async (): Promise<OrganizationCategory[]> => {
     const response = await api.get('/categories');
     return unwrap<OrganizationCategory[]>(response.data);

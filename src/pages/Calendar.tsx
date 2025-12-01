@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+} from 'react';
 import './Calendar.css';
 import { dealsApi } from '../services/deals';
 import { organizationsApi } from '../services/organizations';
@@ -6,6 +13,7 @@ import { calendarApi } from '../services/calendar';
 import type { Deal } from '../types/deal';
 import type { Organization } from '../types/organization';
 import type { VendorCalendarEvent } from '../types/calendar';
+import { getAllEventDates } from '../utils/dealDates';
 
 const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -108,6 +116,9 @@ export default function CalendarPage() {
   const [search, setSearch] = useState('');
   const [calendarOnly, setCalendarOnly] = useState<boolean>(true);
   const [selectedEntryKey, setSelectedEntryKey] = useState<SelectedEntryKey | null>(null);
+  const pointerStartXRef = useRef<number | null>(null);
+  const pointerStartYRef = useRef<number | null>(null);
+  const isPointerDownRef = useRef(false);
 
   useEffect(() => {
     void loadData();
@@ -119,7 +130,7 @@ export default function CalendarPage() {
     try {
       const [dealData, organizationData, vendorEventData] = await Promise.all([
         dealsApi.list(),
-        organizationsApi.list(),
+        organizationsApi.listAccessibleForCurrentUser(),
         calendarApi.listVendorEvents(),
       ]);
       setDeals(dealData);
@@ -167,7 +178,8 @@ export default function CalendarPage() {
   const filteredDeals = useMemo(() => {
     const query = search.trim().toLowerCase();
     return deals.filter((deal) => {
-      if (!deal.eventDate) return false;
+      const eventDates = getAllEventDates(deal);
+      if (eventDates.length === 0) return false;
       if (deal.status !== 'WON') return false;
 
       const organization = deal.organizationId ? organizationsById.get(deal.organizationId) : null;
@@ -201,8 +213,15 @@ export default function CalendarPage() {
   const dealGoogleEventIds = useMemo(() => {
     const ids = new Set<string>();
     filteredDeals.forEach((deal) => {
+      // Legacy single event ID
       if (deal.googleCalendarEventId) {
         ids.add(deal.googleCalendarEventId);
+      }
+      // New multiple event IDs
+      if (deal.googleCalendarEventIds) {
+        Object.values(deal.googleCalendarEventIds).forEach((eventId) => {
+          if (eventId) ids.add(eventId);
+        });
       }
     });
     return ids;
@@ -211,8 +230,11 @@ export default function CalendarPage() {
   const dealCalendarDateKeys = useMemo(() => {
     const keys = new Set<string>();
     filteredDeals.forEach((deal) => {
-      if (!deal.eventDate || !deal.organizationId) return;
-      keys.add(`${deal.organizationId}:${deal.eventDate}`);
+      if (!deal.organizationId) return;
+      const eventDates = getAllEventDates(deal);
+      eventDates.forEach((date) => {
+        keys.add(`${deal.organizationId}:${date}`);
+      });
     });
     return keys;
   }, [filteredDeals]);
@@ -287,7 +309,11 @@ export default function CalendarPage() {
     if (!selectedEntryKey) return null;
     if (selectedEntryKey.kind === 'deal') {
       const deal = filteredDeals.find((item) => item.id === selectedEntryKey.id);
-      if (!deal || !deal.eventDate) return null;
+      if (!deal) return null;
+      const eventDates = getAllEventDates(deal);
+      if (eventDates.length === 0) return null;
+      // Use first date for selected entry (or could be enhanced to track which specific date was selected)
+      const firstDate = eventDates[0];
       const organization = deal.organizationId ? organizationsById.get(deal.organizationId) : null;
       const owner = organization?.owner;
       const ownerLabel =
@@ -297,8 +323,8 @@ export default function CalendarPage() {
         undefined;
       return {
         kind: 'deal',
-        dateKey: deal.eventDate,
-        sortKey: deal.eventDate,
+        dateKey: firstDate,
+        sortKey: firstDate,
         deal: {
           ...deal,
           organization,
@@ -342,7 +368,8 @@ export default function CalendarPage() {
     const map = new Map<string, CalendarEntry[]>();
 
     filteredDeals.forEach((deal) => {
-      if (!deal.eventDate) return;
+      const eventDates = getAllEventDates(deal);
+      if (eventDates.length === 0) return;
       const organization = deal.organizationId ? organizationsById.get(deal.organizationId) : null;
       const owner = organization?.owner;
       const ownerLabel =
@@ -355,16 +382,19 @@ export default function CalendarPage() {
         organization,
         ownerLabel,
       };
-      const entry: CalendarEntry = {
-        kind: 'deal',
-        dateKey: deal.eventDate,
-        sortKey: deal.eventDate,
-        deal: enriched,
-      };
-      if (!map.has(entry.dateKey)) {
-        map.set(entry.dateKey, []);
-      }
-      map.get(entry.dateKey)!.push(entry);
+      // Create an entry for each date
+      eventDates.forEach((date) => {
+        const entry: CalendarEntry = {
+          kind: 'deal',
+          dateKey: date,
+          sortKey: date,
+          deal: enriched,
+        };
+        if (!map.has(entry.dateKey)) {
+          map.set(entry.dateKey, []);
+        }
+        map.get(entry.dateKey)!.push(entry);
+      });
     });
 
     filteredVendorEvents.forEach((event) => {
@@ -413,27 +443,33 @@ export default function CalendarPage() {
 
   const upcomingEntries = useMemo(() => {
     const nowKey = todayKey;
-    const dealEntries: CalendarEntry[] = filteredDeals
-      .filter((deal) => (deal.eventDate ?? '') >= nowKey)
-      .map((deal) => {
-        const organization = deal.organizationId ? organizationsById.get(deal.organizationId) : null;
-        const owner = organization?.owner;
-        const ownerLabel =
-          owner?.displayName ||
-          [owner?.firstName, owner?.lastName].filter(Boolean).join(' ').trim() ||
-          owner?.email ||
-          undefined;
-        return {
-          kind: 'deal',
-          dateKey: deal.eventDate ?? '',
-          sortKey: deal.eventDate ?? '',
-          deal: {
-            ...deal,
-            organization,
-            ownerLabel,
-          },
-        } as CalendarEntry;
-      });
+    const dealEntries: CalendarEntry[] = [];
+    filteredDeals.forEach((deal) => {
+      const eventDates = getAllEventDates(deal);
+      const organization = deal.organizationId ? organizationsById.get(deal.organizationId) : null;
+      const owner = organization?.owner;
+      const ownerLabel =
+        owner?.displayName ||
+        [owner?.firstName, owner?.lastName].filter(Boolean).join(' ').trim() ||
+        owner?.email ||
+        undefined;
+      const enriched: CalendarDeal = {
+        ...deal,
+        organization,
+        ownerLabel,
+      };
+      // Create entries for all upcoming dates
+      eventDates
+        .filter((date) => date >= nowKey)
+        .forEach((date) => {
+          dealEntries.push({
+            kind: 'deal',
+            dateKey: date,
+            sortKey: date,
+            deal: enriched,
+          } as CalendarEntry);
+        });
+    });
 
     const vendorEntries: CalendarEntry[] = filteredVendorEvents
       .map((event) => {
@@ -497,6 +533,46 @@ export default function CalendarPage() {
 
   const handleResetMonth = () => {
     setCurrentMonth(new Date());
+  };
+
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    // Only handle primary pointer (finger or main mouse button)
+    if (event.button !== 0) return;
+    isPointerDownRef.current = true;
+    pointerStartXRef.current = event.clientX;
+    pointerStartYRef.current = event.clientY;
+  };
+
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!isPointerDownRef.current || pointerStartXRef.current == null || pointerStartYRef.current == null) return;
+    const deltaX = event.clientX - pointerStartXRef.current;
+    const deltaY = event.clientY - pointerStartYRef.current;
+    // If gesture is mainly horizontal, prevent vertical scroll during the drag
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+      event.preventDefault();
+    }
+  };
+
+  const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    if (!isPointerDownRef.current || pointerStartXRef.current == null || pointerStartYRef.current == null) {
+      isPointerDownRef.current = false;
+      pointerStartXRef.current = null;
+      pointerStartYRef.current = null;
+      return;
+    }
+    const deltaX = event.clientX - pointerStartXRef.current;
+    const deltaY = event.clientY - pointerStartYRef.current;
+    const threshold = 40;
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > threshold) {
+      if (deltaX > 0) {
+        handlePrevMonth();
+      } else {
+        handleNextMonth();
+      }
+    }
+    isPointerDownRef.current = false;
+    pointerStartXRef.current = null;
+    pointerStartYRef.current = null;
   };
 
   return (
@@ -574,7 +650,13 @@ export default function CalendarPage() {
               </div>
             ))}
           </div>
-          <div className="calendar-grid">
+          <div
+            className="calendar-grid"
+            style={{ touchAction: 'pan-y' }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+          >
             {calendarDays.map((day) => {
               const dateKey = formatDateKey(day);
               const dayEntries = entriesByDate.get(dateKey) ?? [];
@@ -613,18 +695,48 @@ export default function CalendarPage() {
                         }${isSelected ? ' selected' : ''}`,
                         'aria-pressed': isSelected,
                       };
-                      return entry.kind === 'deal' ? (
-                        <div
-                          key={`deal-${entry.deal.id}-${entry.deal.eventDate}`}
-                          {...baseProps}
-                        >
-                          <div className="calendar-event-name">{entry.deal.name || `Deal #${entry.deal.id}`}</div>
-                          <div className="calendar-event-meta">
-                            {entry.deal.organization?.name ?? 'Unassigned'}
-                            {entry.deal.ownerLabel ? ` · ${entry.deal.ownerLabel}` : ''}
+                      if (entry.kind === 'deal') {
+                        const allDates = getAllEventDates(entry.deal);
+                        const hasMultipleDates = allDates.length > 1;
+                        const currentDateIndex = allDates.indexOf(entry.dateKey);
+                        return (
+                          <div
+                            key={`deal-${entry.deal.id}-${entry.dateKey}`}
+                            {...baseProps}
+                          >
+                            <div className="calendar-event-name">
+                              {entry.deal.name || `Deal #${entry.deal.id}`}
+                              {hasMultipleDates && (
+                                <span className="calendar-event-badge" style={{ 
+                                  marginLeft: '6px',
+                                  fontSize: '10px',
+                                  padding: '2px 6px',
+                                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                  color: '#3b82f6'
+                                }}>
+                                  {allDates.length} dates
+                                </span>
+                              )}
+                            </div>
+                            <div className="calendar-event-meta">
+                              {entry.deal.organization?.name ?? 'Unassigned'}
+                              {entry.deal.ownerLabel ? ` · ${entry.deal.ownerLabel}` : ''}
+                              {hasMultipleDates && (
+                                <div style={{ 
+                                  fontSize: '11px', 
+                                  color: '#6b7280', 
+                                  marginTop: '2px',
+                                  fontStyle: 'italic'
+                                }}>
+                                  Date {currentDateIndex + 1} of {allDates.length}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ) : (
+                        );
+                      }
+                      
+                      return (
                         <div
                           key={`vendor-${entry.vendorEvent.id}-${entry.dateKey}`}
                           {...baseProps}
@@ -678,8 +790,8 @@ export default function CalendarPage() {
                       aria-pressed={isSelected}
                     >
                       <div className="calendar-upcoming-date">
-                        {entry.deal.eventDate
-                          ? new Date(entry.deal.eventDate).toLocaleDateString('en-US', {
+                        {entry.dateKey
+                          ? new Date(entry.dateKey).toLocaleDateString('en-US', {
                               month: 'short',
                               day: 'numeric',
                             })
@@ -750,37 +862,54 @@ export default function CalendarPage() {
               <div className="calendar-selected-body">
                 <div className="calendar-selected-title">{selectedEntry.deal.name || `Deal #${selectedEntry.deal.id}`}</div>
                 <ul className="calendar-selected-meta">
-                  {[
-                    { label: 'Type', value: 'CRM deal' },
-                    {
-                      label: 'Date',
-                      value:
-                        selectedEntry.deal.eventDate &&
-                        formatDateDisplay(selectedEntry.deal.eventDate, {
+                  {(() => {
+                    const allDates = getAllEventDates(selectedEntry.deal);
+                    const hasMultipleDates = allDates.length > 1;
+                    const dateDisplay = hasMultipleDates
+                      ? allDates
+                          .map((date) =>
+                            formatDateDisplay(date, {
+                              weekday: 'short',
+                              month: 'long',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })
+                          )
+                          .filter(Boolean)
+                          .join(', ')
+                      : selectedEntry.dateKey &&
+                        formatDateDisplay(selectedEntry.dateKey, {
                           weekday: 'short',
                           month: 'long',
                           day: 'numeric',
                           year: 'numeric',
-                        }),
-                    },
-                    { label: 'Organization', value: selectedEntry.deal.organization?.name ?? 'Unassigned' },
-                    { label: 'Owner', value: selectedEntry.deal.ownerLabel },
-                    {
-                      label: 'Status',
-                      value: capitalize(selectedEntry.deal.status),
-                    },
-                    { label: 'Event type', value: selectedEntry.deal.eventType },
-                    { label: 'Venue', value: selectedEntry.deal.venue },
-                    { label: 'Calendar', value: selectedEntry.deal.organization?.googleCalendarId },
-                    { label: 'Google event ID', value: selectedEntry.deal.googleCalendarEventId },
-                  ]
-                    .filter((item) => item.value)
-                    .map((item) => (
-                      <li key={item.label}>
-                        <span>{item.label}</span>
-                        <span>{item.value}</span>
-                      </li>
-                    ))}
+                        });
+                    
+                    return [
+                      { label: 'Type', value: 'CRM deal' },
+                      {
+                        label: hasMultipleDates ? 'Dates' : 'Date',
+                        value: dateDisplay,
+                      },
+                      { label: 'Organization', value: selectedEntry.deal.organization?.name ?? 'Unassigned' },
+                      { label: 'Owner', value: selectedEntry.deal.ownerLabel },
+                      {
+                        label: 'Status',
+                        value: capitalize(selectedEntry.deal.status),
+                      },
+                      { label: 'Event type', value: selectedEntry.deal.eventType },
+                      { label: 'Venue', value: selectedEntry.deal.venue },
+                      { label: 'Calendar', value: selectedEntry.deal.organization?.googleCalendarId },
+                      { label: 'Google event ID', value: selectedEntry.deal.googleCalendarEventId },
+                    ]
+                      .filter((item) => item.value)
+                      .map((item) => (
+                        <li key={item.label}>
+                          <span>{item.label}</span>
+                          <span>{item.value}</span>
+                        </li>
+                      ));
+                  })()}
                 </ul>
               </div>
             ) : (
