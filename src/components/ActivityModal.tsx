@@ -104,10 +104,10 @@ export default function ActivityModal({
   const [dealOptions, setDealOptions] = useState<Deal[]>([]);
   const [personOptions, setPersonOptions] = useState<Person[]>([]);
   const [organizationLookup, setOrganizationLookup] = useState<Record<number, string>>({});
-  // State variables for organizations - setters are used but variables themselves are not read
-  const [_organizations, setOrganizations] = useState<Organization[]>([]);
-  const [_filteredOrganizations, setFilteredOrganizations] = useState<Organization[]>([]);
-  const [_showOrgSuggestions, _setShowOrgSuggestions] = useState(false);
+  // State variables for organizations
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [filteredOrganizations, setFilteredOrganizations] = useState<Organization[]>([]);
+  const [showOrgSuggestions, setShowOrgSuggestions] = useState(false);
   const [dealInput, setDealInput] = useState('');
   const [personInput, setPersonInput] = useState('');
   const [serviceCategory, setServiceCategory] = useState<string>(initialServiceCategory);
@@ -411,7 +411,7 @@ export default function ActivityModal({
         // Try to find organizationId from organization name
         if (next.organization) {
           const matchingOrg = organizations.find(
-            (org) => org.name?.toLowerCase() === next.organization?.toLowerCase()
+            (org: Organization) => org.name?.toLowerCase() === next.organization?.toLowerCase()
           );
           if (matchingOrg?.id) {
             next.organizationId = matchingOrg.id;
@@ -737,7 +737,7 @@ export default function ActivityModal({
                     // Try to find organizationId from organization name
                     if (orgName) {
                       const matchingOrg = organizations.find(
-                        (org) => org.name?.toLowerCase() === orgName.toLowerCase()
+                        (org: Organization) => org.name?.toLowerCase() === orgName.toLowerCase()
                       );
                       if (matchingOrg?.id) {
                         setValues((prev) => ({ ...prev, organizationId: matchingOrg.id }));
@@ -756,7 +756,7 @@ export default function ActivityModal({
                 />
                 {showOrgSuggestions && filteredOrganizations.length > 0 && (
                   <div className="am-suggestions" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1000, background: 'white', border: '1px solid #ccc', maxHeight: '200px', overflowY: 'auto' }}>
-                    {filteredOrganizations.map((org) => (
+                    {filteredOrganizations.map((org: Organization) => (
                       <div
                         key={org.id}
                         className="am-suggestion-item"
