@@ -49,6 +49,8 @@ export interface Activity {
   dealId?: number | null;
   dealName?: string | null;
   organization?: string | null;
+  organizationId?: number | null;
+  assignedUserId?: number | null;
   scheduleBy?: string | null;
   instagramId?: string | null;
   phone?: string | null;
@@ -71,6 +73,8 @@ export type PageResponse<T> = {
 
 export interface ActivityFilters {
   personId?: number;
+  organizationId?: number;
+  assignedUserId?: number;
   dateFrom?: string;
   dateTo?: string;
   assignedUser?: string;
@@ -84,7 +88,9 @@ export interface ActivityFilters {
 }
 
 export const activitiesApi = {
-  list: (params: ActivityFilters) => api.get<PageResponse<Activity>>('', { params }).then(r => r.data),
+  // Accept an optional AbortSignal so callers can cancel in‑flight requests
+  list: (params: ActivityFilters, options?: { signal?: AbortSignal }) =>
+    api.get<PageResponse<Activity>>('', { params, signal: options?.signal }).then(r => r.data),
   create: (activity: ActivityRequest) => api.post<Activity>('', activity).then(r => r.data),
   update: (id: number, activity: ActivityRequest) => api.put<Activity>(`/${id}`, activity).then(r => r.data),
   delete: (id: number) => api.delete(`/${id}`).then(() => {}),

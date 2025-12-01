@@ -3,10 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import OrganizationModal from '../components/OrganizationModal';
 import { organizationsApi } from '../services/organizations';
 import { dealsApi } from '../services/deals';
+import { usersApi } from '../services/users';
 import type { Organization, OrganizationCategory, OrganizationOwner, OrganizationRequest } from '../types/organization';
 import type { Deal } from '../types/deal';
+import type { User } from '../types/user';
 import './Organizations.css';
-import { clearAuthSession } from '../utils/authToken';
+import { clearAuthSession, getStoredUser } from '../utils/authToken';
 
 type ModalState =
   | { mode: 'create' }
@@ -16,6 +18,8 @@ export default function Organizations() {
   const location = useLocation();
   const navigate = useNavigate();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [allOrganizations, setAllOrganizations] = useState<Organization[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalState, setModalState] = useState<ModalState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +35,11 @@ export default function Organizations() {
   const [isDateRangeDropdownOpen, setIsDateRangeDropdownOpen] = useState(false);
   const dateRangeDropdownRef = useRef<HTMLDivElement>(null);
   const hasHandledOpenModal = useRef(false);
+
+  const storedUser = getStoredUser();
+  const normalizedRole = (storedUser?.role || '').toUpperCase();
+  const isCategoryManager = normalizedRole === 'CATEGORY_MANAGER';
+  const currentUserId = storedUser?.userId;
 
   // Helper function to format date as YYYY-MM-DD
   const formatDateYYYYMMDD = (date: Date): string => {
@@ -196,8 +205,28 @@ export default function Organizations() {
     void loadOwners();
     void loadCategories();
     void loadDeals();
+    void loadUsers();
   }, []);
 
+  // Filter organizations based on role
+  useEffect(() => {
+    if (!isCategoryManager || !currentUserId || allOrganizations.length === 0 || users.length === 0) {
+      // If not category manager or data not loaded, show all organizations
+      setOrganizations(allOrganizations);
+      return;
+    }
+
+    // Category Manager: Show organizations owned by sales people under them
+    const getUpperRole = (u: User) => (u.role || '').toUpperCase();
+    const salesPeopleUnderManager = users.filter(
+      (u) => getUpperRole(u) === 'SALES' && u.managerId === currentUserId,
+    );
+    const salesPeopleIds = new Set(salesPeopleUnderManager.map((s) => s.id));
+    const filtered = allOrganizations.filter(
+      (org) => org.owner && org.owner.id && salesPeopleIds.has(org.owner.id),
+    );
+    setOrganizations(filtered);
+  }, [allOrganizations, users, isCategoryManager, currentUserId]);
   // Check if modal should be opened from navigation state
   useEffect(() => {
     const state = location.state as any;
@@ -254,6 +283,19 @@ export default function Organizations() {
     }
   };
 
+  const loadUsers = async () => {
+    try {
+      const data = await usersApi.list();
+      setUsers(data);
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        handleAuthRedirect();
+        return;
+      }
+      console.warn('Failed to load users', err);
+    }
+  };
+
   const handleAuthRedirect = () => {
     clearAuthSession();
     window.location.href = '/login';
@@ -290,6 +332,8 @@ export default function Organizations() {
     setError(null);
     try {
       const data = await organizationsApi.list();
+      setAllOrganizations(data);
+      // Initial set - filtering will be applied in useEffect if needed
       setOrganizations(data);
     } catch (err: any) {
       if (err?.response?.status === 401) {
@@ -307,7 +351,8 @@ export default function Organizations() {
     setRefreshing(true);
     try {
       const data = await organizationsApi.list();
-      setOrganizations(data);
+      setAllOrganizations(data);
+      // Filtering will be applied in useEffect if needed
       setError(null);
     } catch (err: any) {
       if (err?.response?.status === 401) {
