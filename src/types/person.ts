@@ -96,13 +96,14 @@ export interface PersonSourceOption {
 
 export interface PersonRequest {
   name: string;
-  organizationId?: number;
-  ownerId?: number;
-  phone?: string;
-  email?: string;
-  instagramId?: string;
-  leadDate?: string;
-  label?: string;
-  source?: string;
+  organizationId?: number | null;
+  ownerId?: number | null;
+  phone?: string | null; // Can be string, null, or empty string to clear
+  email?: string | null;
+  instagramId?: string | null;
+  leadDate?: string | null;
+  label?: string | null;
+  source?: string | null;
+  subSource?: string | null;
 }
 

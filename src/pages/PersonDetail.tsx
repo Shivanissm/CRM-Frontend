@@ -6,6 +6,7 @@ import { organizationsApi } from '../services/organizations';
 import { dealsApi } from '../services/deals';
 import { activitiesApi, type Activity } from '../services/activities';
 import { clearAuthSession } from '../utils/authToken';
+import { addToRecentlyViewed } from '../utils/recentlyViewed';
 import type { PersonSummary, PersonRequest, PersonOwner, PersonLabelOption, PersonSourceOption, FilterMeta } from '../types/person';
 import type { Organization } from '../types/organization';
 import type { Deal } from '../types/deal';
@@ -94,20 +95,61 @@ export default function PersonDetail() {
 
   const loadDropdownData = async () => {
     try {
-      const [meta, orgs, ownerOptions, labelOptions, sourceOptions] = await Promise.all([
+      const [meta, orgs, ownerOptions, labelOptions, sourceOptions] = await Promise.allSettled([
         personsApi.getFilters(),
         organizationsApi.list(),
         personsApi.listOwners(),
         personsApi.listLabels(),
-        personsApi.listSources(),
+        dealsApi.listSources(),
       ]);
-      setFilterMeta(meta);
-      setOrganizations(orgs);
-      setOwners(ownerOptions);
-      setLabels(labelOptions);
-      setSources(sourceOptions);
+      
+      // Handle each result individually to prevent one failure from breaking everything
+      if (meta.status === 'fulfilled') {
+        setFilterMeta(meta.value);
+      } else {
+        console.error('Failed to load filter meta:', meta.reason);
+      }
+      
+      if (orgs.status === 'fulfilled') {
+        setOrganizations(orgs.value);
+      } else {
+        console.error('Failed to load organizations:', orgs.reason);
+        setOrganizations([]);
+      }
+      
+      if (ownerOptions.status === 'fulfilled') {
+        setOwners(ownerOptions.value);
+      } else {
+        console.error('Failed to load owners:', ownerOptions.reason);
+      }
+      
+      if (labelOptions.status === 'fulfilled') {
+        setLabels(labelOptions.value);
+      } else {
+        console.error('Failed to load labels:', labelOptions.reason);
+        setLabels([]);
+      }
+      
+      if (sourceOptions.status === 'fulfilled') {
+        // Convert deal sources format to person source format if needed
+        const sourcesArray = sourceOptions.value || [];
+        const formattedSources = Array.isArray(sourcesArray) 
+          ? sourcesArray.map((s: any) => ({
+              code: typeof s === 'string' ? s : s.code || s.value,
+              label: typeof s === 'string' ? s : s.label || s.code || s.value,
+            }))
+          : [];
+        setSources(formattedSources);
+      } else {
+        console.error('Failed to load sources:', sourceOptions.reason);
+        setSources([]);
+      }
     } catch (error) {
       console.error('Failed to load dropdown data:', error);
+      // Set empty arrays to prevent crashes
+      setOrganizations([]);
+      setLabels([]);
+      setSources([]);
     }
   };
 
@@ -118,22 +160,31 @@ export default function PersonDetail() {
       setSummary(data);
       const person = data.person;
       
+      // Add to recently viewed
+      addToRecentlyViewed({
+        type: 'person',
+        id: person.id,
+        title: person.name,
+        subtitle: person.organization || person.email || person.phone || undefined,
+      });
+      
       // Extract first name from full name
       const nameParts = (person.name || '').split(' ');
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || '';
 
       // Pre-fill form with person data
+      // Handle null values explicitly - if backend returns null, set to empty string in form
       setFormData({
         name: person.name || '',
-        phone: person.phone || '',
-        email: person.email || '',
-        instagramId: person.instagramId || '',
-        label: person.label || '',
-        source: person.source || '',
+        phone: person.phone ?? '', // Use nullish coalescing to handle null explicitly
+        email: person.email ?? '',
+        instagramId: person.instagramId ?? '',
+        label: person.label ?? '',
+        source: person.source ?? '',
         leadDate: person.leadDate ? formatDateForInput(person.leadDate) : '',
-        organizationId: person.organizationId || undefined,
-        ownerId: person.ownerId || undefined,
+        organizationId: person.organizationId ?? undefined,
+        ownerId: person.ownerId ?? undefined,
         firstName: firstName,
         lastName: lastName,
         weddingDate: '', // Would come from extended person data if available
@@ -141,12 +192,17 @@ export default function PersonDetail() {
         weddingItinerary: '', // Would come from extended person data if available
         organizationAddress: '',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load person summary:', error);
-      if ((error as any)?.response?.status === 401) {
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
         clearAuthSession();
         navigate('/login', { replace: true });
+        return;
       }
+      // Set error state but don't crash the component
+      setSummary(null);
+      // Show error message to user
+      alert(`Failed to load person: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -335,7 +391,8 @@ export default function PersonDetail() {
         personId: id ? Number(id) : null,
         dealId: values.dealId || null,
         organization: values.organization || null,
-        assignedUserId: values.assignedUser ? Number(values.assignedUser) : null,
+        assignedUser: values.assignedUser || null,
+        assignedUserId: values.assignedUserId || null,
         date: values.date || null,
         dueDate: values.date || null,
       };
@@ -373,7 +430,7 @@ export default function PersonDetail() {
     return null;
   };
 
-  const getDateForDisplay = (dateStr?: string): string => {
+  const getDateForDisplay = (dateStr?: string | null): string => {
     if (!dateStr) return '';
     const date = parseDateDDMMYYYY(dateStr);
     if (!date) return dateStr;
@@ -403,11 +460,11 @@ export default function PersonDetail() {
     return days;
   };
 
-  const isFieldFilled = (value: string | undefined): boolean => {
+  const isFieldFilled = (value: string | null | undefined): boolean => {
     return !!value && value.trim() !== '';
   };
 
-  const shouldShowField = (value: string | undefined): boolean => {
+  const shouldShowField = (value: string | null | undefined): boolean => {
     if (!showOnlyFilledFields) return true; // Show all fields
     return isFieldFilled(value); // Show only filled fields
   };
@@ -424,50 +481,125 @@ export default function PersonDetail() {
 
     setSaving(true);
     try {
-      // Helper to process field: if empty string, send undefined; if has value, send trimmed value
+      // Helper to process field: if empty string, send empty string to clear the field
+      // Some backends may require empty string instead of null to clear fields
       const processField = (value: string | undefined | null): string | undefined => {
         if (value === undefined) return undefined; // Field not in formData, don't include
         const trimmed = (value || '').trim();
-        return trimmed === '' ? undefined : trimmed; // Send undefined for empty strings
+        // Send empty string for clearing - backend should interpret this as clear
+        // If backend doesn't accept empty string, it may need to be handled on backend side
+        return trimmed === '' ? '' : trimmed;
       };
       
-      // Helper for enum fields: convert empty strings to undefined (backend expects null/undefined, not empty string)
-      const processEnumField = (value: string | undefined | null): string | undefined => {
+      // Helper for enum fields: convert empty strings to null (backend expects null/undefined, not empty string)
+      const processEnumField = (value: string | undefined | null): string | null | undefined => {
         if (value === undefined) return undefined;
         const trimmed = (value || '').trim();
-        return trimmed === '' ? undefined : trimmed; // Enum fields must be undefined/null, not empty string
+        return trimmed === '' ? null : trimmed; // Enum fields: send null to clear, not undefined
       };
 
+      // Build payload - always include phone, email, instagramId, leadDate if they exist in formData
+      // This ensures we can clear them by sending null
       const payload: PersonRequest = {
         name: formData.name.trim(),
         organizationId: formData.organizationId,
         ownerId: formData.ownerId,
-        phone: processField(formData.phone),
-        email: processField(formData.email),
-        instagramId: processField(formData.instagramId),
-        leadDate: processField(formData.leadDate),
-        // Enum fields: use processEnumField to ensure empty strings become undefined
-        label: processEnumField(formData.label),
-        source: processEnumField(formData.source),
       };
 
-      // Remove undefined fields from payload (but keep null values to explicitly clear fields)
-      Object.keys(payload).forEach(key => {
-        if (payload[key as keyof PersonRequest] === undefined) {
-          delete payload[key as keyof PersonRequest];
+      // Always include phone field when editing - this allows us to clear it by sending empty string
+      // The phone field should always exist in formData when editing a person
+      const phoneValue = processField(formData.phone);
+      if (phoneValue !== undefined) {
+        payload.phone = phoneValue; // This will be empty string if cleared, or the trimmed value
+        console.log(`Phone field in formData: "${formData.phone}", processed value:`, phoneValue, 'Type:', typeof phoneValue);
+      } else {
+        console.warn('Phone field is undefined in formData - this should not happen when editing');
+      }
+      
+      // Same for other fields
+      if (formData.hasOwnProperty('email')) {
+        const emailValue = processField(formData.email);
+        if (emailValue !== undefined) {
+          payload.email = emailValue;
         }
-      });
+      }
+      
+      if (formData.hasOwnProperty('instagramId')) {
+        const instagramValue = processField(formData.instagramId);
+        if (instagramValue !== undefined) {
+          payload.instagramId = instagramValue;
+        }
+      }
+      
+      if (formData.hasOwnProperty('leadDate')) {
+        const leadDateValue = processField(formData.leadDate);
+        if (leadDateValue !== undefined) {
+          payload.leadDate = leadDateValue;
+        }
+      }
+      
+      // Enum fields
+      if (formData.hasOwnProperty('label')) {
+        const labelValue = processEnumField(formData.label);
+        if (labelValue !== undefined) {
+          payload.label = labelValue;
+        }
+      }
+      
+      if (formData.hasOwnProperty('source')) {
+        const sourceValue = processEnumField(formData.source);
+        if (sourceValue !== undefined) {
+          payload.source = sourceValue;
+        }
+      }
 
       // Log payload for debugging
-      console.log('Saving payload:', JSON.stringify(payload, null, 2));
+      console.log('=== SAVE DEBUG ===');
+      console.log('FormData phone value:', formData.phone, 'Type:', typeof formData.phone);
+      console.log('Full payload:', JSON.stringify(payload, null, 2));
+      console.log('Phone in payload:', payload.phone, 'Type:', typeof payload.phone, 'Is null?', payload.phone === null);
+      console.log('==================');
       
       const updatedPerson = await personsApi.update(Number(id), payload);
       
       // Log response for debugging
+      console.log('=== RESPONSE DEBUG ===');
       console.log('Updated person response:', updatedPerson);
+      console.log('Phone value in response:', updatedPerson?.phone, 'Type:', typeof updatedPerson?.phone);
+      console.log('======================');
       
-      // Reload data after save
-      await loadPersonData(Number(id));
+      // Update form data immediately with the response to reflect cleared values
+      // This ensures the UI reflects the cleared value even if reload shows old data
+      if (updatedPerson) {
+        setFormData(prev => ({
+          ...prev,
+          phone: updatedPerson.phone ?? '',
+          email: updatedPerson.email ?? '',
+          instagramId: updatedPerson.instagramId ?? '',
+          label: updatedPerson.label ?? '',
+          source: updatedPerson.source ?? '',
+          leadDate: updatedPerson.leadDate ? formatDateForInput(updatedPerson.leadDate) : '',
+        }));
+        
+        // Also update summary to reflect the changes immediately
+        setSummary(prev => prev ? {
+          ...prev,
+          person: {
+            ...prev.person,
+            phone: updatedPerson.phone ?? null,
+            email: updatedPerson.email ?? null,
+            instagramId: updatedPerson.instagramId ?? null,
+            label: updatedPerson.label ?? null,
+            source: updatedPerson.source ?? null,
+            leadDate: updatedPerson.leadDate ?? null,
+          }
+        } : null);
+      }
+      
+      // Reload data after save to ensure consistency (with a small delay to ensure backend has processed)
+      setTimeout(async () => {
+        await loadPersonData(Number(id));
+      }, 100);
       
       // Notify other pages (like Deals) that a person was updated
       // This triggers a refresh of persons list in Deals.tsx
@@ -563,9 +695,26 @@ export default function PersonDetail() {
       return;
     }
 
-    // Navigate to deal creation page with personId as query parameter
-    navigate(`/deals/new?personId=${id}`);
+    // Navigate to deals page with state to open modal and pre-fill person name
+    navigate('/deals', {
+      state: {
+        openModal: true,
+        personName: summary.person.name,
+      },
+    });
   };
+
+  // Early return if no ID
+  if (!id) {
+    return (
+      <div className="person-detail-container">
+        <div style={{ padding: '20px', textAlign: 'center' }}>
+          <p>No person ID provided</p>
+          <button onClick={() => navigate('/persons')}>Go back to Persons</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="person-detail-container">

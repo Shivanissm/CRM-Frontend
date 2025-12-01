@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import './DivertDealModal.css';
 import { pipelinesApi } from '../services/pipelines';
 import { dealsApi } from '../services/deals';
+import { personsApi } from '../services/api';
 import type { Pipeline } from '../types/pipeline';
 import type { DealStatus } from '../types/deal';
 import { getAllEventDates } from '../utils/dealDates';
@@ -43,21 +44,135 @@ export default function DivertDealModal({
       const currentDeal = await dealsApi.get(dealId);
       const referencedPipelineId = currentDeal.referencedPipelineId;
       
+      // Get identifiers from the current deal (priority: phone > instagramId > email)
+      let phoneNumber: string | null = currentDeal.phoneNumber || null;
+      let instagramId: string | null = null;
+      let email: string | null = currentDeal.email || null;
+      
+      // If personId exists, get the person to get instagramId
+      if (currentDeal.personId) {
+        try {
+          const person = await personsApi.get(currentDeal.personId);
+          instagramId = person.instagramId || null;
+          // If phoneNumber is not in deal, try to get it from person
+          if (!phoneNumber) {
+            phoneNumber = person.phone || null;
+          }
+          // If email is not in deal, try to get it from person
+          if (!email) {
+            email = person.email || null;
+          }
+        } catch (err) {
+          console.warn('Failed to fetch person for deal:', err);
+        }
+      }
+      
       // Use the new endpoint to get available pipelines (excludes pipelines where deal is already diverted)
       const availablePipelines = await dealsApi.getAvailablePipelines(dealId);
+      
+      // Get all deals (including deleted ones) to check for duplicates
+      // We need to check all deals to see if any pipeline already has a deal with matching identifiers
+      let allDeals: any[] = [];
+      try {
+        // Try to get all deals - if the API supports it
+        // Otherwise, we'll need to check each pipeline individually
+        allDeals = await dealsApi.list();
+      } catch (err) {
+        console.warn('Failed to fetch all deals, will check pipelines individually:', err);
+      }
       
       // Filter out:
       // 1. The current pipeline (don't show self pipeline)
       // 2. The referenced pipeline (if this deal is already diverted, don't show the original pipeline)
+      // 3. Pipelines that already contain a deal with matching phone/instagramId/email (including deleted deals)
       const filteredPipelines = availablePipelines.filter((p) => {
         if (p.id === currentPipelineId) return false;
         if (referencedPipelineId && p.id === referencedPipelineId) return false;
+        
+        // Check if this pipeline already has a deal with matching identifiers
+        // Priority: phone > instagramId > email
+        const pipelineDeals = allDeals.filter(deal => deal.pipelineId === p.id);
+        
+        for (const deal of pipelineDeals) {
+          // Skip the current deal itself
+          if (deal.id === dealId) continue;
+          
+          // Check phone number first (highest priority)
+          if (phoneNumber && phoneNumber.trim()) {
+            const dealPhone = deal.phoneNumber || null;
+            if (dealPhone && dealPhone.trim() && dealPhone.trim() === phoneNumber.trim()) {
+              return false; // Exclude this pipeline
+            }
+          }
+          
+          // Note: instagramId check will be done in the second pass below
+          // to avoid too many API calls, we'll check it after filtering by phone/email first
+          
+          // Check email third (lowest priority, but check it if phone and instagramId are not available)
+          if (email && email.trim() && (!phoneNumber || !phoneNumber.trim()) && (!instagramId || !instagramId.trim())) {
+            const dealEmail = deal.email || null;
+            if (dealEmail && dealEmail.trim() && dealEmail.trim().toLowerCase() === email.trim().toLowerCase()) {
+              return false; // Exclude this pipeline
+            }
+          }
+        }
+        
         return true;
       });
       
+      // For pipelines that passed the initial filter, we need to check instagramId more thoroughly
+      // by fetching person data for deals that have personId
+      const finalFilteredPipelines: Pipeline[] = [];
+      
+      for (const pipeline of filteredPipelines) {
+        const pipelineDeals = allDeals.filter(deal => deal.pipelineId === pipeline.id && deal.id !== dealId);
+        
+        let hasMatchingDeal = false;
+        
+        // Check each deal in this pipeline
+        for (const deal of pipelineDeals) {
+          // Check phone number first
+          if (phoneNumber && phoneNumber.trim()) {
+            const dealPhone = deal.phoneNumber || null;
+            if (dealPhone && dealPhone.trim() && dealPhone.trim() === phoneNumber.trim()) {
+              hasMatchingDeal = true;
+              break;
+            }
+          }
+          
+          // Check instagramId - need to get from person if personId exists
+          // Only check if phone number didn't match (priority: phone > instagramId > email)
+          if (!hasMatchingDeal && instagramId && instagramId.trim() && deal.personId) {
+            try {
+              const dealPerson = await personsApi.get(deal.personId);
+              if (dealPerson.instagramId && dealPerson.instagramId.trim() && dealPerson.instagramId.trim() === instagramId.trim()) {
+                hasMatchingDeal = true;
+                break;
+              }
+            } catch (err) {
+              // If we can't fetch the person, continue checking
+              console.warn('Failed to fetch person for deal:', deal.id, err);
+            }
+          }
+          
+          // Check email only if phone and instagramId are not available (lowest priority)
+          if (!hasMatchingDeal && email && email.trim() && (!phoneNumber || !phoneNumber.trim()) && (!instagramId || !instagramId.trim())) {
+            const dealEmail = deal.email || null;
+            if (dealEmail && dealEmail.trim() && dealEmail.trim().toLowerCase() === email.trim().toLowerCase()) {
+              hasMatchingDeal = true;
+              break;
+            }
+          }
+        }
+        
+        if (!hasMatchingDeal) {
+          finalFilteredPipelines.push(pipeline);
+        }
+      }
+      
       // Load stages for each pipeline since we need them to find the diversion stage
       const pipelinesWithStages = await Promise.all(
-        filteredPipelines.map(async (pipeline) => {
+        finalFilteredPipelines.map(async (pipeline) => {
           try {
             const fullPipeline = await pipelinesApi.get(pipeline.id);
             return fullPipeline;

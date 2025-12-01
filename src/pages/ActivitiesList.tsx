@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { activitiesApi, type Activity, type PageResponse, type ActivityFilters } from '../services/activities';
 import FilterDropdown, { type SavedFilter as DropdownSavedFilter } from '../components/FilterDropdown';
 import FilterModal, { type FilterCondition } from '../components/FilterModal';
@@ -12,6 +12,7 @@ import { usersApi } from '../services/users';
 import { dealsApi } from '../services/deals';
 import type { Organization } from '../types/organization';
 import type { User } from '../types/user';
+import { getStoredUser } from '../utils/authToken';
 
 const tabOptions = ['All', 'To‑do', 'Overdue', 'Today', 'Tomorrow', 'This week', 'Next week', 'This month', 'Prev month', 'This year', 'Select period', 'Select Date'] as const;
 const primaryTabs: Array<(typeof tabOptions)[number]> = ['All', 'Overdue', 'Today'];
@@ -27,16 +28,38 @@ type SummaryCardAction =
   | 'overdue';
 
 export default function ActivitiesList() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const activityRowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
   const [highlightedActivityId, setHighlightedActivityId] = useState<number | null>(null);
-  
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const loadCountsAbortControllerRef = useRef<AbortController | null>(null);
+
   const [data, setData] = useState<PageResponse<Activity> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState<'Activity' | 'Call' | 'Meeting scheduler'>('Activity');
   const [tab, setTab] = useState<TabOption>('Today');
-  const [filters, setFilters] = useState<ActivityFilters>({ page: 0, size: 25 });
+  
+  // Initialize filters with "Today" date range to avoid blank initial load
+  const getInitialFilters = (): ActivityFilters => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = today.getFullYear();
+    const todayStr = `${day}/${month}/${year}`;
+    return { page: 0, size: 25, dateFrom: todayStr, dateTo: todayStr };
+  };
+  
+  const [filters, setFilters] = useState<ActivityFilters>(getInitialFilters());
+  const filtersRef = useRef<ActivityFilters>(filters);
+  
+  // Keep filtersRef in sync with filters state
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [isTabDropdownOpen, setIsTabDropdownOpen] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -45,6 +68,7 @@ export default function ActivitiesList() {
   const [activeFilterName, setActiveFilterName] = useState<string | null>(null);
   const [activeCustomFilters, setActiveCustomFilters] = useState<FilterCondition[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const hasHandledOpenModal = useRef(false);
   const [columnMenu, setColumnMenu] = useState<{
     isOpen: boolean;
     columnName: string;
@@ -85,10 +109,12 @@ export default function ActivitiesList() {
   }, []);
   const [categoryFilterOptions, setCategoryFilterOptions] = useState<Array<{ code: string; label: string }>>(DEFAULT_CATEGORY_OPTIONS);
   const [organizationOptions, setOrganizationOptions] = useState<Organization[]>([]);
+  const [baseOrganizationOptions, setBaseOrganizationOptions] = useState<Organization[]>([]);
   const [managerOptions, setManagerOptions] = useState<User[]>([]);
+  const [baseManagerOptions, setBaseManagerOptions] = useState<User[]>([]);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('');
-  const [selectedOrganizationFilter, setSelectedOrganizationFilter] = useState('');
-  const [selectedManagerFilter, setSelectedManagerFilter] = useState('');
+  const [selectedOrganizationFilter, setSelectedOrganizationFilter] = useState<string>('');
+  const [selectedManagerFilter, setSelectedManagerFilter] = useState<string>('');
   const [attachmentPreviews, setAttachmentPreviews] = useState<Record<number, string>>({});
   const [durationEntries, setDurationEntries] = useState<Record<number, string>>({});
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
@@ -107,6 +133,47 @@ export default function ActivitiesList() {
   const [screenshotReplacementPreview, setScreenshotReplacementPreview] = useState<string | null>(null);
   const [screenshotReplacing, setScreenshotReplacing] = useState(false);
   const SERVICE_CATEGORY_STORAGE_KEY = 'activityServiceCategories';
+
+  const storedUser = getStoredUser();
+  const normalizedRole = (storedUser?.role || '').toUpperCase();
+  const isAdmin = normalizedRole === 'ADMIN';
+  const isCategoryManager = normalizedRole === 'CATEGORY_MANAGER';
+  const isSales = normalizedRole === 'SALES';
+  const isPresales =
+    normalizedRole === 'PRESALES' ||
+    normalizedRole === 'PRE_SALES' ||
+    normalizedRole === 'PRE-SALES';
+
+  const deriveCategoryCode = useCallback(
+    (input?: string | null) => {
+      if (!input) return undefined;
+      const normalized = input
+        .toUpperCase()
+        .replace(/&/g, 'AND')
+        .replace(/_/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return DEFAULT_CATEGORY_OPTIONS.find((opt) => {
+        const code = opt.code
+          .toUpperCase()
+          .replace(/&/g, 'AND')
+          .replace(/_/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const label = opt.label
+          .toUpperCase()
+          .replace(/&/g, 'AND')
+          .replace(/_/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        return normalized === code || normalized === label;
+      })?.code;
+    },
+    [DEFAULT_CATEGORY_OPTIONS],
+  );
+
+  const [organizationCategoryLookup, setOrganizationCategoryLookup] = useState<Record<string, string>>({});
+
   const [serviceCategories, setServiceCategories] = useState<Record<number, string>>(() => {
     if (typeof window === 'undefined') return {};
     try {
@@ -130,7 +197,7 @@ export default function ActivitiesList() {
       return next;
     });
   }, [SERVICE_CATEGORY_STORAGE_KEY]);
-  const getServiceCategoryForActivity = (id: number) => serviceCategories[id] || defaultServiceCategoryCode;
+  const getServiceCategoryForActivity = useCallback((id: number) => serviceCategories[id] || defaultServiceCategoryCode, [serviceCategories]);
 
   useEffect(() => {
     if (!data?.content) return;
@@ -139,7 +206,9 @@ export default function ActivitiesList() {
       const next = { ...prev };
       data.content?.forEach((activity) => {
         if (!next[activity.id]) {
-          next[activity.id] = defaultServiceCategoryCode;
+          const orgKey = activity.organization?.toLowerCase() || '';
+          const derivedCategory = organizationCategoryLookup[orgKey];
+          next[activity.id] = derivedCategory || defaultServiceCategoryCode;
           changed = true;
         }
       });
@@ -151,7 +220,7 @@ export default function ActivitiesList() {
       }
       return prev;
     });
-  }, [data, defaultServiceCategoryCode, SERVICE_CATEGORY_STORAGE_KEY]);
+  }, [data, defaultServiceCategoryCode, SERVICE_CATEGORY_STORAGE_KEY, organizationCategoryLookup]);
 
   // Helper function to get calendar days for a month
   const getCalendarDays = (date: Date) => {
@@ -317,9 +386,112 @@ export default function ActivitiesList() {
           usersApi.list().catch(() => []),
         ]);
         if (!isMounted) return;
+
+        const allOrganizations = Array.isArray(orgs) ? orgs : [];
+        const allUsers = Array.isArray(users) ? users : [];
+
+        // Start with everything returned by the backend; then narrow for specific roles.
+        let scopedOrganizations = allOrganizations;
+        let scopedUsers = allUsers;
+
+        const presalesRoleCodes = ['PRESALES', 'PRE_SALES', 'PRE-SALES'];
+        const getUpperRole = (u: User) => (u.role || '').toUpperCase();
+
+        const currentUserId = storedUser?.userId;
+        const currentFullUser = currentUserId
+          ? allUsers.find((u) => u.id === currentUserId)
+          : undefined;
+
+        const normalizeCategoryString = (value?: string | null) =>
+          (value || '')
+            .toUpperCase()
+            .replace(/&/g, 'AND')
+            .replace(/_/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        if (isCategoryManager && currentUserId) {
+          // Category Manager:
+          // - Organizations: all organizations owned by sales people under them
+          // - Users: Sales users reporting directly to them + their Presales reports
+          const salesPeopleUnderManager = allUsers.filter(
+            (u) => getUpperRole(u) === 'SALES' && u.managerId === currentUserId,
+          );
+          const salesPeopleIds = new Set(salesPeopleUnderManager.map((s) => s.id));
+          const presalesUnderSales = allUsers.filter(
+            (u) => presalesRoleCodes.includes(getUpperRole(u)) && u.managerId && salesPeopleIds.has(u.managerId),
+          );
+          scopedOrganizations = allOrganizations.filter(
+            (org) => org.owner && org.owner.id && salesPeopleIds.has(org.owner.id),
+          );
+          const uniqueUsers = new Map<number, User>();
+          [...salesPeopleUnderManager, ...presalesUnderSales].forEach((user) => {
+            if (!uniqueUsers.has(user.id)) {
+              uniqueUsers.set(user.id, user);
+            }
+          });
+          scopedUsers = Array.from(uniqueUsers.values());
+
+          // For category managers, always auto-detect and set their category
+          // This ensures they see activities from their category even if filter was already set
+          const derivedCategoryCode =
+            scopedOrganizations
+              .map((org) => {
+                const orgCategory = normalizeCategoryString(org.category);
+                const match = DEFAULT_CATEGORY_OPTIONS.find((opt) => {
+                  const code = normalizeCategoryString(opt.code);
+                  const label = normalizeCategoryString(opt.label);
+                  return orgCategory === code || orgCategory === label;
+                });
+                return match?.code;
+              })
+              .find((code): code is string => Boolean(code)) || undefined;
+
+          if (derivedCategoryCode) {
+            setSelectedCategoryFilter(derivedCategoryCode);
+          }
+        } else if (isSales && currentUserId) {
+          // Sales user:
+          // - Organizations: only those where this Sales user is set as owner (shown in "All Organizations" dropdown)
+          // - Users: only Presales users reporting directly to this Sales user (shown in "All Users" dropdown)
+          scopedOrganizations = allOrganizations.filter(
+            (org) => org.owner && org.owner.id === currentUserId,
+          );
+          scopedUsers = allUsers.filter(
+            (u) => presalesRoleCodes.includes(getUpperRole(u)) && u.managerId === currentUserId,
+          );
+        } else if (isPresales && currentFullUser?.managerId) {
+          // Presales:
+          // - Organizations: those owned by their Sales manager
+          // - Users filter is hidden in the UI, so we don't need scopedUsers here
+          const salesManagerId = currentFullUser.managerId;
+          scopedOrganizations = allOrganizations.filter(
+            (org) => org.owner && org.owner.id === salesManagerId,
+          );
+        }
+
+        const orgCategoryMap: Record<string, string> = {};
+        scopedOrganizations.forEach((org) => {
+          const categoryCode = deriveCategoryCode(org.category);
+          if (categoryCode && org.name) {
+            orgCategoryMap[org.name.toLowerCase()] = categoryCode;
+          }
+        });
+
         setCategoryFilterOptions(DEFAULT_CATEGORY_OPTIONS);
-        setOrganizationOptions(Array.isArray(orgs) ? orgs : []);
-        setManagerOptions(Array.isArray(users) ? users : []);
+        setBaseOrganizationOptions(scopedOrganizations);
+        setBaseManagerOptions(scopedUsers);
+        setOrganizationOptions(scopedOrganizations);
+        setManagerOptions(scopedUsers);
+        setOrganizationCategoryLookup(orgCategoryMap);
+
+        // For category managers, ensure category filter is set from orgCategoryMap
+        if (isCategoryManager) {
+          const firstCategory = Object.values(orgCategoryMap)[0];
+          if (firstCategory) {
+            setSelectedCategoryFilter(firstCategory);
+          }
+        }
       } catch (err) {
         console.error('Failed to load filter options', err);
       }
@@ -330,6 +502,114 @@ export default function ActivitiesList() {
     };
   }, []);
 
+  // Filter organizations and users by selected category when admin selects a category
+  // For sales/presales/category managers, ensure they always see their scoped options
+  useEffect(() => {
+    if (!isAdmin) {
+      // For non-admin users (sales, presales, category managers), use base options (already filtered by role)
+      // This ensures sales users see only their organizations and their presales users
+      setOrganizationOptions(baseOrganizationOptions);
+      setManagerOptions(baseManagerOptions);
+      return;
+    }
+
+    // For admin: always filter users to SALES and PRESALES only
+    const presalesRoleCodes = ['PRESALES', 'PRE_SALES', 'PRE-SALES'];
+    const getUpperRole = (u: User) => (u.role || '').toUpperCase();
+    
+    // Filter base users to only SALES and PRESALES for admin
+    const allSalesAndPresales = baseManagerOptions.filter((u) => {
+      const role = getUpperRole(u);
+      return role === 'SALES' || presalesRoleCodes.includes(role);
+    });
+
+    // For admin: apply category filter if selected
+    if (!selectedCategoryFilter) {
+      // No category selected: show all organizations and all SALES/PRESALES users
+      setOrganizationOptions(baseOrganizationOptions);
+      setManagerOptions(allSalesAndPresales);
+      return;
+    }
+
+    // Category selected: filter organizations by category and users by role (SALES and PRESALES only)
+    // Get the category option to match both code and label
+    const selectedCategoryOption = categoryFilterOptions.find(
+      (opt) => opt.code === selectedCategoryFilter
+    );
+    
+    // Normalize category for comparison (handle different formats)
+    const normalizeCategory = (cat: string | null | undefined): string => {
+      if (!cat) return '';
+      return cat
+        .toUpperCase()
+        .replace(/&/g, 'AND')  // Replace & with AND
+        .replace(/_/g, ' ')    // Replace _ with space
+        .replace(/\s+/g, ' ')   // Collapse multiple spaces
+        .trim();
+    };
+    
+    const selectedCategoryCode = selectedCategoryFilter.toUpperCase();
+    const selectedCategoryLabel = selectedCategoryOption?.label?.toUpperCase() || '';
+    const selectedCategoryNormalized = normalizeCategory(selectedCategoryFilter);
+    
+    // Filter organizations by category - match code, label, or normalized value
+    const filteredOrgs = baseOrganizationOptions.filter((org) => {
+      if (!org.category) return false;
+      
+      const orgCategory = org.category.toUpperCase();
+      const orgCategoryNormalized = normalizeCategory(org.category);
+      
+      // Match by code, label, or normalized comparison
+      return (
+        orgCategory === selectedCategoryCode ||
+        orgCategory === selectedCategoryLabel ||
+        orgCategoryNormalized === selectedCategoryNormalized ||
+        // Also try matching the label's normalized version
+        (selectedCategoryOption?.label && normalizeCategory(selectedCategoryOption.label) === orgCategoryNormalized)
+      );
+    });
+    
+    // Filter users to only SALES and PRESALES linked to the selected category
+    // Get owner IDs from filtered organizations (these are SALES users)
+    const salesOwnerIdsInCategory = new Set(
+      filteredOrgs
+        .map((org) => org.owner?.id)
+        .filter((id): id is number => id !== undefined && id !== null)
+    );
+    
+    // Filter users:
+    // 1. SALES users who own organizations in the selected category
+    // 2. PRESALES users who report to those SALES users
+    const filteredUsers = allSalesAndPresales.filter((u) => {
+      const role = getUpperRole(u);
+      
+      if (role === 'SALES') {
+        // Include SALES users who own organizations in the category
+        return salesOwnerIdsInCategory.has(u.id);
+      } else if (presalesRoleCodes.includes(role)) {
+        // Include PRESALES users whose manager (SALES user) owns organizations in the category
+        return u.managerId !== null && salesOwnerIdsInCategory.has(u.managerId);
+      }
+      
+      return false;
+    });
+    
+    setOrganizationOptions(filteredOrgs);
+    setManagerOptions(filteredUsers);
+  }, [selectedCategoryFilter, isAdmin, baseOrganizationOptions, baseManagerOptions, categoryFilterOptions]);
+
+  // Ensure initial role-based scoping for SALES/PRESALES when filters are empty
+  useEffect(() => {
+    if ((isSales || isPresales) && storedUser?.userId && !filters.assignedUserId) {
+      setFilters((prev) => ({
+        ...prev,
+        assignedUserId: storedUser.userId,
+      }));
+      setSelectedManagerFilter(String(storedUser.userId));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const getDatePreservingFilters = () => {
     const next: ActivityFilters = { page: 0, size: 25 };
     if (filters.dateFrom) {
@@ -338,8 +618,11 @@ export default function ActivitiesList() {
     if (filters.dateTo) {
       next.dateTo = filters.dateTo;
     }
-    if (filters.assignedUser) {
-      next.assignedUser = filters.assignedUser;
+    if (filters.organizationId) {
+      next.organizationId = filters.organizationId;
+    }
+    if (filters.assignedUserId) {
+      next.assignedUserId = filters.assignedUserId;
     }
     return next;
   };
@@ -352,8 +635,46 @@ export default function ActivitiesList() {
     if (source?.dateTo) {
       normalized.dateTo = toBackendDateString(source.dateTo);
     }
+    if (source?.organizationId) {
+      normalized.organizationId = source.organizationId;
+    }
+    if (source?.assignedUserId) {
+      normalized.assignedUserId = source.assignedUserId;
+    }
     return normalized;
   };
+
+  // Memoize filters key to prevent unnecessary re-renders
+  // This creates a stable reference for filter values that actually matter
+  const filtersKey = useMemo(() => {
+    return JSON.stringify({
+      category: filters.category,
+      dateFrom: filters.dateFrom,
+      dateTo: filters.dateTo,
+      organizationId: filters.organizationId,
+      assignedUserId: filters.assignedUserId,
+      status: filters.status,
+      callType: filters.callType,
+      done: filters.done,
+      personId: filters.personId,
+      page: filters.page,
+      size: filters.size,
+      sort: filters.sort,
+    });
+  }, [
+    filters.category,
+    filters.dateFrom,
+    filters.dateTo,
+    filters.organizationId,
+    filters.assignedUserId,
+    filters.status,
+    filters.callType,
+    filters.done,
+    filters.personId,
+    filters.page,
+    filters.size,
+    filters.sort,
+  ]);
 
   const parseTimeToMinutes = (time?: string | null) => {
     if (!time) return null;
@@ -438,65 +759,113 @@ export default function ActivitiesList() {
     }
   };
 
-  const loadActivities = (customFilters?: ActivityFilters) => {
+  const loadActivities = useCallback((customFilters?: ActivityFilters) => {
+    // Cancel any pending request with the same purpose
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    // Create new AbortController for this request
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    
     setLoading(true);
-      const filtersToUse = customFilters || filters;
-      // Only apply page category if category is not already specified in filters
-      // If category is explicitly undefined/null, don't apply any category filter
-      const finalFilters = filtersToUse.hasOwnProperty('category') && filtersToUse.category === undefined
+    // Use filtersRef to get the latest filters, avoiding stale closure issues
+    const filtersToUse = customFilters || filtersRef.current;
+    // Only apply page category if category is not already specified in filters
+    // If category is explicitly undefined/null, don't apply any category filter
+    const finalFilters =
+      Object.prototype.hasOwnProperty.call(filtersToUse, 'category') && filtersToUse.category === undefined
         ? filtersToUse
-        : filtersToUse.category 
-          ? filtersToUse 
+        : filtersToUse.category
+          ? filtersToUse
           : { ...filtersToUse, category: getCategoryEnum(category) };
-      const normalizedFilters: ActivityFilters = { ...finalFilters };
-      if (normalizedFilters.dateFrom) {
-        normalizedFilters.dateFrom = toBackendDateString(normalizedFilters.dateFrom);
-      }
-      if (normalizedFilters.dateTo) {
-        normalizedFilters.dateTo = toBackendDateString(normalizedFilters.dateTo);
-      }
-      activitiesApi
-        .list(normalizedFilters)
-        .then(async (response) => {
-          // Fetch deal names for activities that have dealId but no dealName
-          const activitiesWithDealId = response.content.filter(a => a.dealId && !a.dealName);
-          if (activitiesWithDealId.length > 0) {
-            try {
-              // Fetch all deals to get names
-              const allDeals = await dealsApi.list();
-              const newDealsMap = new Map<number, string>();
-              allDeals.forEach(deal => {
-                if (deal.id) {
-                  newDealsMap.set(deal.id, deal.name);
-                }
-              });
-              setDealsMap(newDealsMap);
-              
-              // Update activities with deal names
-              const updatedContent = response.content.map(activity => {
-                if (activity.dealId && !activity.dealName) {
-                  const dealName = newDealsMap.get(activity.dealId);
-                  if (dealName) {
-                    return { ...activity, dealName };
-                  }
-                }
-                return activity;
-              });
-              
-              return { ...response, content: updatedContent };
-            } catch (err) {
-              console.error('Failed to load deals for activity names:', err);
-              return response;
-            }
-          }
-          return response;
-        })
-        .then(setData)
-      .catch((e) => setError(e?.message ?? 'Failed to load'))
-      .finally(() => setLoading(false));
-  };
+    const normalizedFilters: ActivityFilters = { ...finalFilters };
+    if (normalizedFilters.dateFrom) {
+      normalizedFilters.dateFrom = toBackendDateString(normalizedFilters.dateFrom);
+    }
+    if (normalizedFilters.dateTo) {
+      normalizedFilters.dateTo = toBackendDateString(normalizedFilters.dateTo);
+    }
 
-  const loadCounts = async (currentFilters?: ActivityFilters) => {
+    activitiesApi
+      .list(normalizedFilters, { signal: abortController.signal })
+      .then(async (response) => {
+        // Check if request was aborted
+        if (abortController.signal.aborted) {
+          return;
+        }
+        
+        // Fetch deal names for activities that have dealId but no dealName
+        const activitiesWithDealId = response.content.filter(a => a.dealId && !a.dealName);
+        if (activitiesWithDealId.length > 0) {
+          try {
+            // Fetch all deals to get names
+            const allDeals = await dealsApi.list();
+            if (abortController.signal.aborted) {
+              return;
+            }
+            
+            const newDealsMap = new Map<number, string>();
+            allDeals.forEach(deal => {
+              if (deal.id) {
+                newDealsMap.set(deal.id, deal.name);
+              }
+            });
+            setDealsMap(newDealsMap);
+            
+            // Update activities with deal names
+            const updatedContent = response.content.map(activity => {
+              if (activity.dealId && !activity.dealName) {
+                const dealName = newDealsMap.get(activity.dealId);
+                if (dealName) {
+                  return { ...activity, dealName };
+                }
+              }
+              return activity;
+            });
+            
+            return { ...response, content: updatedContent };
+          } catch (err) {
+            if (!abortController.signal.aborted) {
+              console.error('Failed to load deals for activity names:', err);
+            }
+            return response;
+          }
+        }
+        return response;
+      })
+      .then((response) => {
+        if (response && !abortController.signal.aborted) {
+          setData(response);
+        }
+      })
+      .catch((e) => {
+        if (!abortController.signal.aborted) {
+          setError(e?.message ?? 'Failed to load');
+        }
+      })
+      .finally(() => {
+        if (!abortController.signal.aborted) {
+          setLoading(false);
+        }
+        // Clear the ref if this was the current request
+        if (abortControllerRef.current === abortController) {
+          abortControllerRef.current = null;
+        }
+      });
+  }, [category]); // Remove filters from dependencies - use filtersRef instead
+
+  const loadCounts = useCallback(async (currentFilters?: ActivityFilters) => {
+    // Cancel any pending loadCounts request
+    if (loadCountsAbortControllerRef.current) {
+      loadCountsAbortControllerRef.current.abort();
+    }
+    
+    // Create new AbortController for this request
+    const abortController = new AbortController();
+    loadCountsAbortControllerRef.current = abortController;
+    
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -512,34 +881,35 @@ export default function ActivitiesList() {
           category: 'CALL',
           size: 1,
           page: 0,
-        }),
+        }, { signal: abortController.signal }),
         activitiesApi.list({
           ...dateOnlyFilters,
           category: 'CALL',
           done: true,
           size: 1,
           page: 0,
-        }),
+        }, { signal: abortController.signal }),
         activitiesApi.list({
           ...dateOnlyFilters,
           category: 'MEETING_SCHEDULER',
           size: 1,
           page: 0,
-        }),
+        }, { signal: abortController.signal }),
         activitiesApi.list({
           ...dateOnlyFilters,
           category: 'MEETING_SCHEDULER',
           done: true,
           size: 1,
           page: 0,
-        }),
+        }, { signal: abortController.signal }),
         activitiesApi.list({
+          ...dateOnlyFilters,
           dateTo: yesterdayFormatted, 
           done: false, 
           category: getCategoryEnum(category),
           size: 1,
           page: 0,
-        }),
+        }, { signal: abortController.signal }),
       ];
 
       if (category === 'Activity') {
@@ -550,13 +920,18 @@ export default function ActivitiesList() {
         page: 0,
       };
         baseRequests.push(
-          activitiesApi.list(activityBaseFilters),
-          activitiesApi.list({ ...activityBaseFilters, done: false }),
-          activitiesApi.list({ ...activityBaseFilters, done: true }),
+          activitiesApi.list(activityBaseFilters, { signal: abortController.signal }),
+          activitiesApi.list({ ...activityBaseFilters, done: false }, { signal: abortController.signal }),
+          activitiesApi.list({ ...activityBaseFilters, done: true }, { signal: abortController.signal }),
         );
       }
 
       const responses = await Promise.all(baseRequests);
+      
+      // Check if request was aborted
+      if (abortController.signal.aborted) {
+        return;
+      }
       const [
         callAssignedResponse,
         callTakenResponse,
@@ -583,11 +958,121 @@ export default function ActivitiesList() {
         setActivityCompletedCount(0);
       }
 
-      await loadCallDuration(dateOnlyFilters);
+      if (!abortController.signal.aborted) {
+        await loadCallDuration(dateOnlyFilters);
+      }
     } catch (error) {
-      console.error('Failed to load activity counts:', error);
+      if (!abortController.signal.aborted) {
+        console.error('Failed to load activity counts:', error);
+      }
+    } finally {
+      // Clear the ref if this was the current request
+      if (loadCountsAbortControllerRef.current === abortController) {
+        loadCountsAbortControllerRef.current = null;
+      }
     }
-  };
+  }, [category]);
+
+  // When a service category filter is active, override counts by fetching activities
+  // for each type (ACTIVITY / CALL / MEETING) and mapping them to the service category locally.
+  useEffect(() => {
+    if (!selectedCategoryFilter) return;
+
+    let isCancelled = false;
+
+    const buildBaseFilters = (): ActivityFilters => {
+      const normalized = normalizeDateFilters(filters);
+      const payload: ActivityFilters = { ...normalized };
+      // Always include organizationId and assignedUserId if they're set
+      // This ensures counts respect organization and user filters
+      if (filters.organizationId) payload.organizationId = filters.organizationId;
+      if (filters.assignedUserId) payload.assignedUserId = filters.assignedUserId;
+      if (filters.done !== undefined) payload.done = filters.done;
+      return payload;
+    };
+
+    const fetchActivitiesForCategory = async (categoryCode: string) => {
+      const pageSize = 200;
+      let page = 0;
+      let totalPages = 1;
+      const collected: Activity[] = [];
+      const baseFilters = buildBaseFilters();
+      while (page < totalPages) {
+        if (isCancelled) break;
+        const response = await activitiesApi.list({
+          ...baseFilters,
+          category: categoryCode,
+          page,
+          size: pageSize,
+        });
+        if (isCancelled) break;
+        collected.push(...(response.content || []));
+        totalPages = response.totalPages ?? 1;
+        page += 1;
+      }
+      return collected;
+    };
+
+    const recalc = async () => {
+      try {
+        const [activityItems, callItems, meetingItems] = await Promise.all([
+          fetchActivitiesForCategory('ACTIVITY'),
+          fetchActivitiesForCategory('CALL'),
+          fetchActivitiesForCategory('MEETING_SCHEDULER'),
+        ]);
+
+        if (isCancelled) return;
+
+        const filterByServiceCategory = (list: Activity[]) =>
+          list.filter((a) => getServiceCategoryForActivity(a.id) === selectedCategoryFilter);
+
+        const matchingActivities = filterByServiceCategory(activityItems);
+        setActivityTotalCount(matchingActivities.length);
+        setActivityPendingCount(matchingActivities.filter((a) => !a.done).length);
+        setActivityCompletedCount(matchingActivities.filter((a) => a.done).length);
+
+        const matchingCalls = filterByServiceCategory(callItems);
+        setCallAssignedCount(matchingCalls.length);
+        setCallTakenCount(matchingCalls.filter((a) => a.done).length);
+
+        const matchingMeetings = filterByServiceCategory(meetingItems);
+        setMeetingAssignedCount(matchingMeetings.length);
+        setMeetingDoneCount(matchingMeetings.filter((a) => a.done).length);
+      } catch (error) {
+        if (!isCancelled) {
+          console.warn('Failed to recalculate service category counts', error);
+        }
+      }
+    };
+
+    void recalc();
+
+    return () => {
+      isCancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategoryFilter, filtersKey, getServiceCategoryForActivity]);
+
+  // When service category filter is cleared, reload backend counts to include all categories again.
+  // This ensures counts are recalculated when category filter is removed, respecting current org/user filters
+  useEffect(() => {
+    if (!selectedCategoryFilter) {
+      void loadCounts(filters);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategoryFilter, filters.organizationId, filters.assignedUserId]);
+
+  // For category managers, reload activities when category filter is first set to ensure
+  // activities get the correct service category mapping from organizationCategoryLookup
+  const categoryManagerCategorySetRef = useRef(false);
+  useEffect(() => {
+    if (isCategoryManager && selectedCategoryFilter && organizationCategoryLookup && Object.keys(organizationCategoryLookup).length > 0 && !categoryManagerCategorySetRef.current) {
+      categoryManagerCategorySetRef.current = true;
+      // Reload activities once to ensure they get mapped to the correct service category
+      loadActivities();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCategoryManager, selectedCategoryFilter, organizationCategoryLookup]);
 
   // Handle category and tab from URL parameter
   useEffect(() => {
@@ -613,19 +1098,50 @@ export default function ActivitiesList() {
   }, [searchParams, category, tab]);
 
   useEffect(() => {
-    loadActivities();
-    loadCounts(filters); // Pass current filters to loadCounts so COMPLETED and PENDING reflect the selected tab's date range
+    // Use filtersRef to get the latest filters value, ensuring we always use current state
+    const currentFilters = filtersRef.current;
+    loadActivities(currentFilters);
+    loadCounts(currentFilters); // Pass current filters to loadCounts so COMPLETED and PENDING reflect the selected tab's date range
     // Clear selections when filters or category change
     setSelectedActivities(new Set());
-  }, [category, filters]);
+  }, [category, filtersKey, loadActivities, loadCounts]);
+
+  // Sync selectedManagerFilter with filters.assignedUserId (not assignedUser string)
+  // This ensures the dropdown shows the correct user when a user is selected
+  // Check if modal should be opened from navigation state
+  useEffect(() => {
+    const state = location?.state as any;
+    if (state?.openModal && !isAddOpen && !hasHandledOpenModal.current) {
+      hasHandledOpenModal.current = true;
+      setIsAddOpen(true);
+      // Clear the state to prevent reopening on re-render
+      requestAnimationFrame(() => {
+        navigate(location.pathname, { replace: true, state: {} });
+      });
+    }
+  }, [location?.pathname, location?.state, isAddOpen, navigate]);
+  
+  // Reset the ref when modal is closed and state is cleared
+  useEffect(() => {
+    if (!isAddOpen) {
+      const state = location?.state as any;
+      if (!state?.openModal && hasHandledOpenModal.current) {
+        const timer = setTimeout(() => {
+          hasHandledOpenModal.current = false;
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isAddOpen, location?.state]);
 
   useEffect(() => {
-    if (!filters.assignedUser) {
+    if (!filters.assignedUserId) {
       setSelectedManagerFilter('');
     } else {
-      setSelectedManagerFilter(filters.assignedUser.trim());
+      // Keep the user ID in selectedManagerFilter, not the name string
+      setSelectedManagerFilter(String(filters.assignedUserId));
     }
-  }, [filters.assignedUser]);
+  }, [filters.assignedUserId]);
 
   // Handle scrolling to activity when activityId is in URL
   useEffect(() => {
@@ -817,16 +1333,80 @@ export default function ActivitiesList() {
     setIsTabDropdownOpen(false);
   };
 
+  const handleOrganizationFilterChange = (value: string) => {
+    const trimmed = value.trim();
+    setSelectedOrganizationFilter(trimmed);
+    setFilters((prev) => {
+      const next: ActivityFilters = { ...prev, page: 0 };
+      if (trimmed) {
+        const orgId = Number(trimmed);
+        if (!Number.isNaN(orgId)) {
+          next.organizationId = orgId;
+        }
+      } else {
+        delete next.organizationId;
+      }
+      return next;
+    });
+  };
+
   const handleManagerFilterChange = (value: string) => {
     const normalizedValue = value.trim();
     setSelectedManagerFilter(normalizedValue);
     setFilters((prev) => {
-      const next = { ...prev, page: 0 };
+      const next: ActivityFilters = { ...prev, page: 0 };
       if (normalizedValue) {
-        return { ...next, assignedUser: normalizedValue };
+        const userId = Number(normalizedValue);
+        if (!Number.isNaN(userId)) {
+          const user = managerOptions.find((u) => u.id === userId);
+          if (user) {
+            // For sales users: get all organizations they own
+            // For presales users: get all organizations under their sales manager
+            const presalesRoleCodes = ['PRESALES', 'PRE_SALES', 'PRE-SALES'];
+            const getUpperRole = (u: User) => (u.role || '').toUpperCase();
+            const userRole = getUpperRole(user);
+            
+            let orgIdsToFilter: number[] = [];
+            
+            if (userRole === 'SALES') {
+              // Sales user: get organizations they own
+              orgIdsToFilter = baseOrganizationOptions
+                .filter((org) => org.owner && org.owner.id === userId)
+                .map((org) => org.id)
+                .filter((id): id is number => id !== undefined && id !== null);
+            } else if (presalesRoleCodes.includes(userRole) && user.managerId) {
+              // Presales user: get organizations owned by their sales manager
+              orgIdsToFilter = baseOrganizationOptions
+                .filter((org) => org.owner && org.owner.id === user.managerId)
+                .map((org) => org.id)
+                .filter((id): id is number => id !== undefined && id !== null);
+            }
+            
+            // When a user is selected, don't filter by organizationId in backend
+            // Instead, fetch all activities and filter client-side to show activities from all their orgs
+            // This ensures we get activities from ALL organizations owned by the user, not just one
+            if (orgIdsToFilter.length > 0) {
+              // Don't set organizationId - we want activities from all their orgs
+              // Client-side filtering in shouldShow will handle showing activities from all orgs
+              // Store the selected user ID for client-side filtering
+              next.assignedUserId = userId;
+              // Remove organizationId filter so we get activities from all orgs
+              delete next.organizationId;
+            } else {
+              // Fallback: if no organizations found, use assignedUserId only
+              next.assignedUserId = userId;
+              delete next.organizationId;
+            }
+            
+            // Only use assignedUserId, don't set assignedUser
+            delete next.assignedUser;
+          }
+        }
+      } else {
+        delete next.assignedUserId;
+        delete next.organizationId;
       }
-      const { assignedUser, ...rest } = next;
-      return rest;
+      return next;
     });
   };
 
@@ -850,7 +1430,18 @@ export default function ActivitiesList() {
     const nextWeekEnd = new Date(nextWeekStart);
     nextWeekEnd.setDate(nextWeekStart.getDate() + 6); // End of next week
 
-    let newFilters: ActivityFilters = { page: 0, size: 25 };
+    // Preserve existing filters (organizationId, assignedUserId, assignedUser, category, etc.)
+    // Only update date-related filters based on tab
+    let newFilters: ActivityFilters = { 
+      ...filters, 
+      page: 0, 
+      size: 25 
+    };
+    
+    // Clear date filters and done status (they'll be set based on tab)
+    delete newFilters.dateFrom;
+    delete newFilters.dateTo;
+    delete newFilters.done;
 
     if (tab === 'Today') {
       const todayStr = formatDateDDMMYYYY(today);
@@ -898,14 +1489,22 @@ export default function ActivitiesList() {
       newFilters.dateFrom = yearStartStr;
       newFilters.dateTo = yearEndStr;
     } else if (tab === 'All') {
-      // Clear date filters for "All"
-      newFilters = { page: 0, size: 25 };
+      // Clear date filters for "All", but preserve other filters
+      newFilters = { 
+        ...filters,
+        page: 0, 
+        size: 25 
+      };
+      delete newFilters.dateFrom;
+      delete newFilters.dateTo;
+      delete newFilters.done;
     } else if (tab === 'To‑do') {
-      // To-do: not done activities
+      // To-do: not done activities, preserve other filters
       newFilters.done = false;
     }
 
     setFilters(newFilters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
   const handleSelectFilter = (filter: SavedFilterOption) => {
@@ -967,7 +1566,8 @@ export default function ActivitiesList() {
       if (condition.field === 'personId') {
         newFilters.personId = parseInt(condition.value);
       } else if (condition.field === 'assignedUser') {
-        newFilters.assignedUser = condition.value;
+        // Skip assignedUser - we only use assignedUserId
+        // If needed, this could be mapped to assignedUserId by looking up the user
       } else if (condition.field === 'organization') {
         // Organization filtering is handled by backend, skip here
         } else if (condition.field === 'category') {
@@ -1282,6 +1882,15 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
       dealName: value.dealName?.trim() || undefined,
       dateTime: isoDateForDateTime ? `${isoDateForDateTime}T${value.startTime || '00:00'}:00` : undefined,
     };
+    
+    // Include organizationId if it's provided
+    if (value.organizationId && value.organizationId > 0) {
+      activityData.organizationId = value.organizationId;
+    }
+    // Include assignedUserId if it's provided
+    if (value.assignedUserId && value.assignedUserId > 0) {
+      activityData.assignedUserId = value.assignedUserId;
+    }
 
     await activitiesApi.update(value.id, activityData);
     setIsEditOpen(false);
@@ -1458,22 +2067,96 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
   };
 
   const shouldShow = (a: Activity) => {
-    if (selectedCategoryFilter && getServiceCategoryForActivity(a.id) !== selectedCategoryFilter) {
-      return false;
+    // When a user is selected from "All Users" dropdown, show activities from all their organizations
+    if (filters.assignedUserId && selectedManagerFilter) {
+      const selectedUserId = Number(selectedManagerFilter);
+      if (!Number.isNaN(selectedUserId)) {
+        const selectedUser = managerOptions.find((u) => u.id === selectedUserId);
+        if (selectedUser) {
+          const presalesRoleCodes = ['PRESALES', 'PRE_SALES', 'PRE-SALES'];
+          const getUpperRole = (u: User) => (u.role || '').toUpperCase();
+          const userRole = getUpperRole(selectedUser);
+          
+          let userOrgIds: number[] = [];
+          
+          if (userRole === 'SALES') {
+            // Sales user: get all organizations they own
+            userOrgIds = baseOrganizationOptions
+              .filter((org) => org.owner && org.owner.id === selectedUserId)
+              .map((org) => org.id)
+              .filter((id): id is number => id !== undefined && id !== null);
+          } else if (presalesRoleCodes.includes(userRole) && selectedUser.managerId) {
+            // Presales user: get all organizations owned by their sales manager
+            userOrgIds = baseOrganizationOptions
+              .filter((org) => org.owner && org.owner.id === selectedUser.managerId)
+              .map((org) => org.id)
+              .filter((id): id is number => id !== undefined && id !== null);
+          }
+          
+          // Check if activity belongs to any of the user's organizations
+          if (userOrgIds.length > 0) {
+            const activityOrgName = a.organization?.toLowerCase() || '';
+            const belongsToUserOrgs = baseOrganizationOptions.some(
+              (org) => userOrgIds.includes(org.id) && org.name?.toLowerCase() === activityOrgName
+            );
+            if (!belongsToUserOrgs) {
+              return false;
+            }
+          } else {
+            // If no organizations found, only show activities directly assigned to this user
+            // This is already handled by backend filtering with assignedUserId
+            return true;
+          }
+        }
+      }
     }
-    if (selectedOrganizationFilter) {
-      const orgName = (a.organization || '').trim().toLowerCase();
-      if (orgName !== selectedOrganizationFilter.trim().toLowerCase()) {
+
+    // For sales users (when no specific user selected), ensure activities are only from organizations they own
+    if (isSales && baseOrganizationOptions.length > 0 && !selectedManagerFilter) {
+      const activityOrgName = a.organization?.toLowerCase() || '';
+      const belongsToSalesOrgs = baseOrganizationOptions.some(
+        (org) => org.name?.toLowerCase() === activityOrgName
+      );
+      if (!belongsToSalesOrgs) {
         return false;
       }
     }
 
-    if (selectedManagerFilter) {
-      const assigned = (a.assignedUser || '').trim().toLowerCase();
-      if (assigned !== selectedManagerFilter.trim().toLowerCase()) {
+    // For presales users (when no specific user selected), ensure activities are only from organizations owned by their sales manager
+    if (isPresales && baseOrganizationOptions.length > 0 && !selectedManagerFilter) {
+      const activityOrgName = a.organization?.toLowerCase() || '';
+      const belongsToManagerOrgs = baseOrganizationOptions.some(
+        (org) => org.name?.toLowerCase() === activityOrgName
+      );
+      if (!belongsToManagerOrgs) {
         return false;
       }
     }
+
+    // For category managers, be more lenient: if activity belongs to their scoped organizations,
+    // show it even if service category doesn't match exactly (backend already scoped it)
+    if (selectedCategoryFilter) {
+      const activityServiceCategory = getServiceCategoryForActivity(a.id);
+      if (activityServiceCategory !== selectedCategoryFilter) {
+        // For category managers, if the activity's organization is in our scoped list,
+        // trust the backend scoping and show it anyway
+        if (isCategoryManager) {
+          const activityOrgName = a.organization?.toLowerCase() || '';
+          const belongsToScopedOrg = baseOrganizationOptions.some(
+            (org) => org.name?.toLowerCase() === activityOrgName
+          );
+          if (!belongsToScopedOrg) {
+            return false;
+          }
+          // If it belongs to scoped org, continue to show it (don't filter by service category)
+        } else {
+          // For admin and others, strictly filter by service category
+          return false;
+        }
+      }
+    }
+    // organizationId / assignedUserId are now sent to backend;
+    // we rely on backend scoping instead of client-side matching here.
 
     const ed = effectiveDate(a);
     
@@ -1826,6 +2509,60 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           );
         }
       case 'attachment':
+        // Show image thumbnail if attachmentUrl exists, otherwise show file input
+        if (a.attachmentUrl) {
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div
+                style={{
+                  position: 'relative',
+                  cursor: 'pointer',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openScreenshotViewer(a);
+                }}
+                title="Click to view full image"
+              >
+                <img
+                  src={a.attachmentUrl}
+                  alt="Screenshot"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    objectFit: 'cover',
+                    borderRadius: 4,
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                  }}
+                  onError={(e) => {
+                    console.error('Failed to load image:', a.attachmentUrl);
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openScreenshotViewer(a);
+                }}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: 12,
+                  color: '#2563eb',
+                  background: 'transparent',
+                  border: '1px solid #2563eb',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                }}
+                title="Edit/Replace image"
+              >
+                Edit
+              </button>
+            </div>
+          );
+        }
         return (
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <label
@@ -2111,53 +2848,71 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
 
       <div className="toolbar">
         <div className="toolbar-left">
-        <button className={`btn ${category==='Activity' ? 'active' : ''}`} onClick={() => setCategory('Activity')}>Activity</button>
-        <button className={`btn ${category==='Call' ? 'active' : ''}`} onClick={() => setCategory('Call')}>Call</button>
-        <button className={`btn ${category==='Meeting scheduler' ? 'active' : ''}`} onClick={() => setCategory('Meeting scheduler')}>Meeting scheduler</button>
+          <button
+            className={`btn ${category === 'Activity' ? 'active' : ''}`}
+            onClick={() => setCategory('Activity')}
+          >
+            Activity
+          </button>
+          <button
+            className={`btn ${category === 'Call' ? 'active' : ''}`}
+            onClick={() => setCategory('Call')}
+          >
+            Call
+          </button>
+          <button
+            className={`btn ${category === 'Meeting scheduler' ? 'active' : ''}`}
+            onClick={() => setCategory('Meeting scheduler')}
+          >
+            Meeting scheduler
+          </button>
         </div>
         <div className="toolbar-filters">
-          <select
-            className="toolbar-select"
-            value={selectedCategoryFilter}
-            onChange={(e) => setSelectedCategoryFilter(e.target.value.trim())}
-            title="Filters by service categories on the backend"
-          >
-            <option value="">All Categories</option>
-            {categoryFilterOptions.map((opt) => (
-              <option key={opt.code} value={opt.code}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          {isAdmin && (
+            <select
+              className="toolbar-select"
+              value={selectedCategoryFilter}
+              onChange={(e) => setSelectedCategoryFilter(e.target.value.trim())}
+              title="Filters by service categories on the backend"
+            >
+              <option value="">All Categories</option>
+              {categoryFilterOptions.map((opt) => (
+                <option key={opt.code} value={opt.code}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          )}
           <select
             className="toolbar-select"
             value={selectedOrganizationFilter}
-            onChange={(e) => setSelectedOrganizationFilter(e.target.value.trim())}
+            onChange={(e) => handleOrganizationFilterChange(e.target.value)}
           >
             <option value="">All Organizations</option>
             {organizationOptions.map((org) => (
-              <option key={org.id} value={(org.name || '').trim()}>
+              <option key={org.id} value={String(org.id)}>
                 {org.name || `Organization #${org.id}`}
               </option>
             ))}
           </select>
-          <select
-            className="toolbar-select"
-            value={selectedManagerFilter}
-            onChange={(e) => handleManagerFilterChange(e.target.value)}
-          >
-            <option value="">All Users</option>
-            {managerOptions.map((manager) => {
-              const fullName = `${manager.firstName || ''} ${manager.lastName || ''}`.trim();
-              const label = fullName || manager.email || `User #${manager.id}`;
-              const value = (manager.email || label).trim();
-              return (
-                <option key={manager.id} value={value}>
-                  {label}
-                </option>
-              );
-            })}
-          </select>
+          {!isPresales && (
+            <select
+              className="toolbar-select"
+              value={selectedManagerFilter}
+              onChange={(e) => handleManagerFilterChange(e.target.value)}
+            >
+              <option value="">All Users</option>
+              {managerOptions.map((manager) => {
+                const fullName = `${manager.firstName || ''} ${manager.lastName || ''}`.trim();
+                const label = fullName || manager.email || `User #${manager.id}`;
+                return (
+                  <option key={manager.id} value={String(manager.id)}>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
+          )}
         </div>
       </div>
       <div className="tabs">
@@ -2453,7 +3208,12 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
 
       <ActivityModal
         isOpen={isAddOpen}
-        onClose={() => setIsAddOpen(false)}
+        onClose={() => {
+          setIsAddOpen(false);
+          hasHandledOpenModal.current = false;
+          // Clear location state to prevent modal from reopening
+          navigate(location.pathname, { replace: true, state: {} });
+        }}
         initialCategory={category}
         initialServiceCategory={DEFAULT_CATEGORY_OPTIONS[0].code}
         userOptions={managerOptions}
@@ -2514,6 +3274,14 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
             }
             if (v.dealId && v.dealId > 0) {
               activityData.dealId = v.dealId;
+            }
+            // Include organizationId if it's provided
+            if (v.organizationId && v.organizationId > 0) {
+              activityData.organizationId = v.organizationId;
+            }
+            // Include assignedUserId if it's provided
+            if (v.assignedUserId && v.assignedUserId > 0) {
+              activityData.assignedUserId = v.assignedUserId;
             }
             
             const created = await activitiesApi.create(activityData);

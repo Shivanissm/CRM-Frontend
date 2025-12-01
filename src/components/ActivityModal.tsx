@@ -25,11 +25,13 @@ export interface ActivityFormValues {
   priority?: string;
   type?: string;
   assignedUser?: string;
+  assignedUserId?: number;
   phone?: string;
   instagramId?: string;
   notes?: string;
   personName?: string;
   organization?: string;
+  organizationId?: number;
   personId?: number;
   dealId?: number;
   dealName?: string;
@@ -102,9 +104,10 @@ export default function ActivityModal({
   const [dealOptions, setDealOptions] = useState<Deal[]>([]);
   const [personOptions, setPersonOptions] = useState<Person[]>([]);
   const [organizationLookup, setOrganizationLookup] = useState<Record<number, string>>({});
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [filteredOrganizations, setFilteredOrganizations] = useState<Organization[]>([]);
-  const [showOrgSuggestions, setShowOrgSuggestions] = useState(false);
+  // State variables for organizations - setters are used but variables themselves are not read
+  const [_organizations, setOrganizations] = useState<Organization[]>([]);
+  const [_filteredOrganizations, setFilteredOrganizations] = useState<Organization[]>([]);
+  const [_showOrgSuggestions, _setShowOrgSuggestions] = useState(false);
   const [dealInput, setDealInput] = useState('');
   const [personInput, setPersonInput] = useState('');
   const [serviceCategory, setServiceCategory] = useState<string>(initialServiceCategory);
@@ -146,17 +149,18 @@ export default function ActivityModal({
     }
   };
 
-  const loadOrganizations = async () => {
-    try {
-      const orgs = await organizationsApi.list();
-      setOrganizations(orgs ?? []);
-      setFilteredOrganizations(orgs ?? []);
-    } catch (err: any) {
-      console.error('Failed to load organizations:', err);
-      setOrganizations([]);
-      setFilteredOrganizations([]);
-    }
-  };
+  // Unused function - kept for potential future use
+  // const loadOrganizations = async () => {
+  //   try {
+  //     const orgs = await organizationsApi.list();
+  //     setOrganizations(orgs ?? []);
+  //     setFilteredOrganizations(orgs ?? []);
+  //   } catch (err: any) {
+  //     console.error('Failed to load organizations:', err);
+  //     setOrganizations([]);
+  //     setFilteredOrganizations([]);
+  //   }
+  // };
 
   const deriveTypeFromCategory = (cat?: string) => {
     if (cat === 'Call') return 'CALL';
@@ -211,6 +215,7 @@ export default function ActivityModal({
       setValues({
         subject: initialActivity?.subject || '',
         organization: organization,
+        organizationId: initialActivity?.organizationId || undefined,
         type: baseType,
         category: baseCategory,
         date: toInputDate(initialActivity?.date),
@@ -218,6 +223,7 @@ export default function ActivityModal({
         endTime: initialActivity?.endTime || undefined,
         priority: initialActivity?.priority || undefined,
         assignedUser: initialActivity?.assignedUser || undefined,
+        assignedUserId: initialActivity?.assignedUserId || undefined,
         phone: phone,
         instagramId: instagramId,
         notes: initialActivity?.notes || undefined,
@@ -247,6 +253,7 @@ export default function ActivityModal({
         setDealOptions(deals ?? []);
         setPersonOptions(personsResponse?.content ?? []);
         const orgs = organizations ?? [];
+        // Store organizations for potential future use (setters are used, but state variables are not read)
         setOrganizations(orgs);
         setFilteredOrganizations(orgs);
         const lookup: Record<number, string> = {};
@@ -323,6 +330,7 @@ export default function ActivityModal({
         next.dealName = undefined;
         next.personId = undefined;
         next.organization = '';
+        next.organizationId = undefined;
         next.phone = '';
         next.instagramId = '';
         setPersonInput('');
@@ -334,6 +342,7 @@ export default function ActivityModal({
         next.dealName = trimmed;
         next.personId = undefined;
         next.organization = '';
+        next.organizationId = undefined;
         next.phone = '';
         next.instagramId = '';
         setPersonInput('');
@@ -370,6 +379,7 @@ export default function ActivityModal({
       }
 
       if (matchingDeal.organizationId) {
+        next.organizationId = matchingDeal.organizationId;
         const orgName = organizationLookup[matchingDeal.organizationId];
         if (orgName) {
           next.organization = orgName;
@@ -398,11 +408,21 @@ export default function ActivityModal({
       if (person) {
         // If person found, set organization from person
         next.organization = person.organization || person.organizationName || '';
+        // Try to find organizationId from organization name
+        if (next.organization) {
+          const matchingOrg = organizations.find(
+            (org) => org.name?.toLowerCase() === next.organization?.toLowerCase()
+          );
+          if (matchingOrg?.id) {
+            next.organizationId = matchingOrg.id;
+          }
+        }
         next.phone = person.phone || next.phone;
         next.instagramId = person.instagramId || next.instagramId;
       } else {
         // If no person found, clear organization that was set from person
         next.organization = '';
+        next.organizationId = undefined;
         next.phone = '';
         next.instagramId = '';
       }
@@ -428,6 +448,7 @@ export default function ActivityModal({
         dealName: values.dealName?.trim() || undefined,
         phone: values.phone || undefined,
         instagramId: values.instagramId || undefined,
+        assignedUserId: values.assignedUserId || undefined,
       };
       await onSave({ ...formattedValues, id: initialActivity?.id });
       // Show confirmation pop-up - don't reset form or close modal yet
@@ -597,7 +618,24 @@ export default function ActivityModal({
                 <select
                   className="am-input"
                   value={values.assignedUser || ''}
-                  onChange={(e) => update('assignedUser', e.target.value)}
+                  onChange={(e) => {
+                    const selectedLabel = e.target.value;
+                    update('assignedUser', selectedLabel);
+                    // Find the user by display name and set the userId
+                    if (selectedLabel) {
+                      const selectedUser = userOptions.find((user) => {
+                        const label = getUserDisplayName(user);
+                        return label === selectedLabel;
+                      });
+                      if (selectedUser?.id) {
+                        setValues((prev) => ({ ...prev, assignedUserId: selectedUser.id }));
+                      } else {
+                        setValues((prev) => ({ ...prev, assignedUserId: undefined }));
+                      }
+                    } else {
+                      setValues((prev) => ({ ...prev, assignedUserId: undefined }));
+                    }
+                  }}
                 >
                   <option value="">All Users</option>
                   {userOptions.map((user) => {
@@ -689,14 +727,55 @@ export default function ActivityModal({
 
             <label className="am-field full">
               <span>Organization</span>
-              <input
-                className="am-input"
-                value={values.organization || ''}
-                onChange={(e) => update('organization', e.target.value)}
-                placeholder="Organization name"
-                disabled={!!dealData}
-                readOnly={!!dealData}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  className="am-input"
+                  value={values.organization || ''}
+                  onChange={(e) => {
+                    const orgName = e.target.value;
+                    update('organization', orgName);
+                    // Try to find organizationId from organization name
+                    if (orgName) {
+                      const matchingOrg = organizations.find(
+                        (org) => org.name?.toLowerCase() === orgName.toLowerCase()
+                      );
+                      if (matchingOrg?.id) {
+                        setValues((prev) => ({ ...prev, organizationId: matchingOrg.id }));
+                      } else {
+                        setValues((prev) => ({ ...prev, organizationId: undefined }));
+                      }
+                    } else {
+                      setValues((prev) => ({ ...prev, organizationId: undefined }));
+                    }
+                  }}
+                  placeholder="Organization name"
+                  disabled={!!dealData}
+                  readOnly={!!dealData}
+                  onFocus={() => setShowOrgSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowOrgSuggestions(false), 200)}
+                />
+                {showOrgSuggestions && filteredOrganizations.length > 0 && (
+                  <div className="am-suggestions" style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 1000, background: 'white', border: '1px solid #ccc', maxHeight: '200px', overflowY: 'auto' }}>
+                    {filteredOrganizations.map((org) => (
+                      <div
+                        key={org.id}
+                        className="am-suggestion-item"
+                        style={{ padding: '8px', cursor: 'pointer', borderBottom: '1px solid #eee' }}
+                        onClick={() => {
+                          setValues((prev) => ({
+                            ...prev,
+                            organization: org.name || '',
+                            organizationId: org.id,
+                          }));
+                          setShowOrgSuggestions(false);
+                        }}
+                      >
+                        {org.name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </label>
           </div>
         </div>

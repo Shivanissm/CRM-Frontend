@@ -126,5 +126,15 @@ export const dealsApi = {
     const response = await api.get(`/${dealId}/available-pipelines`);
     return unwrap<Pipeline[]>(response.data);
   },
+
+  listSources: async (): Promise<Array<{ code: string; label: string }>> => {
+    const response = await api.get('/sources');
+    return unwrap<Array<{ code: string; label: string }>>(response.data);
+  },
+
+  listSubSources: async (): Promise<Array<{ code: string; label: string }>> => {
+    const response = await api.get('/sub-sources');
+    return unwrap<Array<{ code: string; label: string }>>(response.data);
+  },
 };
 

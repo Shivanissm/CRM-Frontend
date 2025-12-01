@@ -7,6 +7,7 @@ import { organizationsApi } from '../services/organizations';
 import { pipelinesApi } from '../services/pipelines';
 import { activitiesApi, type Activity } from '../services/activities';
 import { clearAuthSession } from '../utils/authToken';
+import { addToRecentlyViewed } from '../utils/recentlyViewed';
 import type { Deal, DealCreateRequest, DealUpdateRequest, DealSource, DealSubSource } from '../types/deal';
 import type { Person } from '../types/person';
 import type { Organization } from '../types/organization';
@@ -204,6 +205,17 @@ export default function DealDetail() {
     try {
       const dealData = await dealsApi.get(dealId);
       setDeal(dealData);
+      
+      // Add to recently viewed
+      addToRecentlyViewed({
+        type: 'deal',
+        id: dealData.id,
+        title: dealData.name,
+        subtitle: dealData.personId ? `Person ID: ${dealData.personId}` : 'No person',
+        status: dealData.status,
+        value: dealData.value || undefined,
+      });
+      
       console.log('Loaded deal data:', dealData);
       console.log('Deal source:', dealData.source);
       console.log('Deal subSource:', dealData.subSource);
@@ -2294,6 +2306,7 @@ export default function DealDetail() {
               endTime: v.endTime || undefined,
               priority: v.priority ? v.priority.toUpperCase() : undefined,
               assignedUser: v.assignedUser || undefined,
+              assignedUserId: v.assignedUserId || undefined,
               notes: v.notes || undefined,
               organization: v.organization || undefined,
               personId: v.personId || undefined,
