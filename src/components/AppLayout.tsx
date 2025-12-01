@@ -334,7 +334,7 @@ export default function AppLayout() {
                 ref={searchInputRef}
                 type="text"
                 className="app-shell-search-input-field"
-                placeholder="Search Pipedrive"
+                placeholder="Search Brideside"
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
