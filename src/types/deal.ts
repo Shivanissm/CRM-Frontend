@@ -21,6 +21,7 @@ export interface Deal {
   updatedAt?: string | null;
   venue?: string | null;
   googleCalendarEventId?: string | null;
+  googleCalendarEventIds?: Record<string, string> | null;
   phoneNumber?: string | null;
   email?: string | null;
   finalThankYouSent?: boolean | null;
@@ -28,6 +29,7 @@ export interface Deal {
   contactNumberAsked?: boolean | null;
   venueAsked?: boolean | null;
   eventDate?: string | null;
+  eventDates?: string[] | null;
   label?: string | null;
   source?: DealSource | null;
   subSource?: DealSubSource | null;
@@ -57,6 +59,7 @@ export interface DealCreateRequest {
   contactNumberAsked?: boolean | null;
   venueAsked?: boolean | null;
   eventDate?: string | null;
+  eventDates?: string[] | null;
   label?: string | null;
   source?: DealSource | null;
   subSource?: DealSubSource | null;
@@ -92,6 +95,7 @@ export interface DealUpdateRequest {
   contactNumberAsked?: boolean | null;
   venueAsked?: boolean | null;
   eventDate?: string | null;
+  eventDates?: string[] | null;
   label?: string | null;
   source?: DealSource | null;
   subSource?: DealSubSource | null;

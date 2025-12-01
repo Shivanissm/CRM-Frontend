@@ -6,6 +6,7 @@ import { dealsApi } from '../services/deals';
 import { personsApi } from '../services/api';
 import type { Pipeline } from '../types/pipeline';
 import type { DealStatus } from '../types/deal';
+import { getAllEventDates } from '../utils/dealDates';
 
 interface DivertDealModalProps {
   isOpen: boolean;
@@ -246,7 +247,7 @@ export default function DivertDealModal({
           phoneNumber: currentDeal.phoneNumber,
           email: currentDeal.email,
           eventType: currentDeal.eventType,
-          eventDate: currentDeal.eventDate,
+          eventDates: getAllEventDates(currentDeal),
           label: 'DIVERT',
           referencedDealId: dealId, // Link to the original deal
         };

@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import './Deals.css';
 import { dealsApi, type DealSortField, type SortDirection } from '../services/deals';
 import type { Deal, DealStatus, DealSource, DealSubSource } from '../types/deal';
+import { normalizeEventDatesForRequest } from '../utils/dealDates';
 import type { OrganizationCategory } from '../types/organization';
 import { organizationsApi } from '../services/organizations';
 import type { Organization } from '../types/organization';
@@ -43,6 +44,7 @@ interface DealFormState {
   eventType: string;
   venue: string;
   eventDate: string;
+  eventDates: string[];
   referencedDealId: string; // For diverted deals
 }
 
@@ -62,6 +64,7 @@ const initialFormState: DealFormState = {
   eventType: '',
   venue: '',
   eventDate: '',
+  eventDates: [],
   referencedDealId: '',
 };
 
@@ -2791,6 +2794,7 @@ const Deals = () => {
     }
     setIsModalOpen(false);
     setDetailError(null);
+    setFormData(initialFormState);
     hasHandledOpenModal.current = false;
     // Clear location state to prevent modal from reopening
     navigate(location.pathname, { replace: true, state: {} });
@@ -3083,7 +3087,12 @@ const Deals = () => {
       referencedDealId: formData.referencedDealId ? Number(formData.referencedDealId) : undefined,
       eventType: formData.eventType ? formData.eventType : undefined,
       venue: formData.venue ? formData.venue : undefined,
-      eventDate: formData.eventDate ? formData.eventDate : undefined,
+      ...normalizeEventDatesForRequest(
+        formData.eventDate || null,
+        formData.eventDates && formData.eventDates.length > 0 
+          ? formData.eventDates.filter(date => date && date.trim() !== '')
+          : null
+      ),
     };
 
     // For diverted deals, omit the value field - backend automatically sets it to 0
@@ -5474,25 +5483,75 @@ const Deals = () => {
               </div>
 
               <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Event Date</label>
-                  <input
-                    type="date"
-                    name="eventDate"
-                    className="form-input"
-                    value={formData.eventDate}
-                    onChange={handleInputChange}
-                    disabled={isSubmitting}
-                    style={{ cursor: 'pointer' }}
-                    onClick={(e) => {
-                      // Open calendar when clicking anywhere on the input
-                      if (!isSubmitting) {
-                        (e.target as HTMLInputElement).showPicker?.();
-                      }
-                    }}
-                  />
+                <div className="form-group" style={{ width: '100%' }}>
+                  <label className="form-label">Event Dates</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {((formData.eventDates && formData.eventDates.length > 0) ? formData.eventDates : ['']).map((date, index) => (
+                      <div key={index} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <input
+                          type="date"
+                          className="form-input"
+                          value={date || ''}
+                          onChange={(e) => {
+                            const newDates = [...(formData.eventDates || [])];
+                            newDates[index] = e.target.value;
+                            setFormData((prev) => ({ ...prev, eventDates: newDates }));
+                          }}
+                          disabled={isSubmitting}
+                          style={{ cursor: 'pointer', flex: 1 }}
+                          onClick={(e) => {
+                            if (!isSubmitting) {
+                              (e.target as HTMLInputElement).showPicker?.();
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newDates = [...(formData.eventDates || [])];
+                            newDates.splice(index, 1);
+                            setFormData((prev) => ({ ...prev, eventDates: newDates }));
+                          }}
+                          disabled={isSubmitting}
+                          style={{
+                            padding: '6px 12px',
+                            backgroundColor: '#ef4444',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                            fontSize: '12px',
+                            opacity: isSubmitting ? 0.5 : 1
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newDates = [...(formData.eventDates || []), ''];
+                        setFormData((prev) => ({ ...prev, eventDates: newDates }));
+                      }}
+                      disabled={isSubmitting}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: '#10b981',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                        fontSize: '12px',
+                        alignSelf: 'flex-start',
+                        opacity: isSubmitting ? 0.5 : 1
+                      }}
+                    >
+                      + Add Date
+                    </button>
+                  </div>
                   <span className="calendar-sync-hint subtle">
-                    Use YYYY-MM-DD so Google Calendar can mirror this deal’s event.
+                    Use YYYY-MM-DD format. Google Calendar will create separate events for each date.
                   </span>
                 </div>
 

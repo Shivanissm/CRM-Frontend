@@ -15,6 +15,7 @@ import type { Pipeline } from '../types/pipeline';
 import ActivityModal, { type ActivityFormValues } from '../components/ActivityModal';
 import MarkAsLostModal from '../components/MarkAsLostModal';
 import DealValueModal from '../components/DealValueModal';
+import { getAllEventDates, normalizeEventDatesForRequest } from '../utils/dealDates';
 import './DealDetail.css';
 
 type ActiveTab = 'Activity' | 'Notes' | 'Meeting scheduler' | 'Call' | 'Email' | 'Send quote' | 'Send Contract' | 'Share Worklinks';
@@ -99,6 +100,7 @@ export default function DealDetail() {
     phoneNumber?: string;
     email?: string;
     eventDate?: string;
+    eventDates?: string[];
     commissionAmount?: string;
     probability?: number | null;
     expectedCloseDate?: string | null;
@@ -118,6 +120,7 @@ export default function DealDetail() {
     phoneNumber: '',
     email: '',
     eventDate: '',
+    eventDates: [],
     commissionAmount: '',
     probability: null,
     expectedCloseDate: null,
@@ -170,6 +173,7 @@ export default function DealDetail() {
         phoneNumber: personData.phone || '',
         email: personData.email || '',
         eventDate: '',
+        eventDates: [],
         commissionAmount: '',
       });
       setLoading(false);
@@ -246,6 +250,7 @@ export default function DealDetail() {
         phoneNumber: dealData.phoneNumber || personPhone || '',
         email: dealData.email || personEmail || '',
         eventDate: dealData.eventDate ? formatDateForInput(dealData.eventDate) : '',
+        eventDates: getAllEventDates(dealData),
         commissionAmount: dealData.commissionAmount?.toString() || '',
         source: dealData.source || '',
         subSource: dealData.subSource || '',
@@ -793,7 +798,7 @@ export default function DealDetail() {
         venue: toNullIfEmpty(formData.venue),
         phoneNumber: toNullIfEmpty(formData.phoneNumber),
         email: toNullIfEmpty(formData.email),
-        eventDate: toNullIfEmpty(formData.eventDate),
+        ...normalizeEventDatesForRequest(formData.eventDate || null, formData.eventDates || null),
         commissionAmount: formData.commissionAmount ? parseFloat(formData.commissionAmount) : null,
       };
 
@@ -835,7 +840,7 @@ export default function DealDetail() {
           venue: toNullIfEmpty(formData.venue),
           phoneNumber: toNullIfEmpty(formData.phoneNumber),
           email: toNullIfEmpty(formData.email),
-          eventDate: toNullIfEmpty(formData.eventDate),
+          ...normalizeEventDatesForRequest(formData.eventDate || null, formData.eventDates || null),
           commissionAmount: parseCommissionAmount(formData.commissionAmount),
           source: formData.source ? (formData.source as DealSource) : undefined,
           subSource: (formData.source === 'Direct' && formData.subSource) ? (formData.subSource as DealSubSource) : undefined,
@@ -863,6 +868,7 @@ export default function DealDetail() {
           phoneNumber: updatedDeal.phoneNumber || '',
           email: updatedDeal.email || '',
           eventDate: updatedDeal.eventDate ? formatDateForInput(updatedDeal.eventDate) : '',
+          eventDates: getAllEventDates(updatedDeal),
           commissionAmount: updatedDeal.commissionAmount?.toString() || '',
           source: updatedDeal.source || '',
           subSource: updatedDeal.subSource || '',
@@ -1506,32 +1512,112 @@ export default function DealDetail() {
                   )}
                 </div>
                 <div className="deal-field-row">
-                  <span className="deal-field-label">Event Date</span>
+                  <span className="deal-field-label">Event Dates</span>
                   <div className="deal-date-input-container">
-                    {editingField === 'eventDate' || eventDatePickerOpen ? (
-                      <>
-                        <input
-                          type="date"
-                          className="deal-field-input"
-                          value={formData.eventDate || ''}
-                          onChange={(e) => handleFieldChange('eventDate', e.target.value)}
-                          onBlur={() => {
+                    {editingField === 'eventDates' || eventDatePickerOpen ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                        {(formData.eventDates || []).map((date, index) => (
+                          <div key={index} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <input
+                              type="date"
+                              className="deal-field-input"
+                              value={date || ''}
+                              onChange={(e) => {
+                                const newDates = [...(formData.eventDates || [])];
+                                newDates[index] = e.target.value;
+                                handleFieldChange('eventDates', newDates);
+                              }}
+                              style={{ flex: 1 }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newDates = [...(formData.eventDates || [])];
+                                newDates.splice(index, 1);
+                                handleFieldChange('eventDates', newDates);
+                              }}
+                              style={{
+                                padding: '4px 8px',
+                                backgroundColor: '#ef4444',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '12px'
+                              }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newDates = [...(formData.eventDates || []), ''];
+                            handleFieldChange('eventDates', newDates);
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            backgroundColor: '#10b981',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            alignSelf: 'flex-start'
+                          }}
+                        >
+                          + Add Date
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
                             setEditingField(null);
                             setEventDatePickerOpen(false);
                           }}
-                          autoFocus
-                        />
-                      </>
-                    ) : (
-                        <span 
-                          className="deal-field-text" 
-                          onClick={() => {
-                            setEditingField('eventDate');
-                            setEventDatePickerOpen(true);
+                          style={{
+                            padding: '6px 12px',
+                            backgroundColor: '#6b7280',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            alignSelf: 'flex-start'
                           }}
                         >
-                        {formData.eventDate ? formatDateForDisplay(formData.eventDate) : ''}
-                        </span>
+                          Done
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {(formData.eventDates && formData.eventDates.length > 0) ? (
+                          formData.eventDates.map((date, index) => (
+                            <span 
+                              key={index}
+                              className="deal-field-text" 
+                              onClick={() => {
+                                setEditingField('eventDates');
+                                setEventDatePickerOpen(true);
+                              }}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              {date ? formatDateForDisplay(date) : 'No date'}
+                            </span>
+                          ))
+                        ) : (
+                          <span 
+                            className="deal-field-text" 
+                            onClick={() => {
+                              setEditingField('eventDates');
+                              setEventDatePickerOpen(true);
+                            }}
+                            style={{ cursor: 'pointer', color: '#9ca3af' }}
+                          >
+                            Click to add event dates
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
