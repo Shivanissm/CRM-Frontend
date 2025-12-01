@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Person, PersonOwner, PersonLabelOption, PersonRequest, FilterMeta } from '../types/person';
 import { personsApi } from '../services/api';
 import { organizationsApi } from '../services/organizations';
@@ -209,7 +210,7 @@ export default function AddPersonModal({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="person-modal-overlay" onClick={onClose}>
       <div className="person-modal" onClick={event => event.stopPropagation()}>
         <header className="person-modal-header">
@@ -361,7 +362,8 @@ export default function AddPersonModal({
           </footer>
         </form>
               </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

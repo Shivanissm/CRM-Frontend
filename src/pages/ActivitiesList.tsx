@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { activitiesApi, type Activity, type PageResponse, type ActivityFilters } from '../services/activities';
 import FilterDropdown, { type SavedFilter as DropdownSavedFilter } from '../components/FilterDropdown';
 import FilterModal, { type FilterCondition } from '../components/FilterModal';
@@ -27,6 +27,8 @@ type SummaryCardAction =
   | 'overdue';
 
 export default function ActivitiesList() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const activityRowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
   const [highlightedActivityId, setHighlightedActivityId] = useState<number | null>(null);
@@ -45,6 +47,7 @@ export default function ActivitiesList() {
   const [activeFilterName, setActiveFilterName] = useState<string | null>(null);
   const [activeCustomFilters, setActiveCustomFilters] = useState<FilterCondition[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const hasHandledOpenModal = useRef(false);
   const [columnMenu, setColumnMenu] = useState<{
     isOpen: boolean;
     columnName: string;
@@ -618,6 +621,32 @@ export default function ActivitiesList() {
     // Clear selections when filters or category change
     setSelectedActivities(new Set());
   }, [category, filters]);
+
+  // Check if modal should be opened from navigation state
+  useEffect(() => {
+    const state = location?.state as any;
+    if (state?.openModal && !isAddOpen && !hasHandledOpenModal.current) {
+      hasHandledOpenModal.current = true;
+      setIsAddOpen(true);
+      // Clear the state to prevent reopening on re-render
+      requestAnimationFrame(() => {
+        navigate(location.pathname, { replace: true, state: {} });
+      });
+    }
+  }, [location?.pathname, location?.state, isAddOpen, navigate]);
+  
+  // Reset the ref when modal is closed and state is cleared
+  useEffect(() => {
+    if (!isAddOpen) {
+      const state = location?.state as any;
+      if (!state?.openModal && hasHandledOpenModal.current) {
+        const timer = setTimeout(() => {
+          hasHandledOpenModal.current = false;
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isAddOpen, location?.state]);
 
   useEffect(() => {
     if (!filters.assignedUser) {
@@ -2507,7 +2536,12 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
 
       <ActivityModal
         isOpen={isAddOpen}
-        onClose={() => setIsAddOpen(false)}
+        onClose={() => {
+          setIsAddOpen(false);
+          hasHandledOpenModal.current = false;
+          // Clear location state to prevent modal from reopening
+          navigate(location.pathname, { replace: true, state: {} });
+        }}
         initialCategory={category}
         initialServiceCategory={DEFAULT_CATEGORY_OPTIONS[0].code}
         userOptions={managerOptions}

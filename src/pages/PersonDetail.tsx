@@ -6,6 +6,7 @@ import { organizationsApi } from '../services/organizations';
 import { dealsApi } from '../services/deals';
 import { activitiesApi, type Activity } from '../services/activities';
 import { clearAuthSession } from '../utils/authToken';
+import { addToRecentlyViewed } from '../utils/recentlyViewed';
 import type { PersonSummary, PersonRequest, PersonOwner, PersonLabelOption, PersonSourceOption, FilterMeta } from '../types/person';
 import type { Organization } from '../types/organization';
 import type { Deal } from '../types/deal';
@@ -158,6 +159,14 @@ export default function PersonDetail() {
       const data = await personsApi.getSummary(personId);
       setSummary(data);
       const person = data.person;
+      
+      // Add to recently viewed
+      addToRecentlyViewed({
+        type: 'person',
+        id: person.id,
+        title: person.name,
+        subtitle: person.organization || person.email || person.phone || undefined,
+      });
       
       // Extract first name from full name
       const nameParts = (person.name || '').split(' ');

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { personsApi } from '../services/api';
 import type { Person, PersonFilters, FilterMeta, PersonFilterCondition, SavedPersonFilter } from '../types/person';
 import FilterModal, { FilterCondition } from '../components/FilterModal';
@@ -69,11 +69,13 @@ const formatDaysAway = (days: number): string => {
 
 export default function PersonsList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [persons, setPersons] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
   const [reloading, setReloading] = useState(false);
   const [filters, setFilters] = useState<PersonFilters>({ page: 0, size: 25 });
   const hasLoadedOnce = useRef(false);
+  const hasHandledOpenModal = useRef(false);
   const [filterMeta, setFilterMeta] = useState<FilterMeta | null>(null);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -235,6 +237,36 @@ export default function PersonsList() {
   useEffect(() => {
     loadCustomFilters();
   }, []);
+
+  // Check if modal should be opened from navigation state
+  useEffect(() => {
+    const state = location.state as any;
+    const shouldOpen = state?.openModal === true;
+    
+    // Only open if we have openModal in state, modal is not already open, and we haven't handled it yet
+    if (shouldOpen && !isAddPersonOpen && !hasHandledOpenModal.current) {
+      hasHandledOpenModal.current = true;
+      setIsAddPersonOpen(true);
+      // Clear the state immediately using requestAnimationFrame to ensure it happens after state update
+      requestAnimationFrame(() => {
+        navigate(location.pathname, { replace: true, state: {} });
+      });
+    }
+  }, [location.pathname, location.state, isAddPersonOpen, navigate]);
+  
+  // Reset the ref when modal is closed and state is cleared
+  useEffect(() => {
+    if (!isAddPersonOpen) {
+      const state = location.state as any;
+      if (!state?.openModal && hasHandledOpenModal.current) {
+        // Small delay to ensure state is fully cleared
+        const timer = setTimeout(() => {
+          hasHandledOpenModal.current = false;
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isAddPersonOpen, location.state]);
 
   useEffect(() => {
     console.log('Filters changed, loading persons...', filters);
@@ -1188,7 +1220,12 @@ export default function PersonsList() {
 
       <AddPersonModal
         isOpen={isAddPersonOpen}
-        onClose={() => setIsAddPersonOpen(false)}
+        onClose={() => {
+          setIsAddPersonOpen(false);
+          // Clear location state using navigate to properly update React Router's location state
+          // This will trigger the useEffect to reset hasHandledOpenModal.current
+          navigate(location.pathname, { replace: true, state: {} });
+        }}
         onSuccess={handlePersonAdded}
         filterMeta={filterMeta || undefined}
         mode={editPerson ? 'edit' : 'create'}

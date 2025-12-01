@@ -1001,16 +1001,24 @@ const Deals = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-open modal if coming from Person page
+  const hasHandledOpenModal = useRef(false);
+  
+  // Auto-open modal if coming from QuickAdd or Person page
   useEffect(() => {
     // Don't open modal if it's already open, if we're submitting, or if we just showed success confirmation
     if (isModalOpen || isSubmitting || showSuccessConfirmation) return;
     
-    const personNameFromState = (location.state as any)?.personName;
-    const shouldOpenModal = (location.state as any)?.openModal;
+    const state = location.state as any;
+    const personNameFromState = state?.personName;
+    const shouldOpenModal = state?.openModal === true;
     
-    if (shouldOpenModal && personNameFromState) {
-      let initialData = { ...initialFormState, personName: personNameFromState };
+    // Only proceed if we have openModal in state and haven't handled it yet
+    if (shouldOpenModal && !hasHandledOpenModal.current) {
+      hasHandledOpenModal.current = true;
+      let initialData = { ...initialFormState };
+      if (personNameFromState) {
+        initialData.personName = personNameFromState;
+      }
       
       // Auto-select pipeline, organization, and category based on selectedPipelineId
       if (selectedPipelineId) {
@@ -1077,10 +1085,25 @@ const Deals = () => {
       
       setFormData(initialData);
       setIsModalOpen(true);
-      // Clear the state after using it
-      window.history.replaceState({}, document.title);
+      // Clear the state after using it using navigate to properly update React Router's location state
+      requestAnimationFrame(() => {
+        navigate(location.pathname, { replace: true, state: {} });
+      });
     }
-  }, [location.state, pipelines, categoryOptions, isModalOpen, isSubmitting, selectedPipelineId, showSuccessConfirmation]);
+  }, [location.pathname, location.state, pipelines, categoryOptions, isModalOpen, isSubmitting, selectedPipelineId, showSuccessConfirmation, navigate]);
+  
+  // Reset the ref when modal is closed and state is cleared
+  useEffect(() => {
+    if (!isModalOpen) {
+      const state = location.state as any;
+      if (!state?.openModal && hasHandledOpenModal.current) {
+        const timer = setTimeout(() => {
+          hasHandledOpenModal.current = false;
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isModalOpen, location.state]);
 
   const fetchCategories = async (force = false) => {
     if (categoryLoading) return;
@@ -1234,15 +1257,32 @@ const Deals = () => {
     const todayStr = today.toISOString().split('T')[0];
 
     // Get person details for the activities
-    // Try to find person in local array first, but if not found or phone is missing, fetch from API
+    // Try to find person in local array first
     let person = persons.find(p => p.id === deal.personId);
+    
+    // If person not found or missing phone, try to fetch all persons in a single call
     if ((!person || !person.phone) && deal.personId) {
       console.log(`[createQualifiedStageActivities] Person not found in local array or missing phone, fetching from API...`);
       try {
-        person = await personsApi.get(deal.personId);
-        console.log(`[createQualifiedStageActivities] Fetched person from API:`, { id: person.id, name: person.name, phone: person.phone });
+        // Fetch all persons in a single call instead of individual call
+        const personsPage = await personsApi.list({ page: 0, size: 1000, sort: 'name,asc' });
+        const allPersons = personsPage.content || [];
+        person = allPersons.find(p => p.id === deal.personId);
+        if (person) {
+          console.log(`[createQualifiedStageActivities] Found person in API response:`, { id: person.id, name: person.name, phone: person.phone });
+          // Update local persons state for future use
+          setPersons(prev => {
+            const existing = prev.find(p => p.id === person!.id);
+            if (!existing) {
+              return [...prev, person!];
+            }
+            return prev.map(p => p.id === person!.id ? person! : p);
+          });
+        } else {
+          console.warn(`[createQualifiedStageActivities] Person ${deal.personId} not found in API response`);
+        }
       } catch (err) {
-        console.warn(`[createQualifiedStageActivities] Failed to fetch person ${deal.personId} from API:`, err);
+        console.warn(`[createQualifiedStageActivities] Failed to fetch persons from API:`, err);
         // Continue with person from local array or null
       }
     }
@@ -1384,19 +1424,40 @@ const Deals = () => {
         }
       });
 
-      // Fetch latest person data from API for all persons with deals
+      // Fetch latest person data from API for all persons with deals in a single call
       const personMap = new Map<number, Person>();
-      for (const personId of personIds) {
+      if (personIds.size > 0) {
         try {
-          const latestPerson = await personsApi.get(personId);
-          personMap.set(personId, latestPerson);
-          console.log(`[checkAndMoveDeals] Fetched latest person ${personId}:`, { name: latestPerson.name, phone: latestPerson.phone });
+          // Fetch all persons in a single API call
+          const personsPage = await personsApi.list({ page: 0, size: 1000, sort: 'name,asc' });
+          const allPersons = personsPage.content || [];
+          
+          // Create a map of persons by ID for quick lookup
+          allPersons.forEach(person => {
+            if (personIds.has(person.id)) {
+              personMap.set(person.id, person);
+              console.log(`[checkAndMoveDeals] Found person ${person.id}:`, { name: person.name, phone: person.phone });
+            }
+          });
+          
+          // For any person IDs not found in the API response, fall back to local data
+          for (const personId of personIds) {
+            if (!personMap.has(personId)) {
+              const localPerson = persons.find(p => p.id === personId);
+              if (localPerson) {
+                personMap.set(personId, localPerson);
+                console.log(`[checkAndMoveDeals] Using local person data for ${personId}`);
+              }
+            }
+          }
         } catch (err) {
-          console.warn(`[checkAndMoveDeals] Failed to fetch person ${personId} from API:`, err);
-          // Fall back to local person data if available
-          const localPerson = persons.find(p => p.id === personId);
-          if (localPerson) {
-            personMap.set(personId, localPerson);
+          console.warn(`[checkAndMoveDeals] Failed to fetch persons from API, using local data:`, err);
+          // Fall back to local person data for all persons
+          for (const personId of personIds) {
+            const localPerson = persons.find(p => p.id === personId);
+            if (localPerson) {
+              personMap.set(personId, localPerson);
+            }
           }
         }
       }
@@ -2648,6 +2709,9 @@ const Deals = () => {
     }
     setIsModalOpen(false);
     setDetailError(null);
+    hasHandledOpenModal.current = false;
+    // Clear location state to prevent modal from reopening
+    navigate(location.pathname, { replace: true, state: {} });
   };
 
   const handleInputChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -2773,17 +2837,9 @@ const Deals = () => {
         personId = foundPerson.id;
         console.log(`✓ Found person: ID=${foundPerson.id}, Name="${foundPerson.name}", Phone="${foundPerson.phone}"`);
         
-        // Fetch the latest person data to ensure we have the most up-to-date phone number
-        try {
-          const latestPerson = await personsApi.get(foundPerson.id);
-          personHasPhone = !!(latestPerson.phone && latestPerson.phone.trim().length > 0);
-          console.log(`✓ Fetched latest person data for "${foundPerson.name}": phone="${latestPerson.phone}", personHasPhone=${personHasPhone}`);
-        } catch (err) {
-          // If fetching fails, fall back to cached data
-          console.warn('⚠ Failed to fetch latest person data, using cached data:', err);
-          personHasPhone = !!(foundPerson.phone && foundPerson.phone.trim().length > 0);
-          console.log(`Using cached person data for "${foundPerson.name}": phone="${foundPerson.phone}", personHasPhone=${personHasPhone}`);
-        }
+        // Use cached person data from the persons array (already loaded and refreshed)
+        personHasPhone = !!(foundPerson.phone && foundPerson.phone.trim().length > 0);
+        console.log(`✓ Using cached person data for "${foundPerson.name}": phone="${foundPerson.phone}", personHasPhone=${personHasPhone}`);
       } else {
         console.log(`✗ Person not found in cache, will create new person`);
         // Person doesn't exist, create a new one
@@ -2978,8 +3034,9 @@ const Deals = () => {
       setIsModalOpen(false);
       setFormData(initialFormState);
       setSelectedDeal(createdDeal);
+      hasHandledOpenModal.current = false;
       // Clear location state to prevent modal from reopening
-      window.history.replaceState({}, document.title);
+      navigate(location.pathname, { replace: true, state: {} });
       // Show success confirmation pop-up
       setCreatedDealName(createdDeal.name);
       setShowSuccessConfirmation(true);
