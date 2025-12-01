@@ -1299,7 +1299,7 @@
   font-weight: 500;
   white-space: nowrap;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  animation: fadeInTooltip 0.1s ease-out;
+  animation: fadeInRspTooltip 0.15s ease-out;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1356,6 +1356,17 @@
   transform: translateX(-50%);
   border: 5px solid transparent;
   border-top-color: #1f2937;
+}
+
+@keyframes fadeInRspTooltip {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -100%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%) translateY(0);
+  }
 }
 
 @keyframes fadeInTooltip {

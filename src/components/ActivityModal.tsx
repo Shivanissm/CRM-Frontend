@@ -104,9 +104,10 @@ export default function ActivityModal({
   const [dealOptions, setDealOptions] = useState<Deal[]>([]);
   const [personOptions, setPersonOptions] = useState<Person[]>([]);
   const [organizationLookup, setOrganizationLookup] = useState<Record<number, string>>({});
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [filteredOrganizations, setFilteredOrganizations] = useState<Organization[]>([]);
-  const [showOrgSuggestions, setShowOrgSuggestions] = useState(false);
+  // State variables for organizations - setters are used but variables themselves are not read
+  const [_organizations, setOrganizations] = useState<Organization[]>([]);
+  const [_filteredOrganizations, setFilteredOrganizations] = useState<Organization[]>([]);
+  const [_showOrgSuggestions, _setShowOrgSuggestions] = useState(false);
   const [dealInput, setDealInput] = useState('');
   const [personInput, setPersonInput] = useState('');
   const [serviceCategory, setServiceCategory] = useState<string>(initialServiceCategory);
@@ -148,17 +149,18 @@ export default function ActivityModal({
     }
   };
 
-  const loadOrganizations = async () => {
-    try {
-      const orgs = await organizationsApi.list();
-      setOrganizations(orgs ?? []);
-      setFilteredOrganizations(orgs ?? []);
-    } catch (err: any) {
-      console.error('Failed to load organizations:', err);
-      setOrganizations([]);
-      setFilteredOrganizations([]);
-    }
-  };
+  // Unused function - kept for potential future use
+  // const loadOrganizations = async () => {
+  //   try {
+  //     const orgs = await organizationsApi.list();
+  //     setOrganizations(orgs ?? []);
+  //     setFilteredOrganizations(orgs ?? []);
+  //   } catch (err: any) {
+  //     console.error('Failed to load organizations:', err);
+  //     setOrganizations([]);
+  //     setFilteredOrganizations([]);
+  //   }
+  // };
 
   const deriveTypeFromCategory = (cat?: string) => {
     if (cat === 'Call') return 'CALL';
@@ -251,6 +253,7 @@ export default function ActivityModal({
         setDealOptions(deals ?? []);
         setPersonOptions(personsResponse?.content ?? []);
         const orgs = organizations ?? [];
+        // Store organizations for potential future use (setters are used, but state variables are not read)
         setOrganizations(orgs);
         setFilteredOrganizations(orgs);
         const lookup: Record<number, string> = {};

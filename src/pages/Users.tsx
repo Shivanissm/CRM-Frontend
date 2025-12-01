@@ -1,5 +1,6 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import './Users.css';
 import { usersApi } from '../services/users';
 import type { User } from '../types/user';
@@ -65,6 +66,8 @@ const buildAvatar = (user: User): string => {
 };
 
 export default function Users() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +86,7 @@ export default function Users() {
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [showDuplicateEmailToast, setShowDuplicateEmailToast] = useState(false);
   const [inviteForm, setInviteForm] = useState(INVITE_FORM_INITIAL);
+  const hasHandledOpenModal = useRef(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isDetailVisible, setIsDetailVisible] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'tree'>('table');
@@ -121,6 +125,32 @@ export default function Users() {
     const timer = window.setTimeout(() => setInviteSuccess(null), 4000);
     return () => window.clearTimeout(timer);
   }, [inviteSuccess]);
+
+  // Check if modal should be opened from navigation state
+  useEffect(() => {
+    const state = (location as any)?.state;
+    if (state?.openModal && !inviteOpen && !hasHandledOpenModal.current) {
+      hasHandledOpenModal.current = true;
+      setInviteOpen(true);
+      // Clear the state to prevent reopening on re-render
+      requestAnimationFrame(() => {
+        navigate(location.pathname, { replace: true, state: {} });
+      });
+    }
+  }, [location.pathname, (location as any)?.state, inviteOpen, navigate]);
+  
+  // Reset the ref when modal is closed and state is cleared
+  useEffect(() => {
+    if (!inviteOpen) {
+      const state = (location as any)?.state;
+      if (!state?.openModal && hasHandledOpenModal.current) {
+        const timer = setTimeout(() => {
+          hasHandledOpenModal.current = false;
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [inviteOpen, (location as any)?.state]);
 
   const uniqueRoles = useMemo(() => {
     const set = new Set<AllowedRole>();
@@ -322,6 +352,9 @@ const filteredUsers = useMemo(() => {
     setInviteOpen(false);
     setInviteError(null);
     setInviteForm({ ...INVITE_FORM_INITIAL });
+    hasHandledOpenModal.current = false;
+    // Clear location state to prevent modal from reopening
+    navigate(location.pathname, { replace: true, state: {} });
   };
 
   const handleInviteSubmit = async (event: FormEvent<HTMLFormElement>) => {

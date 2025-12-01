@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import OrganizationModal from '../components/OrganizationModal';
 import { organizationsApi } from '../services/organizations';
 import { dealsApi } from '../services/deals';
@@ -14,6 +15,8 @@ type ModalState =
   | { mode: 'edit'; organization: Organization };
 
 export default function Organizations() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [allOrganizations, setAllOrganizations] = useState<Organization[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -31,6 +34,7 @@ export default function Organizations() {
   const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('');
   const [isDateRangeDropdownOpen, setIsDateRangeDropdownOpen] = useState(false);
   const dateRangeDropdownRef = useRef<HTMLDivElement>(null);
+  const hasHandledOpenModal = useRef(false);
 
   const storedUser = getStoredUser();
   const normalizedRole = (storedUser?.role || '').toUpperCase();
@@ -223,6 +227,31 @@ export default function Organizations() {
     );
     setOrganizations(filtered);
   }, [allOrganizations, users, isCategoryManager, currentUserId]);
+  // Check if modal should be opened from navigation state
+  useEffect(() => {
+    const state = location.state as any;
+    if (state?.openModal && !modalState && !hasHandledOpenModal.current) {
+      hasHandledOpenModal.current = true;
+      setModalState({ mode: 'create' });
+      // Clear the state to prevent reopening on re-render using navigate
+      requestAnimationFrame(() => {
+        navigate(location.pathname, { replace: true, state: {} });
+      });
+    }
+  }, [location.pathname, location.state, modalState, navigate]);
+  
+  // Reset the ref when modal is closed and state is cleared
+  useEffect(() => {
+    if (!modalState) {
+      const state = location.state as any;
+      if (!state?.openModal && hasHandledOpenModal.current) {
+        const timer = setTimeout(() => {
+          hasHandledOpenModal.current = false;
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [modalState, location.state]);
 
   // Close date range dropdown when clicking outside
   useEffect(() => {
@@ -667,7 +696,12 @@ export default function Organizations() {
           isOpen
           mode={modalState.mode}
           organization={modalState.mode === 'edit' ? modalState.organization : undefined}
-          onClose={() => setModalState(null)}
+          onClose={() => {
+            setModalState(null);
+            hasHandledOpenModal.current = false;
+            // Clear location state to prevent modal from reopening
+            navigate(location.pathname, { replace: true, state: {} });
+          }}
           onSubmit={handleModalSubmit}
           owners={owners}
           categories={categories}

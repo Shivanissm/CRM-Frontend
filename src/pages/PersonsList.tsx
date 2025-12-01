@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { personsApi } from '../services/api';
 import type { Person, PersonFilters, FilterMeta, PersonFilterCondition, SavedPersonFilter } from '../types/person';
 import FilterModal, { FilterCondition } from '../components/FilterModal';
@@ -69,11 +69,13 @@ const formatDaysAway = (days: number): string => {
 
 export default function PersonsList() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [persons, setPersons] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
   const [reloading, setReloading] = useState(false);
   const [filters, setFilters] = useState<PersonFilters>({ page: 0, size: 25 });
   const hasLoadedOnce = useRef(false);
+  const hasHandledOpenModal = useRef(false);
   const [filterMeta, setFilterMeta] = useState<FilterMeta | null>(null);
   const [totalPages, setTotalPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
@@ -103,7 +105,7 @@ export default function PersonsList() {
   const [isAddCustomOpen, setIsAddCustomOpen] = useState(false);
   const [newField, setNewField] = useState<{ name: string; type: 'text' | 'date' | 'select' | '' }>({ name: '', type: '' });
   // Draggable column order (excludes the checkbox column)
-  const defaultColumnsOrder = ['name','instagramId','source','phone','label','organization','manager','leadDate'];
+  const defaultColumnsOrder = ['name','instagramId','source','subSource','email','phone','label','organization','manager','leadDate'];
   const [columnOrder, setColumnOrder] = useState<string[]>(defaultColumnsOrder);
   const [draggingColumn, setDraggingColumn] = useState<string | null>(null);
 
@@ -147,34 +149,6 @@ export default function PersonsList() {
     { name: 'Person created last month', conditions: [] as PersonFilterCondition[], isSystem: true },
   ];
 
-  useEffect(() => {
-    loadFilterMeta();
-  }, []);
-
-  const loadCustomFilters = async () => {
-    setCustomFiltersLoading(true);
-    try {
-      const customFilters = await personsApi.listCustomFilters();
-      setSavedFilters(customFilters);
-    } catch (error) {
-      console.error('Failed to load saved filters:', error);
-    } finally {
-      setCustomFiltersLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadCustomFilters();
-  }, []);
-
-  useEffect(() => {
-    console.log('Filters changed, loading persons...', filters);
-    loadPersons();
-  }, [filters]);
-
-  // Note: Custom filters are applied when saved, they work alongside manual filters
-  // Manual filters from dropdowns take precedence
-
   const loadFilterMeta = async () => {
     try {
       const meta = await personsApi.getFilters();
@@ -184,7 +158,17 @@ export default function PersonsList() {
     }
   };
 
-  const loadPersons = async () => {
+  const isLoadingRef = useRef(false);
+  
+  const loadPersons = useCallback(async () => {
+    // Prevent multiple simultaneous loads using ref
+    if (isLoadingRef.current) {
+      console.log('Already loading, skipping...');
+      return;
+    }
+    
+    isLoadingRef.current = true;
+    
     // Use loading state only for initial load, reloading for subsequent loads
     if (!hasLoadedOnce.current) {
       setLoading(true);
@@ -200,25 +184,101 @@ export default function PersonsList() {
         contentLength: response.content?.length || 0,
         firstPerson: response.content?.[0]?.name || 'none'
       });
-      setPersons(response.content);
-      setTotalPages(response.totalPages);
-      setCurrentPage(response.number);
-      hasLoadedOnce.current = true;
-    } catch (error) {
+      // Only update if we got valid data
+      if (response && response.content) {
+        setPersons(response.content);
+        setTotalPages(response.totalPages);
+        setCurrentPage(response.number);
+        hasLoadedOnce.current = true;
+      } else {
+        console.warn('Invalid response from API:', response);
+      }
+    } catch (error: any) {
       console.error('Failed to load persons:', error);
-      if ((error as any)?.response?.status === 401) {
-        handleLogout();
+      // Don't clear existing data on error - keep what we have
+      // Only clear if it's the first load
+      if (!hasLoadedOnce.current) {
+        setPersons([]);
+      }
+      if (error?.response?.status === 401) {
+        clearAuthSession();
+        navigate('/login', { replace: true });
       }
     } finally {
+      isLoadingRef.current = false;
       setLoading(false);
       setReloading(false);
     }
+  }, [filters, navigate]);
+
+  const loadCustomFilters = async () => {
+    setCustomFiltersLoading(true);
+    try {
+      const customFilters = await personsApi.listCustomFilters();
+      setSavedFilters(customFilters);
+    } catch (error: any) {
+      console.error('Failed to load saved filters:', error);
+      // Don't crash the page if custom filters fail to load
+      // Just set empty array and continue
+      setSavedFilters([]);
+      // If it's a routing error (404 or 400), it's likely a backend issue
+      if (error?.response?.status === 404 || error?.response?.status === 400) {
+        console.warn('Custom filters endpoint not available or routing issue. Continuing without custom filters.');
+      }
+    } finally {
+      setCustomFiltersLoading(false);
+    }
   };
 
-  const handleLogout = () => {
-    clearAuthSession();
-    navigate('/login', { replace: true });
-  };
+  useEffect(() => {
+    loadFilterMeta();
+  }, []);
+
+  useEffect(() => {
+    loadCustomFilters();
+  }, []);
+
+  // Check if modal should be opened from navigation state
+  useEffect(() => {
+    const state = location.state as any;
+    const shouldOpen = state?.openModal === true;
+    
+    // Only open if we have openModal in state, modal is not already open, and we haven't handled it yet
+    if (shouldOpen && !isAddPersonOpen && !hasHandledOpenModal.current) {
+      hasHandledOpenModal.current = true;
+      setIsAddPersonOpen(true);
+      // Clear the state immediately using requestAnimationFrame to ensure it happens after state update
+      requestAnimationFrame(() => {
+        navigate(location.pathname, { replace: true, state: {} });
+      });
+    }
+  }, [location.pathname, location.state, isAddPersonOpen, navigate]);
+  
+  // Reset the ref when modal is closed and state is cleared
+  useEffect(() => {
+    if (!isAddPersonOpen) {
+      const state = location.state as any;
+      if (!state?.openModal && hasHandledOpenModal.current) {
+        // Small delay to ensure state is fully cleared
+        const timer = setTimeout(() => {
+          hasHandledOpenModal.current = false;
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isAddPersonOpen, location.state]);
+
+  useEffect(() => {
+    console.log('Filters changed, loading persons...', filters);
+    const abortController = new AbortController();
+    loadPersons();
+    return () => {
+      abortController.abort();
+    };
+  }, [filters, loadPersons]);
+
+  // Note: Custom filters are applied when saved, they work alongside manual filters
+  // Manual filters from dropdowns take precedence
 
   const handleFilterChange = (key: keyof PersonFilters, value: string | undefined) => {
     setFilters(prev => ({ ...prev, [key]: value || undefined, page: 0 }));
@@ -389,11 +449,11 @@ export default function PersonsList() {
   ] : [];
 
   const fieldOptions: Record<string, string[]> = filterMeta ? {
-    label: filterMeta.labelOptions?.map(option => option.code) || [],
-    source: filterMeta.sourceOptions?.map(option => option.code) || [],
-    category: filterMeta.categories,
-    organization: filterMeta.organizations,
-    manager: filterMeta.managers,
+    label: Array.isArray(filterMeta.labelOptions) ? filterMeta.labelOptions.map(option => option.code) : [],
+    source: Array.isArray(filterMeta.sourceOptions) ? filterMeta.sourceOptions.map(option => option.code) : [],
+    category: Array.isArray(filterMeta.categories) ? filterMeta.categories : [],
+    organization: Array.isArray(filterMeta.organizations) ? filterMeta.organizations : [],
+    manager: Array.isArray(filterMeta.managers) ? filterMeta.managers : [],
   } : {};
 
   const handleAddPerson = () => {
@@ -517,6 +577,8 @@ export default function PersonsList() {
       name: 'Name',
       instagramId: 'Instagram ID',
       source: 'Source',
+      subSource: 'Sub Source',
+      email: 'Email',
       phone: 'Phone',
       category: 'Category',
       organization: 'Organization',
@@ -626,9 +688,18 @@ export default function PersonsList() {
     try {
       await personsApi.delete(id);
       closeRowMenu();
-      loadPersons();
-    } catch (err) {
-      alert('Failed to delete.');
+      // Remove from selected persons if it was selected
+      setSelectedPersons(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      // Reload persons - if we're on a page that becomes empty, the backend should handle pagination
+      await loadPersons();
+    } catch (err: any) {
+      console.error('Failed to delete person:', err);
+      const errorMessage = err?.response?.data?.message || err?.message || 'Failed to delete person.';
+      alert(`Failed to delete: ${errorMessage}`);
     }
   };
 
@@ -721,7 +792,7 @@ export default function PersonsList() {
     { field: 'label', label: 'Label', type: 'select' as const, options: filterMeta.labelOptions?.map(option => option.code) || [] },
     { field: 'instagramId', label: 'Instagram ID', type: 'text' as const },
     { field: 'phone', label: 'Phone', type: 'text' as const },
-    { field: 'source', label: 'Person Source', type: 'select' as const, options: filterMeta.sourceOptions?.map(option => option.code) || [] },
+    { field: 'source', label: 'Person Source', type: 'select' as const, options: Array.isArray(filterMeta.sourceOptions) ? filterMeta.sourceOptions.map(option => option.code) : [] },
   ] : [];
 
   return (
@@ -791,12 +862,23 @@ export default function PersonsList() {
           <button className="bulk-edit-button" onClick={() => setIsBulkEditOpen(true)}>
             Bulk edit
           </button>
-          <button className="bulk-delete-button" onClick={() => {
+          <button className="bulk-delete-button" onClick={async () => {
+            if (!selectedPersons.size) {
+              alert('Please select at least one person to delete.');
+              return;
+            }
             if (confirm(`Delete ${selectedPersons.size} person(s)?`)) {
-              personsApi.bulkDelete(Array.from(selectedPersons)).then(() => {
+              try {
+                const idsToDelete = Array.from(selectedPersons);
+                await personsApi.bulkDelete(idsToDelete);
                 setSelectedPersons(new Set());
-                loadPersons();
-              });
+                // Reload persons after successful deletion
+                await loadPersons();
+              } catch (err: any) {
+                console.error('Failed to delete persons:', err);
+                const errorMessage = err?.response?.data?.message || err?.message || 'Failed to delete persons.';
+                alert(`Failed to delete: ${errorMessage}`);
+              }
             }
           }}>
             Delete
@@ -883,7 +965,7 @@ export default function PersonsList() {
               </div>
             )}
 
-            {filterMeta.sourceOptions && (
+            {filterMeta.sourceOptions && Array.isArray(filterMeta.sourceOptions) && filterMeta.sourceOptions.length > 0 && (
               <div className="filter-group">
                 <select
                   value={filters.source || ''}
@@ -1000,11 +1082,16 @@ export default function PersonsList() {
                             case 'name': return person.name || 'undefined';
                             case 'instagramId': return person.instagramId || '-';
                             case 'source': {
-                              const val = (person as any)?.source || (person as any)?.email || '';
+                              const val = (person as any)?.source || '';
                               return val ? (
                                 <span style={getSourceStyle(val)}>{val}</span>
                               ) : '-';
                             }
+                            case 'subSource': {
+                              const val = (person as any)?.subSource || '';
+                              return val || '-';
+                            }
+                            case 'email': return person.email || '-';
                             case 'phone': return person.phone || '-';
                             case 'category': return person.category || '-';
                             case 'organization': return person.organization || '-';
@@ -1133,7 +1220,12 @@ export default function PersonsList() {
 
       <AddPersonModal
         isOpen={isAddPersonOpen}
-        onClose={() => setIsAddPersonOpen(false)}
+        onClose={() => {
+          setIsAddPersonOpen(false);
+          // Clear location state using navigate to properly update React Router's location state
+          // This will trigger the useEffect to reset hasHandledOpenModal.current
+          navigate(location.pathname, { replace: true, state: {} });
+        }}
         onSuccess={handlePersonAdded}
         filterMeta={filterMeta || undefined}
         mode={editPerson ? 'edit' : 'create'}

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import StageModal from '../components/StageModal';
 import PipelineModal from '../components/PipelineModal';
 import { pipelinesApi } from '../services/pipelines';
@@ -15,6 +16,8 @@ type PipelineModalState =
   | { mode: 'edit'; pipeline: Pipeline };
 
 export default function Pipelines() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +25,7 @@ export default function Pipelines() {
   const [pipelineModal, setPipelineModal] = useState<PipelineModalState | null>(null);
   const [busyStageKey, setBusyStageKey] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const hasHandledOpenModal = useRef(false);
 
   const sortedPipelines = useMemo(
     () =>
@@ -46,6 +50,32 @@ export default function Pipelines() {
   useEffect(() => {
     void loadPipelines();
   }, []);
+
+  // Check if modal should be opened from navigation state
+  useEffect(() => {
+    const state = location.state as any;
+    if (state?.openModal && !pipelineModal && !hasHandledOpenModal.current) {
+      hasHandledOpenModal.current = true;
+      setPipelineModal({ mode: 'create' });
+      // Clear the state to prevent reopening on re-render
+      requestAnimationFrame(() => {
+        navigate(location.pathname, { replace: true, state: {} });
+      });
+    }
+  }, [location.pathname, location.state, pipelineModal, navigate]);
+  
+  // Reset the ref when modal is closed and state is cleared
+  useEffect(() => {
+    if (!pipelineModal) {
+      const state = location.state as any;
+      if (!state?.openModal && hasHandledOpenModal.current) {
+        const timer = setTimeout(() => {
+          hasHandledOpenModal.current = false;
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [pipelineModal, location.state]);
 
   const loadPipelines = async () => {
     setLoading(true);
@@ -364,7 +394,12 @@ export default function Pipelines() {
           isOpen
           mode={pipelineModal.mode}
           pipeline={pipelineModal.mode === 'edit' ? pipelineModal.pipeline : undefined}
-          onClose={() => setPipelineModal(null)}
+          onClose={() => {
+            setPipelineModal(null);
+            hasHandledOpenModal.current = false;
+            // Clear location state to prevent modal from reopening
+            navigate(location.pathname, { replace: true, state: {} });
+          }}
           onSubmit={handlePipelineSubmit}
           categoryOptions={categoryOptions}
         />

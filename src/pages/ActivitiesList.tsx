@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { activitiesApi, type Activity, type PageResponse, type ActivityFilters } from '../services/activities';
 import FilterDropdown, { type SavedFilter as DropdownSavedFilter } from '../components/FilterDropdown';
 import FilterModal, { type FilterCondition } from '../components/FilterModal';
@@ -28,6 +28,8 @@ type SummaryCardAction =
   | 'overdue';
 
 export default function ActivitiesList() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const activityRowRefs = useRef<Map<number, HTMLTableRowElement>>(new Map());
   const [highlightedActivityId, setHighlightedActivityId] = useState<number | null>(null);
@@ -66,6 +68,7 @@ export default function ActivitiesList() {
   const [activeFilterName, setActiveFilterName] = useState<string | null>(null);
   const [activeCustomFilters, setActiveCustomFilters] = useState<FilterCondition[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const hasHandledOpenModal = useRef(false);
   const [columnMenu, setColumnMenu] = useState<{
     isOpen: boolean;
     columnName: string;
@@ -1105,6 +1108,32 @@ export default function ActivitiesList() {
 
   // Sync selectedManagerFilter with filters.assignedUserId (not assignedUser string)
   // This ensures the dropdown shows the correct user when a user is selected
+  // Check if modal should be opened from navigation state
+  useEffect(() => {
+    const state = location?.state as any;
+    if (state?.openModal && !isAddOpen && !hasHandledOpenModal.current) {
+      hasHandledOpenModal.current = true;
+      setIsAddOpen(true);
+      // Clear the state to prevent reopening on re-render
+      requestAnimationFrame(() => {
+        navigate(location.pathname, { replace: true, state: {} });
+      });
+    }
+  }, [location?.pathname, location?.state, isAddOpen, navigate]);
+  
+  // Reset the ref when modal is closed and state is cleared
+  useEffect(() => {
+    if (!isAddOpen) {
+      const state = location?.state as any;
+      if (!state?.openModal && hasHandledOpenModal.current) {
+        const timer = setTimeout(() => {
+          hasHandledOpenModal.current = false;
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isAddOpen, location?.state]);
+
   useEffect(() => {
     if (!filters.assignedUserId) {
       setSelectedManagerFilter('');
@@ -2480,6 +2509,60 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           );
         }
       case 'attachment':
+        // Show image thumbnail if attachmentUrl exists, otherwise show file input
+        if (a.attachmentUrl) {
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div
+                style={{
+                  position: 'relative',
+                  cursor: 'pointer',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openScreenshotViewer(a);
+                }}
+                title="Click to view full image"
+              >
+                <img
+                  src={a.attachmentUrl}
+                  alt="Screenshot"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    objectFit: 'cover',
+                    borderRadius: 4,
+                    border: '1px solid #e5e7eb',
+                    cursor: 'pointer',
+                  }}
+                  onError={(e) => {
+                    console.error('Failed to load image:', a.attachmentUrl);
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openScreenshotViewer(a);
+                }}
+                style={{
+                  padding: '4px 8px',
+                  fontSize: 12,
+                  color: '#2563eb',
+                  background: 'transparent',
+                  border: '1px solid #2563eb',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                }}
+                title="Edit/Replace image"
+              >
+                Edit
+              </button>
+            </div>
+          );
+        }
         return (
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <label
@@ -3125,7 +3208,12 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
 
       <ActivityModal
         isOpen={isAddOpen}
-        onClose={() => setIsAddOpen(false)}
+        onClose={() => {
+          setIsAddOpen(false);
+          hasHandledOpenModal.current = false;
+          // Clear location state to prevent modal from reopening
+          navigate(location.pathname, { replace: true, state: {} });
+        }}
         initialCategory={category}
         initialServiceCategory={DEFAULT_CATEGORY_OPTIONS[0].code}
         userOptions={managerOptions}

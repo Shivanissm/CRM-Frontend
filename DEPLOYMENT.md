@@ -1,95 +1,174 @@
 # Deployment Guide
 
-## Environment Variables
+## MIME Type Error Fix
 
-For production deployment, you need to set the following environment variable:
-
-### `VITE_API_BASE_URL`
-
-This should be set to your backend API base URL (without trailing slash).
-
-**Example:**
-```bash
-VITE_API_BASE_URL=https://api.yourdomain.com
+If you're getting the error:
+```
+Failed to load module script: Expected a JavaScript-or-Wasm module script but the server responded with a MIME type of "text/html"
 ```
 
-Or if your backend is on the same domain:
-```bash
-VITE_API_BASE_URL=https://yourdomain.com
-```
+This means your server is returning HTML (usually a 404 page) instead of the JavaScript files, or the server isn't configured to serve static files correctly.
 
-## CORS Configuration
+## Server Configuration
 
-CORS (Cross-Origin Resource Sharing) errors occur when the backend server doesn't allow requests from the frontend's origin. This is a **backend configuration issue** that must be fixed on the server side.
+### Nginx Configuration
 
-### Backend Requirements
+Add this to your Nginx configuration:
 
-Your backend server must:
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    root /path/to/your/dist;
+    index index.html;
 
-1. **Allow the frontend origin** in CORS configuration
-2. **Include proper CORS headers** in responses:
-   - `Access-Control-Allow-Origin: <frontend-domain>`
-   - `Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS`
-   - `Access-Control-Allow-Headers: Content-Type, Authorization`
-   - `Access-Control-Allow-Credentials: true` (if using cookies)
+    # Serve static files with correct MIME types
+    location ~* \.(js|mjs|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        add_header Content-Type application/javascript;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
 
-### Example Backend CORS Configuration (Spring Boot)
+    # Specifically handle JavaScript modules
+    location ~* \.(js|mjs)$ {
+        add_header Content-Type application/javascript;
+        add_header Access-Control-Allow-Origin *;
+    }
 
-```java
-@Configuration
-public class CorsConfig {
-    @Bean
-    public WebMvcConfigurer corsConfigurer() {
-        return new WebMvcConfigurer() {
-            @Override
-            public void addCorsMappings(CorsRegistry registry) {
-                registry.addMapping("/api/**")
-                    .allowedOrigins("https://your-frontend-domain.com")
-                    .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                    .allowedHeaders("*")
-                    .allowCredentials(true);
-            }
-        };
+    # Handle all routes - serve index.html for client-side routing
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # API proxy (if needed)
+    location /api {
+        proxy_pass http://localhost:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
     }
 }
 ```
 
-### Troubleshooting CORS Errors
+### Apache Configuration
 
-If you're seeing CORS errors in production:
+Add this to your `.htaccess` file in the `dist` directory:
 
-1. **Check environment variable**: Ensure `VITE_API_BASE_URL` is set correctly
-2. **Verify backend CORS configuration**: The backend must allow your frontend domain
-3. **Check browser console**: Look for the exact error message and which origin is being blocked
-4. **Test API directly**: Use tools like Postman or curl to verify the backend is accessible
-5. **Check network tab**: Verify the actual request URL and headers being sent
+```apache
+# Enable rewrite engine
+RewriteEngine On
 
-## Building for Production
+# Set correct MIME types
+AddType application/javascript .js
+AddType application/javascript .mjs
+AddType text/css .css
 
-```bash
-npm run build
+# Serve index.html for all routes (client-side routing)
+RewriteBase /
+RewriteRule ^index\.html$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule . /index.html [L]
+
+# Cache static assets
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+</IfModule>
 ```
 
-The built files will be in the `dist/` directory.
+### Node.js/Express Server
 
-## Environment Variables in Production
+If using Express to serve the static files:
 
-For different deployment platforms:
+```javascript
+const express = require('express');
+const path = require('path');
+const app = express();
 
-### Vercel
-Add environment variables in the Vercel dashboard under Project Settings > Environment Variables
+// Serve static files with correct MIME types
+app.use(express.static(path.join(__dirname, 'dist'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.js') || filePath.endsWith('.mjs')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    }
+  }
+}));
 
-### Netlify
-Add environment variables in the Netlify dashboard under Site Settings > Build & Deploy > Environment
+// Handle client-side routing
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
 
-### Docker
-```dockerfile
-ENV VITE_API_BASE_URL=https://api.yourdomain.com
+app.listen(3000, () => {
+  console.log('Server running on port 3000');
+});
 ```
 
-### Static Hosting
-Set environment variables during build:
-```bash
-VITE_API_BASE_URL=https://api.yourdomain.com npm run build
+## Build Configuration
+
+Make sure your `vite.config.ts` is set up correctly:
+
+```typescript
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+    // Ensure proper chunking
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
+  },
+})
 ```
 
+## Verification Steps
+
+1. **Check build output**: After running `npm run build`, verify that the `dist` folder contains:
+   - `index.html`
+   - `assets/` folder with `.js` and `.css` files
+
+2. **Check file paths**: Open `dist/index.html` and verify the script tags point to the correct paths (should be `/assets/...`)
+
+3. **Test locally**: Run `npm run preview` to test the production build locally
+
+4. **Check server logs**: When accessing the deployed app, check server logs to see what files are being requested and what's being returned
+
+5. **Browser DevTools**: 
+   - Open Network tab
+   - Look for failed requests (red)
+   - Check the Response tab - if you see HTML instead of JavaScript, the server is returning the wrong file
+
+## Common Issues
+
+1. **404 errors**: The server can't find the JS files - check file paths and server root directory
+2. **Wrong MIME type**: Server is serving JS files as `text/html` - add MIME type configuration
+3. **Base path issues**: If app is deployed in a subdirectory, you may need to set `base` in `vite.config.ts`
+4. **Caching**: Old cached files might cause issues - clear browser cache or add cache-busting
+
+## If Deployed in Subdirectory
+
+If your app is deployed at `https://example.com/app/` instead of `https://example.com/`, update `vite.config.ts`:
+
+```typescript
+export default defineConfig({
+  base: '/app/',
+  // ... rest of config
+})
+```
+
+Then rebuild: `npm run build`
