@@ -23,6 +23,11 @@ interface SetTargetModalProps {
   categories: CategoryOption[];
   defaultCategory?: TargetCategory;
   defaultUserId?: number;
+  /**
+   * Optional default assignee type. When opening the modal from the
+   * Pre-Sales tab we pass PRE_SALES so the form is tailored to pre-sales.
+   */
+  defaultAssigneeType?: AssigneeType;
 }
 
 const DEFAULT_PERIOD: PeriodType = 'MONTHLY';
@@ -60,6 +65,7 @@ export default function SetTargetModal({
   categories,
   defaultCategory,
   defaultUserId,
+  defaultAssigneeType,
 }: SetTargetModalProps) {
   const [selectedCategory, setSelectedCategory] = useState<TargetCategory | ''>('');
   const [assigneeType, setAssigneeType] = useState<AssigneeType>('SALES');
@@ -114,6 +120,19 @@ export default function SetTargetModal({
       });
   }, [isOpen, categories, defaultCategory]);
 
+  // When the modal opens, align the assignee type with the context (Sales / Pre-Sales tab)
+  useEffect(() => {
+    if (!isOpen) return;
+    setAssigneeType(defaultAssigneeType ?? 'SALES');
+  }, [isOpen, defaultAssigneeType]);
+
+  // For Pre-Sales, always track targets as COUNT (number of diverted deals)
+  useEffect(() => {
+    if (assigneeType === 'PRE_SALES') {
+      setMetricType('COUNT');
+    }
+  }, [assigneeType]);
+
   useEffect(() => {
     if (!isOpen) return;
     setAmountInput('');
@@ -150,28 +169,100 @@ export default function SetTargetModal({
     };
   }, [showOrgDropdown]);
 
-  // Filter users based on assign type and team membership
+  // Filter users based on assign type, team membership, and (when possible) pipelines for the selected category
   const filteredUsers = useMemo(() => {
-    const roleKey = assigneeType === 'PRE_SALES' ? 'PRE_SALES' : 'SALES';
-    let userList = users.filter((user) => normalizeRole(user.role) === roleKey);
+    let userList: User[] = [];
 
-    // If Sales, show users who are team managers
-    // If Pre Sales, show users who are team members
-    if (assigneeType === 'SALES') {
-      const managerIds = new Set(
-        teams.map((team) => team.manager?.id).filter((id): id is number => id !== undefined && id !== null)
-      );
-      userList = userList.filter((user) => managerIds.has(user.id));
+    if (assigneeType === 'PRE_SALES') {
+      // Support both "PRE_SALES" and "PRESALES" style role values from backend
+      userList = users.filter((user) => {
+        const role = normalizeRole(user.role);
+        return role === 'PRE_SALES' || role === 'PRESALES';
+      });
     } else {
-      // Pre Sales: show users who are team members
-      const memberIds = new Set(
-        teams.flatMap((team) => team.members.map((member) => member.id))
+      userList = users.filter((user) => normalizeRole(user.role) === 'SALES');
+    }
+
+    // If we have team information, further refine the list; otherwise fall back to role only.
+    if (teams.length > 0) {
+      if (assigneeType === 'SALES') {
+        const managerIds = new Set(
+          teams.map((team) => team.manager?.id).filter((id): id is number => id !== undefined && id !== null)
+        );
+        userList = userList.filter((user) => managerIds.has(user.id));
+      } else {
+        // Pre Sales: show users who are team members
+        const memberIds = new Set(
+          teams.flatMap((team) => team.members.map((member) => member.id))
+        );
+        // If there are no members defined, keep all pre-sales users; otherwise restrict.
+        if (memberIds.size > 0) {
+          userList = userList.filter((user) => memberIds.has(user.id));
+        }
+      }
+    }
+
+    // Keep a copy of the base list (role + team) so we can fall back if category filter removes everyone
+    const baseUserList = [...userList];
+
+    // Further narrow users to only those whose teams have pipelines in the selected category
+    if (selectedCategory && pipelines.length && teams.length) {
+      const normalizeCategoryForComparison = (cat: string): string =>
+        cat
+          .toUpperCase()
+          .replace(/_/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      const selectedCategoryNormalized = normalizeCategoryForComparison(selectedCategory);
+
+      const teamIdsForCategory = new Set(
+        pipelines
+          .filter((pipeline) => {
+            if (!pipeline.category || !pipeline.teamId) return false;
+            const pipelineCategoryNormalized = normalizeCategoryForComparison(pipeline.category);
+            return pipelineCategoryNormalized === selectedCategoryNormalized;
+          })
+          .map((pipeline) => pipeline.teamId!) // non-null after filter
       );
-      userList = userList.filter((user) => memberIds.has(user.id));
+
+      if (teamIdsForCategory.size > 0) {
+        let narrowed: User[] = [...userList];
+
+        if (assigneeType === 'SALES') {
+          // Keep sales users who manage teams that have pipelines in this category
+          narrowed = userList.filter((user) =>
+            teams.some(
+              (team) =>
+                team.manager?.id === user.id &&
+                team.id !== undefined &&
+                teamIdsForCategory.has(team.id)
+            )
+          );
+        } else {
+          // Keep pre-sales users who are members of teams that have pipelines in this category
+          narrowed = userList.filter((user) =>
+            teams.some(
+              (team) =>
+                team.id !== undefined &&
+                teamIdsForCategory.has(team.id) &&
+                team.members.some((member) => member.id === user.id)
+            )
+          );
+        }
+
+        // If category-based narrowing removed all users (due to incomplete team/pipeline wiring),
+        // fall back to the base list so admins can still select pre-sales users.
+        if (narrowed.length > 0) {
+          userList = narrowed;
+        } else {
+          userList = baseUserList;
+        }
+      }
     }
 
     return userList.sort((a, b) => (a.firstName || '').localeCompare(b.firstName || ''));
-  }, [users, assigneeType, teams]);
+  }, [users, assigneeType, teams, pipelines, selectedCategory]);
 
   // Filter organizations based on user and their pipeline associations
   // Only show organizations that are connected to the selected team manager through pipelines
@@ -563,33 +654,47 @@ export default function SetTargetModal({
             </div>
             <div className="set-target-field set-target-metric">
               <span>Tracking metric</span>
-              <div className="set-target-metric-options">
-                <label>
-                  <input
-                    type="radio"
-                    name="metric-type"
-                    value="VALUE"
-                    checked={metricType === 'VALUE'}
-                    onChange={() => setMetricType('VALUE')}
-                  />
-                  Value
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="metric-type"
-                    value="COUNT"
-                    checked={metricType === 'COUNT'}
-                    onChange={() => setMetricType('COUNT')}
-                  />
-                  Count
-                </label>
-              </div>
+              {assigneeType === 'PRE_SALES' ? (
+                <div className="set-target-metric-options">
+                  <span className="set-target-metric-label">
+                    Count (number of diverted deals)
+                  </span>
+                </div>
+              ) : (
+                <div className="set-target-metric-options">
+                  <label>
+                    <input
+                      type="radio"
+                      name="metric-type"
+                      value="VALUE"
+                      checked={metricType === 'VALUE'}
+                      onChange={() => setMetricType('VALUE')}
+                    />
+                    Value
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="metric-type"
+                      value="COUNT"
+                      checked={metricType === 'COUNT'}
+                      onChange={() => setMetricType('COUNT')}
+                    />
+                    Count
+                  </label>
+                </div>
+              )}
             </div>
             <div className="set-target-field set-target-amount">
-              <span>{metricType === 'VALUE' ? 'Value' : 'Count'}</span>
+              <span>
+                {metricType === 'VALUE'
+                  ? 'Value'
+                  : assigneeType === 'PRE_SALES'
+                  ? 'Count (diverted deals)'
+                  : 'Count'}
+              </span>
               <div className="set-target-amount-row">
-                {metricType === 'VALUE' && (
+                {metricType === 'VALUE' && assigneeType !== 'PRE_SALES' && (
                   <select value={amountUnit} onChange={(e) => setAmountUnit(e.target.value as AmountUnit)}>
                     {AMOUNT_UNITS.map((option) => (
                       <option key={option.value} value={option.value}>

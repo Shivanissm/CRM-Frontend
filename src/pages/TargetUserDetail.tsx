@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { targetsApi } from '../services/targets';
 import SetTargetModal from '../components/SetTargetModal';
@@ -54,6 +54,7 @@ interface WonDeal {
   commission?: number;
   source?: string;
   instagramId?: string;
+  wonDate?: string;
   weddingDate?: string;
   weddingVenue?: string;
   phone?: string;
@@ -79,7 +80,8 @@ export default function TargetUserDetail() {
   const [isSetTargetModalOpen, setIsSetTargetModalOpen] = useState(false);
   // Filter state
   const [selectedCategory, setSelectedCategory] = useState<TargetCategory | 'all'>('all');
-  const [selectedOrganization, setSelectedOrganization] = useState<string>('all');
+  // For organization filter, allow multi-select. When the array is empty, it means "all organizations".
+  const [selectedOrganizations, setSelectedOrganizations] = useState<string[]>([]);
   const [selectedTimePreset, setSelectedTimePreset] = useState<TimePreset>('THIS_YEAR');
   const [customMonth, setCustomMonth] = useState<number>(CURRENT_MONTH);
   const [customYear, setCustomYear] = useState<number>(CURRENT_YEAR);
@@ -91,8 +93,30 @@ export default function TargetUserDetail() {
   const [dashboardDeals, setDashboardDeals] = useState<WonDeal[]>([]);
   const [dealsLoading, setDealsLoading] = useState<boolean>(false);
   const [dealsError, setDealsError] = useState<string | null>(null);
+  const [isOrgDropdownOpen, setIsOrgDropdownOpen] = useState(false);
+  const [orgSearch, setOrgSearch] = useState('');
+  const orgDropdownRef = useRef<HTMLDivElement | null>(null);
   const storedUser = getStoredUser();
   const isAdmin = storedUser?.role === 'ADMIN';
+  const isCategoryManager = storedUser?.role === 'CATEGORY_MANAGER';
+  const isSales = storedUser?.role === 'SALES';
+  const isPreSales = storedUser?.role === 'PRESALES';
+  const loggedInUserId = storedUser?.userId;
+
+  // Access control:
+  // - ADMIN & CATEGORY_MANAGER: full access to this Sales detail page.
+  // - SALES: can see only their own detail page.
+  // - PRESALES (and others): should not be on this page at all; redirect to dashboard.
+  useEffect(() => {
+    if (isPreSales) {
+      navigate('/targets');
+      return;
+    }
+
+    if (isSales && userId && loggedInUserId && Number(userId) !== loggedInUserId) {
+      navigate('/targets');
+    }
+  }, [isPreSales, isSales, userId, loggedInUserId, navigate]);
 
   useEffect(() => {
     if (userId) {
@@ -105,7 +129,7 @@ export default function TargetUserDetail() {
     if (userId) {
       loadUserData();
     }
-  }, [selectedCategory, selectedOrganization, selectedYear]);
+  }, [selectedCategory, selectedOrganizations, selectedYear]);
 
 
   useEffect(() => {
@@ -138,25 +162,32 @@ export default function TargetUserDetail() {
     commission: deal.commissionAmount,
     source: deal.dealSource || deal.personSource,
     instagramId: deal.instagramId,
+    wonDate: deal.wonDate,
     weddingDate: deal.eventDate,
     weddingVenue: deal.venue,
     phone: deal.phoneNumber,
   }), []);
 
-  const mapUserDealDetail = useCallback((deal: UserDealDetail): WonDeal => ({
-    dealId: deal.dealId,
-    dealName: deal.dealName,
-    dealValue: deal.dealValue,
-    organization: deal.organization,
-    commission: deal.commission,
-    source: deal.source,
-    instagramId: deal.instagramId,
-    weddingDate: deal.weddingDate,
-    weddingVenue: deal.weddingVenue,
-    phone: deal.phone,
-    month: deal.month,
-    year: deal.year,
-  }), []);
+  const mapUserDealDetail = useCallback(
+    (deal: UserDealDetail): WonDeal => ({
+      dealId: deal.dealId,
+      dealName: deal.dealName,
+      dealValue: deal.dealValue,
+      organization: deal.organization,
+      commission: deal.commission,
+      // Prefer the explicit reporting fields when present, but keep backward
+      // compatibility with the older `source` property.
+      source: deal.source || deal.dealSource || deal.personSource,
+      instagramId: deal.instagramId,
+      wonDate: deal.wonDate,
+      weddingDate: deal.weddingDate,
+      weddingVenue: deal.weddingVenue,
+      phone: deal.phone,
+      month: deal.month,
+      year: deal.year,
+    }),
+    [],
+  );
 
   const loadUserDeals = useCallback(async () => {
     if (!userId) return;
@@ -302,6 +333,12 @@ export default function TargetUserDetail() {
     return Array.from(merged.values());
   }, [userData]);
 
+  const filteredOrganizationOptions = useMemo(() => {
+    const term = orgSearch.trim().toLowerCase();
+    if (!term) return organizationOptions;
+    return organizationOptions.filter((org) => org.name?.toLowerCase().includes(term));
+  }, [organizationOptions, orgSearch]);
+
   const defaultModalCategory = useMemo<TargetCategory | undefined>(() => {
     if (selectedCategory !== 'all') {
       return selectedCategory;
@@ -312,11 +349,31 @@ export default function TargetUserDetail() {
   const currentUserId = useMemo(() => (userId ? Number(userId) : undefined), [userId]);
 
   useEffect(() => {
-    if (selectedOrganization !== 'all') return;
-    const firstOrgWithName = organizationOptions.find((org) => org.name && org.name.trim().length > 0);
+    // When no specific organizations are selected and there is exactly one organization,
+    // auto-select it for convenience.
+    if (selectedOrganizations.length > 0) return;
+    if (!organizationOptions.length) return;
+    const firstOrgWithName = organizationOptions.find(
+      (org) => org.name && org.name.trim().length > 0,
+    );
     if (!firstOrgWithName?.name) return;
-    setSelectedOrganization(firstOrgWithName.name);
-  }, [organizationOptions, selectedOrganization]);
+    setSelectedOrganizations([firstOrgWithName.name]);
+  }, [organizationOptions, selectedOrganizations]);
+
+  // Close the organization dropdown when clicking outside
+  useEffect(() => {
+    if (!isOrgDropdownOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!orgDropdownRef.current) return;
+      if (!orgDropdownRef.current.contains(event.target as Node)) {
+        setIsOrgDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOrgDropdownOpen]);
 
   const timePresetOptions = useMemo<TimePresetOption[]>(() => {
     if (filtersMeta?.presets?.length) {
@@ -463,23 +520,19 @@ export default function TargetUserDetail() {
       }
     }
 
-    if (selectedOrganization === 'all') {
+    // Organization auto-selection / validation for multi-select
+    if (selectedOrganizations.length === 0) {
       if (organizationOptions.length === 1) {
-        setSelectedOrganization(organizationOptions[0].name);
+        setSelectedOrganizations([organizationOptions[0].name]);
       }
     } else {
-      const exists = organizationOptions.some((org) => org.name === selectedOrganization);
-      if (!exists) {
-        setSelectedOrganization('all');
+      const validNames = new Set(organizationOptions.map((org) => org.name));
+      const filteredSelection = selectedOrganizations.filter((name) => validNames.has(name));
+      if (filteredSelection.length !== selectedOrganizations.length) {
+        setSelectedOrganizations(filteredSelection);
       }
     }
-  }, [
-    userData,
-    selectedCategory,
-    selectedOrganization,
-    organizationOptions,
-    categoryOptions,
-  ]);
+  }, [userData, selectedCategory, selectedOrganizations, organizationOptions, categoryOptions]);
 
   const formatCurrency = (amount: number): string => {
     return new Intl.NumberFormat('en-IN', {
@@ -573,8 +626,10 @@ export default function TargetUserDetail() {
       // For now, we'll show all deals
     }
 
-    if (selectedOrganization !== 'all') {
-      deals = deals.filter(deal => deal.organization === selectedOrganization);
+    if (selectedOrganizations.length > 0) {
+      deals = deals.filter(
+        (deal) => deal.organization && selectedOrganizations.includes(deal.organization),
+      );
     }
 
     deals = deals.filter((deal) => {
@@ -589,7 +644,7 @@ export default function TargetUserDetail() {
     dashboardDeals,
     userData?.deals,
     selectedCategory,
-    selectedOrganization,
+    selectedOrganizations,
     isWithinSelectedRange,
     mapUserDealDetail,
   ]);
@@ -772,34 +827,134 @@ export default function TargetUserDetail() {
 
             <div className="target-user-goal-filter-group">
               <label>Category</label>
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value as TargetCategory | 'all')}
-                className="target-user-goal-filter-select"
-              >
-                <option value="all">All Categories</option>
-                {categoryOptions.map((cat) => (
-                  <option key={cat.code} value={cat.code}>
-                    {cat.label}
-                  </option>
-                ))}
-              </select>
+              {isAdmin ? (
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value as TargetCategory | 'all')}
+                  className="target-user-goal-filter-select"
+                >
+                  <option value="all">All Categories</option>
+                  {categoryOptions.map((cat) => (
+                    <option key={cat.code} value={cat.code}>
+                      {cat.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="target-user-goal-filter-value">
+                  {categoryOptions.find((c) => c.code === selectedCategory)?.label ||
+                    (selectedCategory === 'all' ? 'All Categories' : selectedCategory.replace(/_/g, ' '))}
+                </div>
+              )}
             </div>
 
             <div className="target-user-goal-filter-group">
-              <label>Organization</label>
-              <select
-                value={selectedOrganization}
-                onChange={(e) => setSelectedOrganization(e.target.value)}
-                className="target-user-goal-filter-select"
-              >
-                <option value="all">All Organizations</option>
-                {organizationOptions.map((org) => (
-                  <option key={org.id} value={org.name}>
-                    {org.name}
-                  </option>
-                ))}
-              </select>
+              <label>Organizations</label>
+              {isAdmin ? (
+                <div className="set-target-multi" ref={orgDropdownRef}>
+                  <button
+                    type="button"
+                    className={`set-target-multi-trigger${
+                      selectedOrganizations.length === 0 ? ' placeholder' : ''
+                    }`}
+                    onClick={() => setIsOrgDropdownOpen((open) => !open)}
+                    disabled={organizationOptions.length === 0}
+                  >
+                    {selectedOrganizations.length === 0 && <span>All organizations</span>}
+                    {selectedOrganizations.length > 0 && (
+                      <div className="set-target-multi-tags">
+                        {selectedOrganizations.map((name) => (
+                          <span key={name} className="set-target-tag">
+                            {name}
+                            <span
+                              className="set-target-tag-remove"
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Remove ${name}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setSelectedOrganizations((prev) =>
+                                  prev.filter((orgName) => orgName !== name),
+                                );
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setSelectedOrganizations((prev) =>
+                                    prev.filter((orgName) => orgName !== name),
+                                  );
+                                }
+                              }}
+                            >
+                              ×
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <span className="set-target-multi-caret">▾</span>
+                  </button>
+                  {isOrgDropdownOpen && (
+                    <div className="set-target-multi-dropdown">
+                      <div className="set-target-multi-search">
+                        <input
+                          type="text"
+                          placeholder="Search organizations"
+                          value={orgSearch}
+                          onChange={(e) => setOrgSearch(e.target.value)}
+                          autoFocus
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className="set-target-multi-option special"
+                        onClick={() => setSelectedOrganizations([])}
+                      >
+                        All organizations
+                        {selectedOrganizations.length === 0 && (
+                          <span className="set-target-check">✓</span>
+                        )}
+                      </button>
+                      <div className="set-target-multi-options">
+                        {filteredOrganizationOptions.map((org) => {
+                          const isSelected =
+                            !!org.name && selectedOrganizations.includes(org.name);
+                          return (
+                            <button
+                              key={org.id}
+                              type="button"
+                              className={`set-target-multi-option${
+                                isSelected ? ' selected' : ''
+                              }`}
+                              onClick={() => {
+                                if (!org.name) return;
+                                setSelectedOrganizations((prev) =>
+                                  prev.includes(org.name!)
+                                    ? prev.filter((n) => n !== org.name)
+                                    : [...prev, org.name!],
+                                );
+                              }}
+                            >
+                              <span>{org.name}</span>
+                              {isSelected && <span className="set-target-check">✓</span>}
+                            </button>
+                          );
+                        })}
+                        {filteredOrganizationOptions.length === 0 && (
+                          <div className="set-target-empty">No matches found.</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="target-user-goal-filter-value">
+                  {selectedOrganizations.length === 0
+                    ? organizationOptions.map((o) => o.name).join(', ') || 'All Organizations'
+                    : selectedOrganizations.join(', ')}
+                </div>
+              )}
             </div>
 
             <div className="target-user-goal-filter-group">
@@ -1068,6 +1223,7 @@ export default function TargetUserDetail() {
                 <th className="target-user-deals-header">Organization</th>
                 <th className="target-user-deals-header">Commission</th>
                 <th className="target-user-deals-header">Source</th>
+                <th className="target-user-deals-header">Won Date</th>
                 <th className="target-user-deals-header">Instagram ID</th>
                 <th className="target-user-deals-header">Wedding Date</th>
                 <th className="target-user-deals-header">Wedding Venue</th>
@@ -1091,6 +1247,9 @@ export default function TargetUserDetail() {
                       {typeof deal.commission === 'number' ? formatCurrency(deal.commission) : '-'}
                     </td>
                     <td className="target-user-deals-cell">{deal.source || '-'}</td>
+                    <td className="target-user-deals-cell">
+                      {formatDate(deal.wonDate)}
+                    </td>
                     <td className="target-user-deals-cell">{deal.instagramId || '-'}</td>
                     <td className="target-user-deals-cell">{formatDate(deal.weddingDate)}</td>
                     <td className="target-user-deals-cell">{deal.weddingVenue || '-'}</td>

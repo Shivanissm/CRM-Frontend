@@ -72,6 +72,8 @@ export interface AppliedFilters {
   editableForCurrentUser: boolean;
 }
 
+export type TargetUserRole = 'SALES' | 'PRESALES';
+
 export interface TargetRow {
   userId: number;
   userName: string;
@@ -81,6 +83,11 @@ export interface TargetRow {
   totalDeals: number;
   incentivePercent: number;
   incentiveAmount: number;
+  /**
+   * Role for which this target row applies (SALES or PRESALES).
+   * Optional to keep backwards compatibility with older backend responses.
+   */
+  userRole?: TargetUserRole;
 }
 
 export interface CategoryMonthlyBreakdownMonth {
@@ -130,10 +137,21 @@ export interface DealSummary {
   commissionAmount: number;
   dealSource?: string;
   personSource?: string;
+  /**
+   * Optional legacy/source fields that some backends may still send.
+   * We keep them to improve divert vs direct attribution on the frontend.
+   */
+  source?: string;
+  isDiverted?: boolean;
   phoneNumber?: string;
   venue?: string;
   eventDate?: string;
   organization?: string;
+  /**
+   * Optional date/time when the deal was marked as WON.
+   * Newer backend versions may include this; older ones won't.
+   */
+  wonDate?: string;
   category: TargetCategory;
   userId: number;
   userName: string;
@@ -177,11 +195,26 @@ export interface UserDealDetail {
   dealValue: number;
   organization?: string;
   commission: number;
+  /**
+   * Human‑readable source label for this deal (e.g. "Direct", "Divert", "Reference").
+   *
+   * Older backend versions exposed this as `source`, while newer reporting
+   * payloads align with `DealSummary` and use `dealSource` / `personSource`.
+   * We keep all three optional so that the UI can derive a single source
+   * string regardless of which shape the API returns.
+   */
   source?: string;
+  dealSource?: string;
+  personSource?: string;
   instagramId?: string;
   weddingDate?: string;
   weddingVenue?: string;
   phone?: string;
+  /**
+   * Optional date/time when the deal was marked as WON.
+   * Backends that don't send this field will simply leave it undefined.
+   */
+  wonDate?: string;
   month: number;
   year: number;
 }
@@ -198,7 +231,18 @@ export interface UserTargetDetailResponse {
   userName: string;
   year: number;
   monthlyData: UserMonthlyData[];
-  deals?: UserDealDetail[];
+  /**
+   * List of won deals attributed to this user.
+   *
+   * Historically this endpoint returned a custom UserDealDetail shape that
+   * already contained month/year fields. The backend has since been updated
+   * to return DealSummary objects (same shape as the dashboard deals list)
+   * under the "deals" field.
+   *
+   * To remain backwards compatible with older payloads while supporting the
+   * new DealSummary-based response, we model this as a union type.
+   */
+  deals?: Array<UserDealDetail | DealSummary>;
   availableCategories?: CategoryOptionLike[];
   categories?: CategoryOptionLike[];
   availableOrganizationIds?: number[];

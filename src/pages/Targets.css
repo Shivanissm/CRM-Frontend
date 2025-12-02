@@ -48,11 +48,25 @@
 
 .targets-actions {
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.targets-actions-main {
+  display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: flex-end;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.targets-layer-toggle {
+  display: flex;
+  justify-content: center;
+  width: 100%;
 }
 
 .targets-filters {
@@ -589,22 +603,6 @@
 .targets-table-row-editable:hover {
   background: #eff6ff !important;
   box-shadow: inset 0 0 0 1px #3b82f6;
-}
-
-.targets-cell-target {
-  position: relative;
-}
-
-.targets-table-row-editable:hover .targets-cell-target::after {
-  content: 'Click to edit';
-  position: absolute;
-  bottom: -18px;
-  left: 16px;
-  font-size: 10px;
-  color: #3b82f6;
-  font-weight: 500;
-  white-space: nowrap;
-  z-index: 1;
 }
 
 .targets-table-row:last-child {
