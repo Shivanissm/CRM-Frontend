@@ -11,9 +11,11 @@ import {
   type PersonSourceOption,
   type PersonRequest,
   type FilterMeta,
+  type PersonCategory,
 } from '../types/person';
 import { getStoredToken, logoutAndRedirect } from '../utils/authToken';
 import { withApiBase } from '../config/api';
+import { organizationsApi } from './organizations';
 
 const api = axios.create({
   baseURL: withApiBase('/api/persons'),
@@ -37,7 +39,9 @@ const normalizePerson = (raw: RawPerson): Person => ({
   ...raw,
   organization: raw.organizationName ?? raw.organization ?? null,
   manager: raw.ownerDisplayName ?? raw.manager ?? null,
-  category: raw.label ?? raw.category ?? null,
+  category: raw.categoryName ?? raw.label ?? raw.category ?? null, // Legacy: use categoryName for display
+  categoryId: raw.categoryId ?? null,
+  categoryName: raw.categoryName ?? null,
   createdDate: raw.leadDate ?? raw.createdDate ?? null,
   source: raw.source ?? null,
 });
@@ -64,11 +68,41 @@ api.interceptors.response.use(
 const buildParams = (filters: PersonFilters = {}): Record<string, string> => {
   const params: Record<string, string> = {};
   if (filters.q) params.q = filters.q;
-  const label = filters.label || filters.category;
-  if (label) params.label = label;
+  // Handle label as array or single value
+  if (filters.label) {
+    if (Array.isArray(filters.label)) {
+      params.label = filters.label.join(',');
+    } else {
+      params.label = filters.label;
+    }
+  }
   if (filters.source) params.source = filters.source;
-  if (filters.organizationId) params.organizationId = filters.organizationId.toString();
-  if (filters.ownerId) params.ownerId = filters.ownerId.toString();
+  // Handle organizationId as array or single value
+  if (filters.organizationId) {
+    if (Array.isArray(filters.organizationId)) {
+      params.organizationId = filters.organizationId.join(',');
+    } else {
+      params.organizationId = filters.organizationId.toString();
+    }
+  }
+  // Handle ownerId as array or single value
+  if (filters.ownerId) {
+    if (Array.isArray(filters.ownerId)) {
+      params.ownerId = filters.ownerId.join(',');
+    } else {
+      params.ownerId = filters.ownerId.toString();
+    }
+  }
+  // Handle categoryId as array or single value
+  if (filters.categoryId) {
+    if (Array.isArray(filters.categoryId)) {
+      params.categoryId = filters.categoryId.join(',');
+    } else {
+      params.categoryId = filters.categoryId.toString();
+    }
+  }
+  // Legacy support: if category (string) is provided, try to use it (backend may handle it)
+  if (filters.category && !filters.categoryId) params.category = filters.category;
   const leadFrom = filters.leadFrom || (filters as any).dateFrom;
   const leadTo = filters.leadTo || (filters as any).dateTo;
   if (leadFrom) params.leadFrom = leadFrom;
@@ -129,21 +163,86 @@ export const personsApi = {
     return normalizePerson(response.data);
   },
 
+  listCategories: async (): Promise<PersonCategory[]> => {
+    const response = await api.get<{ success: boolean; message?: string; data: PersonCategory[] } | PersonCategory[]>('/categories');
+    // Handle wrapped response: { success: true, data: [...] }
+    if (response.data && typeof response.data === 'object' && 'data' in response.data && Array.isArray((response.data as any).data)) {
+      return (response.data as any).data;
+    }
+    // Handle direct array response
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    return [];
+  },
+
   getFilters: async (): Promise<FilterMeta> => {
-    const [labelsResp, sourcesResp, ownersResp] = await Promise.all([
+    const [labelsResp, sourcesResp, ownersResp, categoriesResp, orgsResp] = await Promise.allSettled([
       api.get<PersonLabelOption[]>('/labels'),
       api.get<PersonSourceOption[]>('/sources'),
       api.get<PersonOwner[]>('/owners'),
+      api.get<PersonCategory[]>('/categories').catch((err) => {
+        console.warn('Failed to fetch categories from /api/persons/categories:', err);
+        return Promise.reject(err);
+      }),
+      organizationsApi.list().catch((err) => {
+        console.warn('Failed to fetch organizations:', err);
+        return Promise.reject(err);
+      }),
     ]);
 
+    // Extract categories from response - show all categories from backend
+    let categories: string[] = [];
+    let categoryOptions: PersonCategory[] = [];
+    if (categoriesResp.status === 'fulfilled') {
+      // Handle both wrapped and direct array responses
+      let categoriesData: PersonCategory[] = [];
+      const respData = categoriesResp.value.data;
+      
+      if (Array.isArray(respData)) {
+        categoriesData = respData;
+      } else if (respData && typeof respData === 'object' && 'data' in respData && Array.isArray((respData as any).data)) {
+        categoriesData = (respData as any).data;
+      }
+      
+      if (Array.isArray(categoriesData)) {
+        // PersonCategory has id and name
+        categoryOptions = categoriesData;
+        categories = categoriesData
+          .map(cat => cat.name || '')
+          .filter(name => name);
+      }
+    } else {
+      console.warn('Categories fetch failed, using empty array');
+    }
+
+    // Extract organizations
+    let organizations: string[] = [];
+    let organizationOptions: Array<{ id: number; name: string; category?: string | null; ownerId?: number | null }> = [];
+    if (orgsResp.status === 'fulfilled') {
+      organizationOptions = orgsResp.value.map(org => ({ 
+        id: org.id, 
+        name: org.name || '',
+        category: org.category || null,
+        ownerId: org.owner?.id || null
+      })).filter(org => org.name);
+      organizations = organizationOptions.map(org => org.name);
+    } else {
+      console.warn('Organizations fetch failed, using empty array');
+    }
+
     return {
-      categories: labelsResp.data.map((option) => option.code),
-      organizations: [],
-      managers: ownersResp.data.map((owner) => owner.displayName || owner.email),
+      categories,
+      categoryOptions,
+      organizations,
+      organizationOptions,
+      managers: ownersResp.status === 'fulfilled' 
+        ? ownersResp.value.data.map((owner) => owner.displayName || owner.email)
+        : [],
       venues: [],
-      labelOptions: labelsResp.data,
-      sourceOptions: sourcesResp.data,
-      ownerOptions: ownersResp.data,
+      labelOptions: labelsResp.status === 'fulfilled' ? labelsResp.value.data : [],
+      sourceOptions: sourcesResp.status === 'fulfilled' ? sourcesResp.value.data : [],
+      ownerOptions: ownersResp.status === 'fulfilled' ? ownersResp.value.data : [],
     };
   },
 

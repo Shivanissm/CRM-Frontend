@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { Person, PersonOwner, PersonLabelOption, PersonRequest, FilterMeta } from '../types/person';
+import type { Person, PersonOwner, PersonLabelOption, PersonRequest, FilterMeta, PersonCategory } from '../types/person';
 import { personsApi } from '../services/api';
 import { organizationsApi } from '../services/organizations';
 import { dealsApi } from '../services/deals';
@@ -25,6 +25,7 @@ type PersonFormState = {
   email: string;
   instagramId: string;
   label: string;
+  category: string;
   source: string;
   subSource: string;
   ownerId: string;
@@ -50,6 +51,7 @@ export default function AddPersonModal({
     email: '',
     instagramId: '',
     label: '',
+    category: '',
     source: '',
     subSource: '',
     ownerId: '',
@@ -57,10 +59,13 @@ export default function AddPersonModal({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSuccessConfirmation, setShowSuccessConfirmation] = useState<boolean>(false);
+  const [createdPersonName, setCreatedPersonName] = useState<string>('');
 
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [owners, setOwners] = useState<PersonOwner[]>([]);
   const [labels, setLabels] = useState<PersonLabelOption[]>([]);
+  const [categories, setCategories] = useState<PersonCategory[]>([]);
   const [sources, setSources] = useState<Array<{ code: string; label: string }>>([]);
   const [subSources, setSubSources] = useState<Array<{ code: string; label: string }>>([]);
 
@@ -69,10 +74,14 @@ export default function AddPersonModal({
 
     const loadOptions = async () => {
       try {
-        const [orgs, ownerOptions, labelOptions, sourceOptions, subSourceOptions] = await Promise.all([
+        const [orgs, ownerOptions, labelOptions, categoryOptions, sourceOptions, subSourceOptions] = await Promise.all([
           organizationsApi.list(),
           personsApi.listOwners(),
           personsApi.listLabels(),
+          personsApi.listCategories().catch((err) => {
+            console.error('Failed to load categories from API:', err);
+            return [];
+          }),
           dealsApi.listSources().catch((err) => {
             console.error('Failed to load deal sources from API, using fallback:', err);
             // Fallback to hardcoded deal sources if API fails
@@ -97,6 +106,8 @@ export default function AddPersonModal({
         setOrganizations(orgs);
         setOwners(ownerOptions);
         setLabels(labelOptions);
+        // Show all categories from backend
+        setCategories(categoryOptions);
         setSources(sourceOptions);
         setSubSources(subSourceOptions);
         console.log('Loaded deal sources:', sourceOptions);
@@ -110,7 +121,11 @@ export default function AddPersonModal({
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setShowSuccessConfirmation(false);
+      setCreatedPersonName('');
+      return;
+    }
 
     setForm({
       name: person?.name || initialName || '',
@@ -119,6 +134,7 @@ export default function AddPersonModal({
       email: person?.email || '',
       instagramId: person?.instagramId || '',
       label: person?.label || '',
+      category: person?.categoryId ? String(person.categoryId) : '',
       source: person?.source || '',
       subSource: (person as any)?.subSource || '',
       ownerId: person?.ownerId ? String(person.ownerId) : '',
@@ -143,6 +159,24 @@ export default function AddPersonModal({
     }
   }, [isOpen, form.organizationId, organizations, owners]);
 
+  // Auto-select category when organization is selected
+  useEffect(() => {
+    if (!isOpen || !form.organizationId || !organizations.length || !categories.length) return;
+    // Only auto-select if category is not already set (to avoid overwriting user selection)
+    if (form.category) return;
+    
+    const selectedOrg = organizations.find(org => org.id === Number(form.organizationId));
+    if (selectedOrg?.category) {
+      // Find matching category by name (case-insensitive)
+      const matchingCategory = categories.find(cat => 
+        cat.name?.toLowerCase().trim() === selectedOrg.category?.toLowerCase().trim()
+      );
+      if (matchingCategory) {
+        setForm((prev) => ({ ...prev, category: String(matchingCategory.id) }));
+      }
+    }
+  }, [isOpen, form.organizationId, form.category, organizations, categories]);
+
   // Auto-select default owner (logged-in user) if no owner is set and no organization is selected
   useEffect(() => {
     if (!isOpen || !!form.ownerId || !storedUser?.email || form.organizationId) return;
@@ -157,6 +191,10 @@ export default function AddPersonModal({
       // If source is changing and it's not "Direct", clear subSource
       if (field === 'source' && value !== 'Direct') {
         return { ...prev, [field]: value, subSource: '' };
+      }
+      // If organization is changing, clear category to allow auto-selection
+      if (field === 'organizationId') {
+        return { ...prev, [field]: value, category: '' };
       }
       return { ...prev, [field]: value };
     });
@@ -186,18 +224,22 @@ export default function AddPersonModal({
         leadDate: form.leadDate || undefined,
         // Convert empty strings to undefined for enum fields - backend expects null/undefined, not empty string
         label: form.label && form.label.trim() ? form.label.trim() : undefined,
+        categoryId: form.category && form.category.trim() ? Number(form.category) : undefined,
         source: form.source && form.source.trim() ? form.source.trim() : undefined,
         subSource: form.subSource && form.subSource.trim() ? form.subSource.trim() : undefined,
       };
 
       if (mode === 'edit' && person?.id != null) {
         await personsApi.update(person.id, payload);
+        onClose();
+        onSuccess();
       } else {
-        await personsApi.create(payload);
+        const createdPerson = await personsApi.create(payload);
+        // Show success confirmation for new person creation
+        setCreatedPersonName(createdPerson.name);
+        setShowSuccessConfirmation(true);
+        // Don't close modal yet, wait for user to close the success confirmation
       }
-
-      onClose();
-      onSuccess();
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Failed to save person.';
       setError(message);
@@ -310,6 +352,19 @@ export default function AddPersonModal({
                   </select>
                 </div>
             <div className="person-field">
+              <label htmlFor="person-category">Category</label>
+                  <select
+                id="person-category"
+                value={form.category}
+                onChange={(event) => handleChange('category', event.target.value)}
+              >
+                <option value="">Select category…</option>
+                {categories.map((option) => (
+                  <option key={option.id} value={String(option.id)}>{option.name}</option>
+                    ))}
+                  </select>
+                </div>
+            <div className="person-field">
               <label htmlFor="person-source">Person Source <span style={{ color: 'red' }}>*</span></label>
                   <select
                 id="person-source"
@@ -362,6 +417,181 @@ export default function AddPersonModal({
           </footer>
         </form>
               </div>
+
+      {/* Success Confirmation Modal */}
+      {showSuccessConfirmation && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="success-confirmation-title"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100001,
+            animation: 'fadeIn 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            padding: '20px'
+          }}
+          onClick={() => {
+            setShowSuccessConfirmation(false);
+            onClose();
+            onSuccess();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setShowSuccessConfirmation(false);
+              onClose();
+              onSuccess();
+            }
+          }}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '16px',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
+              width: '100%',
+              maxWidth: '480px',
+              overflow: 'hidden',
+              animation: 'slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                padding: '20px 24px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '16px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                <div
+                  style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '50%',
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}
+                >
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="white"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                </div>
+                <h2
+                  id="success-confirmation-title"
+                  style={{
+                    margin: 0,
+                    fontSize: '20px',
+                    fontWeight: 600,
+                    color: '#ffffff',
+                    lineHeight: '1.2'
+                  }}
+                >
+                  Person Created Successfully!
+                </h2>
+              </div>
+              <button
+                onClick={() => {
+                  setShowSuccessConfirmation(false);
+                  onClose();
+                  onSuccess();
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  lineHeight: 1,
+                  opacity: 0.8,
+                  transition: 'opacity 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = '0.8'}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Content */}
+            <div style={{ padding: '24px' }}>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: '16px',
+                  color: '#374151',
+                  lineHeight: '1.5'
+                }}
+              >
+                Person <strong>"{createdPersonName}"</strong> has been created successfully!
+              </p>
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                padding: '16px 24px',
+                borderTop: '1px solid #e5e7eb',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '12px',
+                background: '#f9fafb'
+              }}
+            >
+              <button
+                onClick={() => {
+                  setShowSuccessConfirmation(false);
+                  onClose();
+                  onSuccess();
+                }}
+                style={{
+                  padding: '10px 20px',
+                  fontSize: '14px',
+                  fontWeight: 500,
+                  color: '#ffffff',
+                  backgroundColor: '#10b981',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#059669'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>,
     document.body
   );

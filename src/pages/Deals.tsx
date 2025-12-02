@@ -26,6 +26,14 @@ import type { User } from '../types/user';
 import { teamsApi } from '../services/teams';
 import type { Team } from '../types/team';
 
+// Helper function to format date as YYYY-MM-DD
+const formatDateYYYYMMDD = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 type DealFilterStatus = 'all' | DealStatus;
 
 interface DealFormState {
@@ -153,13 +161,19 @@ const Deals = () => {
   const sortDropdownRef = useRef<HTMLDivElement>(null);
   const [isDateRangeModalOpen, setIsDateRangeModalOpen] = useState(false);
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>(() => {
-    // Default to no date filter (show all deals)
+    // Default to "Last 7 days"
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() - 7);
+    const endDate = new Date(today);
+    endDate.setHours(23, 59, 59, 999);
     return {
-      start: '',
-      end: '',
+      start: formatDateYYYYMMDD(startDate),
+      end: formatDateYYYYMMDD(endDate),
     };
   });
-  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('');
+  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('Last 7 days');
   const [isDateRangeDropdownOpen, setIsDateRangeDropdownOpen] = useState(false);
   const dateRangeDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -2335,14 +2349,6 @@ const Deals = () => {
     }
   }, [filterManager]);
 
-  // Helper function to format date as YYYY-MM-DD
-  const formatDateYYYYMMDD = (date: Date): string => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
   // Handle date range option selection
   const handleDateRangeOption = (option: string) => {
     const today = new Date();
@@ -2410,6 +2416,15 @@ const Deals = () => {
           end: formatDateYYYYMMDD(endDate),
         });
         setSelectedDateRangeOption('Last month');
+        break;
+      case 'last7Days':
+        startDate = new Date(today);
+        startDate.setDate(startDate.getDate() - 7);
+        setDateRange({
+          start: formatDateYYYYMMDD(startDate),
+          end: formatDateYYYYMMDD(endDate),
+        });
+        setSelectedDateRangeOption('Last 7 days');
         break;
       case 'last30Days':
         startDate = new Date(today);
@@ -4032,6 +4047,24 @@ const Deals = () => {
                   onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
                 >
                   Last month
+                </button>
+                <button
+                  onClick={() => handleDateRangeOption('last7Days')}
+                  style={{
+                    width: '100%',
+                    padding: '10px 16px',
+                    textAlign: 'left',
+                    border: 'none',
+                    background: '#fff',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    color: '#374151',
+                    transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
+                >
+                  Last 7 days
                 </button>
                 <button
                   onClick={() => handleDateRangeOption('last30Days')}
