@@ -2,9 +2,29 @@ import axios from 'axios';
 import { getStoredToken, logoutAndRedirect } from '../utils/authToken';
 import { withApiBase } from '../config/api';
 
+// Custom params serializer to convert arrays to comma-separated strings
+// Note: Backend may not support arrays, so we'll handle multiple values by making separate calls
+const paramsSerializer = (params: Record<string, any>): string => {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    // For arrays, only send the first value to avoid 400 errors
+    // Multiple selections will be handled by making separate API calls
+    if (Array.isArray(value)) {
+      if (value.length > 0) {
+        searchParams.append(key, String(value[0]));
+      }
+    } else {
+      searchParams.append(key, String(value));
+    }
+  });
+  return searchParams.toString();
+};
+
 const api = axios.create({
   baseURL: withApiBase('/api/activities'),
   headers: { 'Content-Type': 'application/json' },
+  paramsSerializer,
 });
 
 api.interceptors.request.use((config) => {
@@ -73,8 +93,17 @@ export type PageResponse<T> = {
 
 export interface ActivityFilters {
   personId?: number;
-  organizationId?: number;
-  assignedUserId?: number;
+  organizationId?: number | number[]; // Support both single and multiple organization IDs
+  assignedUserId?: number | number[]; // Support both single and multiple assigned user IDs
+  // Optional service category filter (e.g. PHOTOGRAPHY / MAKEUP / PLANNING_DECOR).
+  // This is primarily used as a logical "service category" within the app.
+  serviceCategory?: string;
+  // Some activity endpoints use `organizationCategory` as the query‑param name
+  // for the same concept. Keep this separate field so we can send BOTH
+  // `serviceCategory` and `organizationCategory` when filtering, while still
+  // remaining backwards compatible with older backends that only understand one
+  // of them.
+  organizationCategory?: string;
   dateFrom?: string;
   dateTo?: string;
   assignedUser?: string;
@@ -87,10 +116,28 @@ export interface ActivityFilters {
   sort?: string;
 }
 
+// Shape of the aggregated summary returned by GET /api/activities/summary.
+// The exact field names come from the backend; keep everything optional so
+// the UI can safely fall back to 0 if a field is missing.
+export interface ActivitiesSummary {
+  callAssignedCount?: number;
+  callTakenCount?: number;
+  meetingAssignedCount?: number;
+  meetingDoneCount?: number;
+  overdueCount?: number;
+  activityTotalCount?: number;
+  activityPendingCount?: number;
+  activityCompletedCount?: number;
+  totalCallDurationMinutes?: number;
+}
+
 export const activitiesApi = {
   // Accept an optional AbortSignal so callers can cancel in‑flight requests
   list: (params: ActivityFilters, options?: { signal?: AbortSignal }) =>
     api.get<PageResponse<Activity>>('', { params, signal: options?.signal }).then(r => r.data),
+  // Aggregated counts for summary cards/badges.
+  summary: (params: ActivityFilters, options?: { signal?: AbortSignal }) =>
+    api.get<ActivitiesSummary>('/summary', { params, signal: options?.signal }).then(r => r.data),
   create: (activity: ActivityRequest) => api.post<Activity>('', activity).then(r => r.data),
   update: (id: number, activity: ActivityRequest) => api.put<Activity>(`/${id}`, activity).then(r => r.data),
   delete: (id: number) => api.delete(`/${id}`).then(() => {}),
