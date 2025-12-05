@@ -37,6 +37,10 @@ export interface Deal {
   referencedDealId?: number | null;
   referencedPipelineId?: number | null;
   lostReason?: string | null;
+  ownerId?: number | null;
+  createdBy?: 'USER' | 'BOT' | null;
+  createdByUserId?: number | null;
+  createdByName?: string | null;
 }
 
 export interface DealCreateRequest {
@@ -64,6 +68,9 @@ export interface DealCreateRequest {
   source?: DealSource | null;
   subSource?: DealSubSource | null;
   referencedDealId?: number | null;
+  ownerId?: number | null;
+  createdBy?: 'USER' | 'BOT' | null;
+  createdByUserId?: number | null;
 }
 
 export interface DealStageUpdateRequest {
@@ -99,6 +106,7 @@ export interface DealUpdateRequest {
   label?: string | null;
   source?: DealSource | null;
   subSource?: DealSubSource | null;
+  ownerId?: number | null;
 }
 
 export interface DealCategory {

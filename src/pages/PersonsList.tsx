@@ -1402,7 +1402,7 @@ export default function PersonsList() {
               onImportData={handleImportData}
               onSyncContacts={handleSyncContacts}
             />
-          </div>
+        </div>
         </div>
       </header>
 

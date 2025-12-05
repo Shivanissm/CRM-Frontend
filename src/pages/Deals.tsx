@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import './Deals.css';
 import { dealsApi, type DealSortField, type SortDirection } from '../services/deals';
-import type { Deal, DealStatus, DealSource, DealSubSource } from '../types/deal';
+import type { Deal, DealStatus, DealSource, DealSubSource, DealCreateRequest } from '../types/deal';
 import { normalizeEventDatesForRequest } from '../utils/dealDates';
 import type { OrganizationCategory } from '../types/organization';
 import { organizationsApi } from '../services/organizations';
@@ -1247,36 +1247,96 @@ const Deals = () => {
       return;
     }
 
-    // Get team manager from pipeline
-    const teamManagerId = getTeamManagerFromPipeline(pipeline);
+    // Get user for activity assignment (with fallbacks)
     let assignedUserName = 'Unassigned';
-
-    if (teamManagerId) {
-    // Find the team manager user to get their display name for assignedUser
-    const teamManager = users.find(u => u.id === teamManagerId);
-      if (teamManager) {
-    // Get user display name (first name + last name, fallback to email)
+    let assignedUserId: number | null = null;
+    
+    // Helper function to get user display name
     const getUserDisplayName = (user: User) => {
       const first = (user.firstName || '').trim();
       const last = (user.lastName || '').trim();
       const fullName = [first, last].filter(Boolean).join(' ');
       return fullName || user.email || `User ${user.id}`;
     };
+    
+    // Helper function to fetch user by ID if not in local array
+    const getUserById = async (userId: number): Promise<User | null> => {
+      // First try local users array (filtered to SALES/PRESALES)
+      let user = users.find(u => u.id === userId);
+      if (user) {
+        return user;
+      }
+      
+      // If not found, fetch all users and try again
+      try {
+        console.log(`[createQualifiedStageActivities] User ${userId} not in local array, fetching all users...`);
+        const allUsers = await usersApi.list();
+        user = allUsers.find(u => u.id === userId);
+        if (user) {
+          console.log(`[createQualifiedStageActivities] Found user ${userId} in API: ${user.firstName} ${user.lastName}`);
+          return user;
+        }
+      } catch (err) {
+        console.error(`[createQualifiedStageActivities] Failed to fetch user ${userId}:`, err);
+      }
+      
+      return null;
+    };
+    
+    // PRIMARY: Try to get team manager from pipeline's team
+    const teamManagerId = getTeamManagerFromPipeline(pipeline);
+    if (teamManagerId) {
+      const teamManager = await getUserById(teamManagerId);
+      if (teamManager) {
         assignedUserName = getUserDisplayName(teamManager);
-        console.log(`[createQualifiedStageActivities] Assigned user for activities: ${assignedUserName}`);
+        assignedUserId = teamManager.id;
+        console.log(`[createQualifiedStageActivities] Assigned user for activities (team manager): ${assignedUserName} (ID: ${assignedUserId})`);
       } else {
-        console.warn(`[createQualifiedStageActivities] Team manager user ${teamManagerId} not found in users array, using 'Unassigned'`);
-        // Continue with 'Unassigned' instead of returning
+        console.warn(`[createQualifiedStageActivities] Team manager user ${teamManagerId} not found`);
       }
     } else {
-      console.warn(`[createQualifiedStageActivities] No team manager found for pipeline ${pipeline.id}, using 'Unassigned'`);
-      // Continue with 'Unassigned' instead of returning
+      console.warn(`[createQualifiedStageActivities] No team manager found for pipeline ${pipeline.id}`);
+    }
+    
+    // FALLBACK 1: Try to use deal owner if team manager not found
+    if (!assignedUserId && deal.ownerId) {
+      const dealOwner = await getUserById(deal.ownerId);
+      if (dealOwner) {
+        assignedUserName = getUserDisplayName(dealOwner);
+        assignedUserId = dealOwner.id;
+        console.log(`[createQualifiedStageActivities] Assigned user for activities (deal owner fallback): ${assignedUserName} (ID: ${assignedUserId})`);
+      } else {
+        console.warn(`[createQualifiedStageActivities] Deal owner user ${deal.ownerId} not found`);
+      }
+    }
+    
+    // FALLBACK 2: Try to use organization owner if deal owner not found
+    if (!assignedUserId && deal.organizationId) {
+      const organization = organizations.find(o => o.id === deal.organizationId);
+      if (organization && organization.owner && organization.owner.id) {
+        const orgOwner = await getUserById(organization.owner.id);
+        if (orgOwner) {
+          assignedUserName = getUserDisplayName(orgOwner);
+          assignedUserId = orgOwner.id;
+          console.log(`[createQualifiedStageActivities] Assigned user for activities (organization owner fallback): ${assignedUserName} (ID: ${assignedUserId})`);
+        } else {
+          console.warn(`[createQualifiedStageActivities] Organization owner user ${organization.owner.id} not found`);
+        }
+      }
+    }
+    
+    // If still no user assigned, log error
+    if (!assignedUserId) {
+      console.error(`[createQualifiedStageActivities] CRITICAL: Cannot assign activities for deal ${deal.id} - no team manager, deal owner, or organization owner found. Pipeline: ${pipeline.id}, Team: ${pipeline.teamId}, Deal Owner: ${deal.ownerId}, Organization: ${deal.organizationId}`);
     }
 
 
-    // Get today's date in YYYY-MM-DD format
+    // Get today's date in DD/MM/YYYY format (matching ActivitiesList filter format)
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = today.getFullYear();
+    const todayStr = `${day}/${month}/${year}`;
 
     // Get person details for the activities
     // Try to find person in local array first
@@ -1342,10 +1402,12 @@ const Deals = () => {
         category: 'CALL',
         priority: 'MEDIUM',
         assignedUser: assignedUserName,
+        assignedUserId: assignedUserId || undefined,
         date: todayStr,
         dueDate: todayStr,
         personId: deal.personId || null,
         dealId: deal.id,
+        organizationId: deal.organizationId || null,
         organization: organization?.name || null,
         phone: person?.phone || null,
         instagramId: person?.instagramId || null,
@@ -1364,10 +1426,12 @@ const Deals = () => {
         category: 'ACTIVITY',
         priority: 'MEDIUM',
         assignedUser: assignedUserName,
+        assignedUserId: assignedUserId || undefined,
         date: todayStr,
         dueDate: todayStr,
         personId: deal.personId || null,
         dealId: deal.id,
+        organizationId: deal.organizationId || null,
         organization: organization?.name || null,
         phone: person?.phone || null,
         instagramId: person?.instagramId || null,
@@ -1549,13 +1613,18 @@ const Deals = () => {
                 
                 console.log(`[checkAndMoveDeals] Deal ${deal.id} moved to Qualified stage, creating activities...`);
                 // Create activities for the deal in Qualified stage
-                try {
-                await createQualifiedStageActivities(updatedDeal);
-                  console.log(`[checkAndMoveDeals] Activities creation completed for deal ${deal.id}`);
-                } catch (activityErr: any) {
-                  console.error(`[checkAndMoveDeals] Failed to create activities for deal ${deal.id}:`, activityErr);
-                  console.error('[checkAndMoveDeals] Activity error details:', activityErr?.response?.data || activityErr?.message);
-                  // Don't throw - we still want the deal to be moved even if activities fail
+                // Only create activities from frontend if deal was NOT created by bot
+                if (updatedDeal.createdBy !== 'BOT') {
+                  try {
+                    await createQualifiedStageActivities(updatedDeal);
+                    console.log(`[checkAndMoveDeals] Activities creation completed for deal ${deal.id}`);
+                  } catch (activityErr: any) {
+                    console.error(`[checkAndMoveDeals] Failed to create activities for deal ${deal.id}:`, activityErr);
+                    console.error('[checkAndMoveDeals] Activity error details:', activityErr?.response?.data || activityErr?.message);
+                    // Don't throw - we still want the deal to be moved even if activities fail
+                  }
+                } else {
+                  console.log(`[checkAndMoveDeals] Deal ${deal.id} was created by BOT, skipping frontend activity creation`);
                 }
               } catch (err: any) {
                 console.error(`[checkAndMoveDeals] Failed to move deal ${deal.id} to Qualified stage:`, err);
@@ -2939,7 +3008,7 @@ const Deals = () => {
         console.log(`✓ Found person: ID=${foundPerson.id}, Name="${foundPerson.name}", Phone="${foundPerson.phone}"`);
         
         // Use cached person data from the persons array (already loaded and refreshed)
-        personHasPhone = !!(foundPerson.phone && foundPerson.phone.trim().length > 0);
+          personHasPhone = !!(foundPerson.phone && foundPerson.phone.trim().length > 0);
         console.log(`✓ Using cached person data for "${foundPerson.name}": phone="${foundPerson.phone}", personHasPhone=${personHasPhone}`);
       } else {
         console.log(`✗ Person not found in cache, will create new person`);
@@ -3119,11 +3188,17 @@ const Deals = () => {
     setIsSubmitting(true);
     setModalError(null);
     try {
-      const createdDeal = await dealsApi.create(payload);
+      // Set createdBy to 'USER' when creating from frontend
+      const createPayload: DealCreateRequest = {
+        ...payload,
+        createdBy: 'USER',
+      };
+      const createdDeal = await dealsApi.create(createPayload);
       await loadDeals(createdDeal.id);
       
       // Check if deal was created in Qualified stage and create activities
-      if (createdDeal.pipelineId && createdDeal.stageId) {
+      // Only create activities from frontend if deal was NOT created by bot
+      if (createdDeal.pipelineId && createdDeal.stageId && createdDeal.createdBy !== 'BOT') {
         const pipeline = pipelines.find(p => p.id === createdDeal.pipelineId);
         if (pipeline) {
           const currentStage = pipeline.stages.find(s => s.id === createdDeal.stageId);
@@ -3444,8 +3519,9 @@ const Deals = () => {
             if (isQualified && qualifiedStage) {
               // Only create activities if we're NOT moving back from a later stage
               // If originalStage exists and its order is greater than qualified stage order, skip activity creation
+              // Also only create activities from frontend if deal was NOT created by bot
               const isMovingBackToQualified = originalStage && originalStage.order > qualifiedStage.order;
-              if (!isMovingBackToQualified) {
+              if (!isMovingBackToQualified && updatedDeal.createdBy !== 'BOT') {
                 await createQualifiedStageActivities(updatedDeal);
               }
             }
@@ -5195,15 +5271,15 @@ const Deals = () => {
                       >
                         {filteredPersons.length > 0 && (
                           <>
-                            {filteredPersons.slice(0, 10).map((person) => (
-                              <div
-                                key={person.id}
-                                className="form-person-suggestion-item"
-                                onClick={() => {
+                        {filteredPersons.slice(0, 10).map((person) => (
+                          <div
+                            key={person.id}
+                            className="form-person-suggestion-item"
+                            onClick={() => {
                                   setFormData(prev => ({ ...prev, personName: person.name, personId: String(person.id) }));
-                                  setShowPersonSuggestions(false);
-                                }}
-                              >
+                              setShowPersonSuggestions(false);
+                            }}
+                          >
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                   <span style={{ fontWeight: 500 }}>{person.name}</span>
                                   {(person.phone || person.instagramId || person.email) && (
@@ -5212,13 +5288,13 @@ const Deals = () => {
                                     </span>
                                   )}
                                 </div>
-                              </div>
-                            ))}
-                            {filteredPersons.length > 10 && (
-                              <div className="form-person-suggestion-item" style={{ color: '#64748b', fontStyle: 'italic', cursor: 'default' }}>
-                                +{filteredPersons.length - 10} more...
-                              </div>
-                            )}
+                          </div>
+                        ))}
+                        {filteredPersons.length > 10 && (
+                          <div className="form-person-suggestion-item" style={{ color: '#64748b', fontStyle: 'italic', cursor: 'default' }}>
+                            +{filteredPersons.length - 10} more...
+                          </div>
+                        )}
                           </>
                         )}
                         {/* Show "Create new person" option if entered value doesn't exactly match any person's name */}
@@ -5521,23 +5597,23 @@ const Deals = () => {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {((formData.eventDates && formData.eventDates.length > 0) ? formData.eventDates : ['']).map((date, index) => (
                       <div key={index} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <input
-                          type="date"
-                          className="form-input"
+                  <input
+                    type="date"
+                    className="form-input"
                           value={date || ''}
                           onChange={(e) => {
                             const newDates = [...(formData.eventDates || [])];
                             newDates[index] = e.target.value;
                             setFormData((prev) => ({ ...prev, eventDates: newDates }));
                           }}
-                          disabled={isSubmitting}
+                    disabled={isSubmitting}
                           style={{ cursor: 'pointer', flex: 1 }}
-                          onClick={(e) => {
-                            if (!isSubmitting) {
-                              (e.target as HTMLInputElement).showPicker?.();
-                            }
-                          }}
-                        />
+                    onClick={(e) => {
+                      if (!isSubmitting) {
+                        (e.target as HTMLInputElement).showPicker?.();
+                      }
+                    }}
+                  />
                         <button
                           type="button"
                           onClick={() => {

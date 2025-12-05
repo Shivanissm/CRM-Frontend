@@ -12,6 +12,19 @@ api.interceptors.request.use((config) => {
   if (token) {
     (config.headers = config.headers || {}).Authorization = `Bearer ${token}`;
   }
+  // Debug logging for API requests
+  if (config.params) {
+    console.log('[Activities API] Request URL:', config.url);
+    console.log('[Activities API] Request Params:', config.params);
+    if (config.params.dateFrom || config.params.dateTo) {
+      console.log('[Activities API] Date Filters:', {
+        dateFrom: config.params.dateFrom,
+        dateTo: config.params.dateTo,
+        dateFromType: typeof config.params.dateFrom,
+        dateToType: typeof config.params.dateTo
+      });
+    }
+  }
   return config;
 });
 

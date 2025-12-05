@@ -666,6 +666,94 @@
   color: #999;
 }
 
+.person-deals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.person-deal-item {
+  padding: 12px 16px;
+  background: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.person-deal-item:hover {
+  background: #f0f0f0;
+  border-color: #4caf50;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.15);
+}
+
+.person-deal-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.person-deal-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+}
+
+.person-deal-status {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.person-deal-status-in_progress {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.person-deal-status-won {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.person-deal-status-lost {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.person-deal-org {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #666;
+  margin-top: 6px;
+}
+
+.person-deal-org-icon {
+  font-size: 14px;
+}
+
+.person-deal-value {
+  font-size: 13px;
+  color: #666;
+  margin-top: 6px;
+}
+
+.person-deal-value-amount {
+  font-weight: 600;
+  color: #2e7d32;
+}
+
+.person-empty-state {
+  padding: 24px;
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+}
+
 /* Right Main Content */
 .person-detail-right {
   flex: 0 0 50%;
