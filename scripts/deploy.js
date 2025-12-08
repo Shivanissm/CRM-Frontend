@@ -14,8 +14,43 @@ const wwwrootPath = process.env.AZURE_WWWROOT_PATH ||
                     join(projectRoot, 'wwwroot');
 const wwwrootDir = wwwrootPath;
 
-// Function to copy directory recursively
-function copyRecursive(src, dest) {
+// Function to copy specific files/folders from dist to wwwroot
+function copyBuiltFiles(src, dest) {
+  if (!existsSync(dest)) {
+    mkdirSync(dest, { recursive: true });
+  }
+
+  // Only copy these specific items: assets folder, index.html, web.config
+  const itemsToCopy = ['assets', 'index.html', 'web.config'];
+  
+  for (const item of itemsToCopy) {
+    const srcPath = join(src, item);
+    const destPath = join(dest, item);
+    
+    if (!existsSync(srcPath)) {
+      console.warn(`Warning: ${item} not found in dist, skipping...`);
+      continue;
+    }
+    
+    const stat = statSync(srcPath);
+    
+    if (stat.isDirectory()) {
+      // Copy directory recursively
+      if (!existsSync(destPath)) {
+        mkdirSync(destPath, { recursive: true });
+      }
+      copyDirectoryRecursive(srcPath, destPath);
+      console.log(`Copied directory: ${item}/`);
+    } else {
+      // Copy file
+      copyFileSync(srcPath, destPath);
+      console.log(`Copied file: ${item}`);
+    }
+  }
+}
+
+// Helper function to copy directory recursively
+function copyDirectoryRecursive(src, dest) {
   if (!existsSync(dest)) {
     mkdirSync(dest, { recursive: true });
   }
@@ -27,10 +62,9 @@ function copyRecursive(src, dest) {
     const destPath = join(dest, entry.name);
 
     if (entry.isDirectory()) {
-      copyRecursive(srcPath, destPath);
+      copyDirectoryRecursive(srcPath, destPath);
     } else {
       copyFileSync(srcPath, destPath);
-      console.log(`Copied: ${entry.name}`);
     }
   }
 }
@@ -83,9 +117,9 @@ function deploy() {
     console.log('Created wwwroot directory');
   }
 
-  console.log('\nStep 2: Copying files from dist to wwwroot...');
-  // Copy all files from dist to wwwroot
-  copyRecursive(distDir, wwwrootDir);
+  console.log('\nStep 2: Copying only built files (assets, index.html, web.config) to wwwroot...');
+  // Copy only the specific built files from dist to wwwroot
+  copyBuiltFiles(distDir, wwwrootDir);
 
   console.log('\n✅ Deployment completed successfully!');
   console.log(`Files have been copied from ${distDir} to ${wwwrootDir}`);

@@ -11,10 +11,15 @@ When code is pushed to main, Azure App Service automatically:
 
 ## Solution Overview
 
-The `vite.config.ts` automatically detects when it's running in Azure App Service and builds directly to the `wwwroot` folder instead of `dist`. This means:
-- ✅ No manual file copying needed
-- ✅ No need to delete old files
-- ✅ Everything happens automatically during deployment
+The deployment process:
+1. Builds to `dist` folder (standard Vite output)
+2. **Automatically cleans `wwwroot`** (removes all 29+ files/folders)
+3. **Copies only 3 items** from `dist` to `wwwroot`:
+   - `assets/` folder (contains JS and CSS files)
+   - `index.html`
+   - `web.config`
+
+This ensures `wwwroot` contains ONLY the built files, not the entire repository.
 
 ## Configuration Files
 
@@ -24,19 +29,21 @@ The `vite.config.ts` automatically detects when it's running in Azure App Servic
 
 ## Azure App Service Configuration
 
-### Option 1: Automatic Detection (Recommended - Already Configured!)
+### Azure App Service Configuration
 
-The build automatically detects Azure and outputs to `wwwroot`. Just ensure in Azure Portal:
+In Azure Portal → **Configuration** → **General Settings**:
 
-1. Go to **Configuration** → **General Settings**
-2. **Build Command**: `npm run build` (or leave default)
-3. **Output Directory**: Leave empty or set to `wwwroot`
+1. **Build Command**: `npm run build`
+2. **Post Build Command**: `npm run deploy` (this cleans wwwroot and copies only built files)
+3. **Output Directory**: Leave empty (deployment script handles this)
 4. **Node Version**: Match your local development version
 
-The `vite.config.ts` will automatically:
-- Detect Azure environment variables
-- Build directly to `wwwroot` folder
-- Skip the `dist` folder entirely
+The deployment process:
+- Builds to `dist` folder
+- Runs `npm run deploy` which:
+  - **Cleans wwwroot completely** (removes all files/folders)
+  - **Copies only**: `assets/`, `index.html`, `web.config`
+  - Ensures wwwroot has exactly 3 items (not 29+)
 
 ### Option 2: Use Custom Deployment Script
 
@@ -46,14 +53,14 @@ If automatic detection doesn't work, you can use the deployment scripts:
 2. **Build Command**: Leave empty or set to `npm run build`
 3. Azure will automatically use `deploy.sh` (Linux) or `deploy.cmd` (Windows) if present
 
-## Environment Detection
+## What Gets Deployed
 
-The build process automatically detects Azure App Service using:
-- `SCM_DO_BUILD_DURING_DEPLOYMENT` environment variable
-- `WEBSITE_SITE_NAME` environment variable  
-- `AZURE_APP_SERVICE` environment variable
+**Only these 3 items are copied to wwwroot:**
+1. `assets/` folder (contains all JS and CSS files)
+2. `index.html` (main HTML file)
+3. `web.config` (IIS configuration)
 
-When detected, Vite builds directly to `wwwroot` instead of `dist`.
+**Everything else is removed from wwwroot** before copying, ensuring a clean deployment.
 
 ## Testing Locally
 
@@ -99,9 +106,13 @@ ls -la wwwroot/
 
 1. Azure detects code push to main branch
 2. Azure runs `npm install`
-3. Azure runs `npm run build` (or your configured build command)
-4. `vite.config.ts` detects Azure environment
-5. Vite builds directly to `wwwroot` folder
-6. Azure serves files from `wwwroot`
-7. ✅ Done! No manual steps needed.
+3. Azure runs `npm run build` → builds to `dist` folder
+4. Azure runs `npm run deploy` → deployment script:
+   - **Cleans wwwroot** (removes all existing files/folders)
+   - **Copies only 3 items** from `dist` to `wwwroot`:
+     - `assets/` folder
+     - `index.html`
+     - `web.config`
+5. Azure serves files from `wwwroot`
+6. ✅ Done! wwwroot now contains only the 3 built files, not 29+ items.
 

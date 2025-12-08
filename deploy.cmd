@@ -33,18 +33,30 @@ if %ERRORLEVEL% neq 0 goto error
 goto :eof
 
 :DeployToWwwroot
-echo Deploying to wwwroot...
+echo Deploying to wwwroot - only copying built files...
 if exist "%DEPLOYMENT_TARGET%\wwwroot" (
     echo Cleaning wwwroot...
-    rmdir /s /q "%DEPLOYMENT_TARGET%\wwwroot"
+    del /F /Q "%DEPLOYMENT_TARGET%\wwwroot\*" 2>nul
+    for /d %%p in ("%DEPLOYMENT_TARGET%\wwwroot\*") do rmdir /s /q "%%p" 2>nul
 )
 if not exist "%DEPLOYMENT_TARGET%\wwwroot" (
     mkdir "%DEPLOYMENT_TARGET%\wwwroot"
 )
-echo Copying files from dist to wwwroot...
-xcopy /E /I /Y "%DEPLOYMENT_SOURCE%\dist\*" "%DEPLOYMENT_TARGET%\wwwroot\"
+echo Copying only built files: assets, index.html, web.config...
+if exist "%DEPLOYMENT_SOURCE%\dist\assets" (
+    xcopy /E /I /Y "%DEPLOYMENT_SOURCE%\dist\assets" "%DEPLOYMENT_TARGET%\wwwroot\assets\"
+    echo Copied: assets/
+)
+if exist "%DEPLOYMENT_SOURCE%\dist\index.html" (
+    copy /Y "%DEPLOYMENT_SOURCE%\dist\index.html" "%DEPLOYMENT_TARGET%\wwwroot\"
+    echo Copied: index.html
+)
+if exist "%DEPLOYMENT_SOURCE%\dist\web.config" (
+    copy /Y "%DEPLOYMENT_SOURCE%\dist\web.config" "%DEPLOYMENT_TARGET%\wwwroot\"
+    echo Copied: web.config
+)
 if %ERRORLEVEL% neq 0 goto error
-echo Deployment completed successfully!
+echo Deployment completed successfully! Only built files copied to wwwroot.
 goto :eof
 
 :error

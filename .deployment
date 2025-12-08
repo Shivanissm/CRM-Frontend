@@ -1,4 +1,5 @@
 [config]
 SCM_DO_BUILD_DURING_DEPLOYMENT=true
-BUILD_COMMAND=npm run build:azure
+BUILD_COMMAND=npm run build
+POST_BUILD_COMMAND=npm run deploy
 

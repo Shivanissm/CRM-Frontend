@@ -1,0 +1,14 @@
+# Ignore everything except dist folder during deployment
+*
+!dist/
+!dist/assets/
+!dist/index.html
+!dist/web.config
+!package.json
+!package-lock.json
+!scripts/
+!scripts/deploy.js
+!.deployment
+!deploy.sh
+!deploy.cmd
+

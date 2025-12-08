@@ -1,13 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Check if we're in Azure App Service (wwwroot exists or SCM_DO_BUILD_DURING_DEPLOYMENT is set)
-const isAzure = process.env.SCM_DO_BUILD_DURING_DEPLOYMENT === 'true' || 
-                process.env.WEBSITE_SITE_NAME !== undefined ||
-                process.env.AZURE_APP_SERVICE === 'true';
-
-// Use wwwroot for Azure deployments, dist for local development
-const outDir = isAzure ? 'wwwroot' : 'dist';
+// Always build to dist - deployment scripts will copy to wwwroot
+// This ensures we don't accidentally deploy source files
+const outDir = 'dist';
 
 // https://vitejs.dev/config/
 export default defineConfig({
