@@ -11,6 +11,7 @@ import Users from './pages/Users';
 import CalendarPage from './pages/Calendar';
 import Login from './pages/Login';
 import AppLayout from './components/AppLayout';
+import PageTitle from './components/PageTitle';
 import { getStoredToken } from './utils/authToken';
 import './App.css';
 import AcceptInvitation from './pages/AcceptInvitation';
@@ -52,6 +53,7 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 function App() {
   return (
     <BrowserRouter>
+      <PageTitle />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/accept-invitation" element={<AcceptInvitation />} />

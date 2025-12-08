@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
-import { activitiesApi, type Activity, type PageResponse, type ActivityFilters } from '../services/activities';
+import { activitiesApi, type Activity, type PageResponse, type ActivityFilters, type ActivitiesSummary } from '../services/activities';
 import FilterDropdown, { type SavedFilter as DropdownSavedFilter } from '../components/FilterDropdown';
 import FilterModal, { type FilterCondition } from '../components/FilterModal';
 import ActivityModal, { type ActivityFormValues } from '../components/ActivityModal';
@@ -14,6 +14,7 @@ import type { Organization } from '../types/organization';
 import type { User } from '../types/user';
 import { getStoredUser } from '../utils/authToken';
 import '../components/SetTargetModal.css';
+import '../components/ActivityModal.css';
 
 const tabOptions = ['All', 'To‑do', 'Overdue', 'Today', 'Tomorrow', 'This week', 'Next week', 'This month', 'Prev month', 'This year', 'Select period', 'Select Date'] as const;
 const primaryTabs: Array<(typeof tabOptions)[number]> = ['All', 'Overdue', 'Today'];
@@ -39,7 +40,10 @@ export default function ActivitiesList(): JSX.Element {
 
   const [data, setData] = useState<PageResponse<Activity> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [currentPage, setCurrentPage] = useState(0);
   const [category, setCategory] = useState<'Activity' | 'Call' | 'Meeting scheduler'>('Activity');
   const [tab, setTab] = useState<TabOption>('Today');
   
@@ -51,7 +55,7 @@ export default function ActivitiesList(): JSX.Element {
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const year = today.getFullYear();
     const todayStr = `${day}/${month}/${year}`;
-    return { page: 0, size: 10, dateFrom: todayStr, dateTo: todayStr, sort: 'dueDate,desc' };
+    return { page: 0, size: 20, dateFrom: todayStr, dateTo: todayStr, sort: 'dueDate,desc' };
   };
   
   const [filters, setFilters] = useState<ActivityFilters>(getInitialFilters());
@@ -69,6 +73,7 @@ export default function ActivitiesList(): JSX.Element {
   const [activeFilterName, setActiveFilterName] = useState<string | null>(null);
   const [activeCustomFilters, setActiveCustomFilters] = useState<FilterCondition[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [showActivityConfirmation, setShowActivityConfirmation] = useState(false);
   const hasHandledOpenModal = useRef(false);
   const [columnMenu, setColumnMenu] = useState<{
     isOpen: boolean;
@@ -767,7 +772,7 @@ export default function ActivitiesList(): JSX.Element {
     return `${String(hours).padStart(2, '0')}:${String(remainingMinutes).padStart(2, '0')}`;
   };
 
-  const loadActivities = useCallback((customFilters?: ActivityFilters) => {
+  const loadActivities = useCallback((customFilters?: ActivityFilters, append: boolean = false) => {
     // Cancel any pending request with the same purpose
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -777,18 +782,31 @@ export default function ActivitiesList(): JSX.Element {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
     
+    if (append) {
+      setLoadingMore(true);
+    } else {
     setLoading(true);
+      setCurrentPage(0);
+      setHasMore(true);
+    }
     // Use filtersRef to get the latest filters, avoiding stale closure issues
     const filtersToUse = customFilters || filtersRef.current;
+    // For infinite scroll, calculate page number
+    const pageToUse = append ? currentPage + 1 : 0;
+    const filtersWithPagination = { ...filtersToUse, page: pageToUse, size: 20 };
       // Only apply page category if category is not already specified in filters
       // If category is explicitly undefined/null, don't apply any category filter
+      // For date-based tabs (Today, Tomorrow, This week, etc.), don't apply category filter
+      // so users can see all activities for that date range
+    const dateBasedTabs = ['Today', 'Tomorrow', 'This week', 'Next week', 'This month', 'Prev month', 'This year', 'Select period', 'Select Date'];
+    const isDateBasedTab = dateBasedTabs.includes(tab);
     const finalFilters =
       Object.prototype.hasOwnProperty.call(filtersToUse, 'category') && filtersToUse.category === undefined
         ? filtersToUse
         : filtersToUse.category 
-          ? filtersToUse 
-          : { ...filtersToUse, category: getCategoryEnum(category) };
-    const normalizedFilters: ActivityFilters = { ...finalFilters };
+          ? (isDateBasedTab ? { ...filtersToUse, category: undefined } : filtersToUse)
+          : (isDateBasedTab ? filtersToUse : { ...filtersToUse, category: getCategoryEnum(category) });
+    const normalizedFilters: ActivityFilters = { ...finalFilters, ...filtersWithPagination };
     // When a service category filter is selected (e.g. Makeup / Photography),
     // also forward the first selected value to the backend so that it can
     // reduce the result set server‑side. We still keep the client‑side
@@ -934,7 +952,22 @@ export default function ActivitiesList(): JSX.Element {
         })
         .then((response) => {
           if (response && !abortController.signal.aborted) {
+            if (append && data) {
+              // Append new data to existing data
+              const existingIds = new Set(data.content.map(a => a.id));
+              const newContent = response.content.filter(a => !existingIds.has(a.id));
+              setData({
+                ...response,
+                content: [...data.content, ...newContent],
+                number: response.number,
+              });
+            } else {
+              // Replace data (initial load or filter change)
             setData(response);
+            }
+            // Update hasMore based on whether there are more pages
+            setHasMore(response.number < response.totalPages - 1);
+            setCurrentPage(response.number);
           }
         })
         .catch((e) => {
@@ -945,13 +978,14 @@ export default function ActivitiesList(): JSX.Element {
         .finally(() => {
           if (!abortController.signal.aborted) {
             setLoading(false);
+            setLoadingMore(false);
           }
           if (abortControllerRef.current === abortController) {
             abortControllerRef.current = null;
           }
         });
       return; // Exit early for multi-user case
-    }
+      }
 
     // Debug logging for API calls
     console.log('[ActivitiesList] API Request Filters:', {
@@ -964,7 +998,7 @@ export default function ActivitiesList(): JSX.Element {
       size: normalizedFilters.size
     });
 
-    activitiesApi
+      activitiesApi
       .list(normalizedFilters, { signal: abortController.signal })
       .then(async (response) => {
         // Check if request was aborted
@@ -1016,6 +1050,9 @@ export default function ActivitiesList(): JSX.Element {
           console.log('[ActivitiesList] API Response:', {
             totalElements: response.totalElements,
             contentLength: response.content?.length || 0,
+            page: response.number,
+            totalPages: response.totalPages,
+            append: append,
             firstActivity: response.content?.[0] ? {
               id: response.content[0].id,
               subject: response.content[0].subject,
@@ -1029,11 +1066,119 @@ export default function ActivitiesList(): JSX.Element {
               dueDate: a.dueDate
             })) || []
           });
-          setData(response);
-
-          // Keep activity summary cards in sync with the list response so that
-          // TOTAL / PENDING / COMPLETED always reflect what the user sees in
-          // the table for the current tab (All / Overdue / Today, etc.).
+          
+          setData((prevData) => {
+            // Check if filters are applied
+            const currentFilters = filtersRef.current;
+            const hasFilters = !!(currentFilters?.dateFrom || currentFilters?.dateTo || 
+                                 currentFilters?.assignedUserId || currentFilters?.organizationId ||
+                                 (selectedCategoryFilter && (Array.isArray(selectedCategoryFilter) ? selectedCategoryFilter.length > 0 : selectedCategoryFilter)) ||
+                                 (selectedOrganizationFilter && (Array.isArray(selectedOrganizationFilter) ? selectedOrganizationFilter.length > 0 : selectedOrganizationFilter)) ||
+                                 (selectedManagerFilter && (Array.isArray(selectedManagerFilter) ? selectedManagerFilter.length > 0 : selectedManagerFilter)));
+            
+            if (append && prevData) {
+              // Append new data to existing data
+              const existingIds = new Set(prevData.content.map(a => a.id));
+              const newContent = response.content.filter(a => !existingIds.has(a.id));
+              const accumulatedData = {
+                ...response,
+                content: [...prevData.content, ...newContent],
+                number: response.number,
+              };
+              
+              // If no filters, use totalElements from API for total count (final counts from backend)
+              // For pending/completed, also use summary endpoint to get final counts
+              if (!hasFilters) {
+                // No filters - use API totals (final counts from backend)
+                // Don't set activityTotalCount here - wait for loadCounts to complete
+                // This prevents showing wrong counts from partial data
+                // loadCounts will set activityTotalCount from summary endpoint
+                // Reload summary to get accurate counts when no filters
+                // For "All" and "Overdue" tabs, call summary without date filters to get all counts
+                const summaryFiltersForAll = (tab === 'All' || tab === 'Overdue') 
+                  ? { ...currentFilters, dateFrom: undefined, dateTo: undefined }
+                  : currentFilters;
+                loadCounts(summaryFiltersForAll).then((summary) => {
+                  if (summary) {
+                    // Only update if summary has valid values (not 0 or undefined)
+                    if (summary.activityPendingCount !== undefined && summary.activityPendingCount !== null) {
+                      setActivityPendingCount(summary.activityPendingCount);
+                    }
+                    if (summary.activityCompletedCount !== undefined && summary.activityCompletedCount !== null) {
+                      setActivityCompletedCount(summary.activityCompletedCount);
+                    }
+                    // Set total count from summary if available, otherwise use response.totalElements
+                    if (summary.activityTotalCount !== undefined && summary.activityTotalCount !== null) {
+                      setActivityTotalCount(summary.activityTotalCount);
+                    } else {
+                      const total = response.totalElements ?? 0;
+                      setActivityTotalCount(total);
+                    }
+                  } else {
+                    // Fallback: use response.totalElements if summary doesn't have total count
+                    const total = response.totalElements ?? 0;
+                    setActivityTotalCount(total);
+                  }
+                }).catch(() => {
+                  // Fallback: use response.totalElements if summary fails
+                  const total = response.totalElements ?? 0;
+                  setActivityTotalCount(total);
+                  // Calculate pending/completed from accumulated data if summary fails
+                  const allActivities = accumulatedData.content ?? [];
+                  setActivityPendingCount(allActivities.filter((a) => !a.done).length);
+                  setActivityCompletedCount(allActivities.filter((a) => a.done).length);
+                });
+              } else {
+                // Filters applied - calculate from accumulated data
+                const allActivities = accumulatedData.content ?? [];
+                const total = response.totalElements ?? allActivities.length;
+                const pending = allActivities.filter((a) => !a.done).length;
+                const completed = allActivities.filter((a) => a.done).length;
+                
+                setActivityTotalCount(total);
+                setActivityPendingCount(pending);
+                setActivityCompletedCount(completed);
+              }
+              
+              return accumulatedData;
+            } else {
+              // Replace data (initial load or filter change)
+              // If no filters, use totalElements from API for total count
+              if (!hasFilters) {
+                // No filters - use API totals (final counts from backend)
+                // Don't set activityTotalCount here - wait for loadCounts to complete
+                // This prevents showing wrong counts from partial data
+                // loadCounts will set activityTotalCount from summary endpoint
+                // Load summary to get accurate counts when no filters
+                // For "All" and "Overdue" tabs, call summary without date filters to get all counts
+                const summaryFiltersForAll = (tab === 'All' || tab === 'Overdue') 
+                  ? { ...currentFilters, dateFrom: undefined, dateTo: undefined }
+                  : currentFilters;
+                loadCounts(summaryFiltersForAll).then((summary) => {
+                  if (summary) {
+                    // Set total count from summary if available, otherwise use response.totalElements
+                    if (summary.activityTotalCount !== undefined && summary.activityTotalCount !== null) {
+                      setActivityTotalCount(summary.activityTotalCount);
+                    } else {
+                      const total = response.totalElements ?? 0;
+                      setActivityTotalCount(total);
+                    }
+                  } else {
+                    // Fallback: use response.totalElements if summary doesn't have total count
+                    const total = response.totalElements ?? 0;
+                    setActivityTotalCount(total);
+                  }
+                }).catch(() => {
+                  // Fallback: use response.totalElements if summary fails
+                  const total = response.totalElements ?? 0;
+                  setActivityTotalCount(total);
+                  // Calculate pending/completed from loaded data
+                  const activities = response.content ?? [];
+                  setActivityPendingCount(activities.filter((a) => !a.done).length);
+                  setActivityCompletedCount(activities.filter((a) => a.done).length);
+                });
+              } else {
+                // Filters applied - calculate from response
           const activities = response.content ?? [];
           const total = response.totalElements ?? activities.length;
           const pending = activities.filter((a) => !a.done).length;
@@ -1042,6 +1187,15 @@ export default function ActivitiesList(): JSX.Element {
           setActivityTotalCount(total);
           setActivityPendingCount(pending);
           setActivityCompletedCount(completed);
+              }
+              
+              return response;
+            }
+          });
+          
+          // Update hasMore based on whether there are more pages
+          setHasMore(response.number < response.totalPages - 1);
+          setCurrentPage(response.number);
         }
       })
       .catch((e) => {
@@ -1052,6 +1206,7 @@ export default function ActivitiesList(): JSX.Element {
       .finally(() => {
         if (!abortController.signal.aborted) {
           setLoading(false);
+          setLoadingMore(false);
         }
         // Clear the ref if this was the current request
         if (abortControllerRef.current === abortController) {
@@ -1061,7 +1216,7 @@ export default function ActivitiesList(): JSX.Element {
   }, [category]); // Remove filters from dependencies - use filtersRef instead
 
   const loadCounts = useCallback(
-    async (currentFilters?: ActivityFilters) => {
+    async (currentFilters?: ActivityFilters): Promise<ActivitiesSummary | null> => {
       // Cancel any pending loadCounts request
       if (loadCountsAbortControllerRef.current) {
         loadCountsAbortControllerRef.current.abort();
@@ -1078,17 +1233,21 @@ export default function ActivitiesList(): JSX.Element {
         const summaryFilters: ActivityFilters = {
           ...dateOnlyFilters,
         };
-        if (currentFilters?.organizationId) summaryFilters.organizationId = currentFilters.organizationId;
-        if (currentFilters?.assignedUserId) summaryFilters.assignedUserId = currentFilters.assignedUserId;
-        if (currentFilters?.done !== undefined) summaryFilters.done = currentFilters.done;
+        if (currentFilters) {
+          if (currentFilters.organizationId) summaryFilters.organizationId = currentFilters.organizationId;
+          if (currentFilters.assignedUserId) summaryFilters.assignedUserId = currentFilters.assignedUserId;
+          if (currentFilters.done !== undefined) summaryFilters.done = currentFilters.done;
+        }
 
         // Let the backend compute all aggregates in a single /summary call
         const summary = await activitiesApi.summary(summaryFilters, { signal: abortController.signal });
 
         if (abortController.signal.aborted) {
-          return;
+          return null;
         }
 
+        // Use summary endpoint values directly - all calculations are done on the backend
+        // The backend should return accurate counts based on the filters provided
         setCallAssignedCount(summary.callAssignedCount ?? 0);
         setCallTakenCount(summary.callTakenCount ?? 0);
         setMeetingAssignedCount(summary.meetingAssignedCount ?? 0);
@@ -1096,260 +1255,20 @@ export default function ActivitiesList(): JSX.Element {
         setOverdueCount(summary.overdueCount ?? 0);
         setTotalCallDurationMinutes(summary.totalCallDurationMinutes ?? 0);
 
-        // IMPORTANT:
-        // Do NOT take activity TOTAL / PENDING / COMPLETED from the /summary
-        // endpoint. Different backends / roles can return 0 or incomplete data
-        // here, which caused the summary cards to show 0 when switching to
-        // date-based tabs such as "Today".
-        //
-        // Instead, we always derive the three activity counts from the
-        // currently loaded table rows in the list-sync effect below
-        // (`useEffect` that depends on `data` + `category`). That logic already
-        // respects the active tab (All / Overdue / Today / etc.) via
-        // `shouldShow`, so the numbers in the cards will always match what the
-        // user actually sees in the table.
-
-        // Ensure Call / Meeting counts, overdue, and total call duration are
-        // consistent across Call / Meeting tabs by explicitly querying the
-        // list endpoint with the same filters. We aggregate over the required
-        // categories only (not all three) to avoid unnecessary requests.
-        // - On Call tab we need CALL + MEETING_SCHEDULER stats
-        // - On Meeting scheduler tab we need MEETING_SCHEDULER + CALL stats
-        // - On Activity tab we also want CALL + MEETING_SCHEDULER stats
-        //   restricted by the current tab's date filters (Today / This week /
-        //   etc.) so that "Total Assign Call" and "Total Meeting Scheduled"
-        //   reflect what the user is looking at.
-        const baseFilters: ActivityFilters = {
-          ...summaryFilters,
-        };
-        if (currentFilters?.organizationId) baseFilters.organizationId = currentFilters.organizationId;
-        if (currentFilters?.assignedUserId) baseFilters.assignedUserId = currentFilters.assignedUserId;
-
-        const fetchPaged = async (categoryCode: string): Promise<Activity[]> => {
-          const pageSize = 200;
-          let page = 0;
-          let totalPages = 1;
-          const collected: Activity[] = [];
-          while (page < totalPages) {
-            const resp = await activitiesApi.list(
-              {
-                ...baseFilters,
-                category: categoryCode,
-                page,
-                size: pageSize,
-              },
-              { signal: abortController.signal },
-            );
-            if (abortController.signal.aborted) break;
-            collected.push(...(resp.content || []));
-            totalPages = resp.totalPages ?? 1;
-            page += 1;
-          }
-          return collected;
-        };
-        // Decide which backend categories we actually need for the active tab.
-        // Avoid fetching all three categories blindly.
-        let allCalls: Activity[] = [];
-        let allMeetings: Activity[] = [];
-        let allActivities: Activity[] = [];
-
-        const isCallTab = category === 'Call';
-        const isMeetingTab = category === 'Meeting scheduler';
-
-        // For all three main categories (Activity / Call / Meeting scheduler)
-        // we want CALL and MEETING_SCHEDULER stats to stay in sync so that
-        // "Total Assign Call" and "Call Taken" always show the same numbers
-        // regardless of which tab the user is on.
-        if (isCallTab || isMeetingTab || category === 'Activity') {
-          allCalls = await fetchPaged('CALL');
+        // Also set activity counts from summary endpoint to ensure consistency
+        // This prevents showing wrong counts from partial data
+        if (summary.activityPendingCount !== undefined && summary.activityPendingCount !== null) {
+          setActivityPendingCount(summary.activityPendingCount);
         }
-        if (isMeetingTab || isCallTab || category === 'Activity') {
-          allMeetings = await fetchPaged('MEETING_SCHEDULER');
+        if (summary.activityCompletedCount !== undefined && summary.activityCompletedCount !== null) {
+          setActivityCompletedCount(summary.activityCompletedCount);
         }
-        if (!isCallTab && !isMeetingTab && category !== 'Activity') {
-          // Fallback for any future categories: preserve previous behaviour.
-          [allCalls, allMeetings, allActivities] = await Promise.all([
-            fetchPaged('CALL'),
-            fetchPaged('MEETING_SCHEDULER'),
-            fetchPaged('ACTIVITY'),
-          ]);
+        if (summary.activityTotalCount !== undefined && summary.activityTotalCount !== null) {
+          setActivityTotalCount(summary.activityTotalCount);
         }
-
-        if (!abortController.signal.aborted) {
-          // Call / Meeting stats
-          const todayDate = new Date();
-          todayDate.setHours(0, 0, 0, 0);
-
-          const parseDateSafe = (a: Activity): Date | undefined => {
-            const raw = (a.date ?? a.dueDate) || undefined;
-            if (!raw) return undefined;
-            const p = raw.includes('-') ? raw.split('-') : raw.split('/');
-            let y: number, m: number, d: number;
-            if (p.length === 3 && p[0].length === 2) {
-              d = +p[0]; m = +p[1] - 1; y = +p[2];
-            } else if (p.length === 3) {
-              y = +p[0]; m = +p[1] - 1; d = +p[2];
-            } else {
-              return undefined;
-            }
-            const dt = new Date(y, m, d);
-            dt.setHours(0, 0, 0, 0);
-            return dt;
-          };
-
-          const parseTimeToMinutes = (time?: string | null): number | null => {
-            if (!time) return null;
-            const [h, m] = time.split(':');
-            if (h === undefined || m === undefined) return null;
-            const hours = Number(h);
-            const minutes = Number(m);
-            if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
-            return hours * 60 + minutes;
-          };
-
-          let callTotal = 0;
-          let callDoneTotal = 0;
-          let callOverdue = 0;
-          let callDurationMinutes = 0;
-
-          const isDateScopedTab = (t: TabOption) =>
-            t === 'Today' ||
-            t === 'Tomorrow' ||
-            t === 'Overdue' ||
-            t === 'This week' ||
-            t === 'Next week' ||
-            t === 'This month' ||
-            t === 'Prev month' ||
-            t === 'This year';
-
-          const matchesTabDateForAgg = (ed?: Date) => {
-            if (!ed) return !isDateScopedTab(tab);
-            // Mirror the date logic used in `shouldShow` so that the counts
-            // match the rows visible in the table.
-            if (tab === 'Today') {
-              return ed.getTime() === todayDate.getTime();
-            }
-            if (tab === 'Tomorrow') {
-              const tomorrow = new Date(todayDate);
-              tomorrow.setDate(tomorrow.getDate() + 1);
-              return ed.getTime() === tomorrow.getTime();
-            }
-            if (tab === 'Overdue') {
-              return ed.getTime() < todayDate.getTime();
-            }
-            if (tab === 'This week') {
-              const weekStart = new Date(todayDate);
-              weekStart.setDate(todayDate.getDate() - todayDate.getDay());
-              const weekEnd = new Date(weekStart);
-              weekEnd.setDate(weekStart.getDate() + 6);
-              weekEnd.setHours(23, 59, 59, 999);
-              return ed.getTime() >= weekStart.getTime() && ed.getTime() <= weekEnd.getTime();
-            }
-            if (tab === 'Next week') {
-              const weekStart = new Date(todayDate);
-              weekStart.setDate(todayDate.getDate() - todayDate.getDay());
-              const nextWeekStart = new Date(weekStart);
-              nextWeekStart.setDate(weekStart.getDate() + 7);
-              const nextWeekEnd = new Date(nextWeekStart);
-              nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
-              nextWeekEnd.setHours(23, 59, 59, 999);
-              return ed.getTime() >= nextWeekStart.getTime() && ed.getTime() <= nextWeekEnd.getTime();
-            }
-            if (tab === 'This month') {
-              const monthStart = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
-              monthStart.setHours(0, 0, 0, 0);
-              const monthEnd = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0);
-              monthEnd.setHours(23, 59, 59, 999);
-              return ed.getTime() >= monthStart.getTime() && ed.getTime() <= monthEnd.getTime();
-            }
-            if (tab === 'Prev month') {
-              const prevMonthStart = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
-              prevMonthStart.setHours(0, 0, 0, 0);
-              const prevMonthEnd = new Date(todayDate.getFullYear(), todayDate.getMonth(), 0);
-              prevMonthEnd.setHours(23, 59, 59, 999);
-              return ed.getTime() >= prevMonthStart.getTime() && ed.getTime() <= prevMonthEnd.getTime();
-            }
-            if (tab === 'This year') {
-              const yearStart = new Date(todayDate.getFullYear(), 0, 1);
-              yearStart.setHours(0, 0, 0, 0);
-              const yearEnd = new Date(todayDate.getFullYear(), 11, 31);
-              yearEnd.setHours(23, 59, 59, 999);
-              return ed.getTime() >= yearStart.getTime() && ed.getTime() <= yearEnd.getTime();
-            }
-            // For non date-specific tabs (All, To‑do, Select period / Date),
-            // rely on backend filters instead of local date checks.
-            return true;
-          };
-
-          allCalls.forEach((a) => {
-            const ed = parseDateSafe(a);
-            if (!matchesTabDateForAgg(ed)) return;
-
-            callTotal += 1;
-            if (a.done) {
-              callDoneTotal += 1;
-              const start = parseTimeToMinutes(a.startTime);
-              const end = parseTimeToMinutes(a.endTime);
-              if (start != null && end != null && end > start) {
-                callDurationMinutes += end - start;
-              }
-            } else if (ed && ed.getTime() < todayDate.getTime()) {
-              // Overdue = not done and past today, regardless of which
-              // date-based tab is active (matches existing overdue semantics).
-              callOverdue += 1;
-            }
-          });
-
-          // Meeting stats
-          let meetingTotal = 0;
-          let meetingDoneTotal = 0;
-          let meetingOverdue = 0;
-          allMeetings.forEach((a) => {
-            const ed = parseDateSafe(a);
-            if (!matchesTabDateForAgg(ed)) return;
-
-            meetingTotal += 1;
-            if (a.done) {
-              meetingDoneTotal += 1;
-            } else if (ed && ed.getTime() < todayDate.getTime()) {
-              meetingOverdue += 1;
-            }
-          });
-
-          // Activity stats (for overdue aggregation)
-          let activityOverdue = 0;
-          allActivities.forEach((a) => {
-            if (!a.done) {
-              const ed = parseDateSafe(a);
-              if (ed && ed.getTime() < todayDate.getTime()) {
-                activityOverdue += 1;
-              }
-            }
-          });
-
-          // Only override counts that are actually based on the categories we
-          // fetched. This keeps /summary values for anything we did not
-          // re‑compute locally.
-          //
-          // Behaviour by main tab:
-          // - Activity tab: show BOTH call + meeting stats.
-          // - Call tab: show call stats and keep meeting stats from /summary.
-          // - Meeting scheduler tab: show ONLY meeting stats; hide call stats
-          //   so that we never display a non‑zero "Total Assign Call / Call
-          //   Taken" when the Meeting list is empty.
+        
+        // Special handling for Meeting scheduler tab - hide call counts
           const isMeetingTab = category === 'Meeting scheduler';
-
-          if (!isMeetingTab && allCalls.length > 0) {
-            setCallAssignedCount(callTotal);
-            setCallTakenCount(callDoneTotal);
-            setTotalCallDurationMinutes(callDurationMinutes);
-          }
-
-          if (allMeetings.length > 0) {
-            setMeetingAssignedCount(meetingTotal);
-            setMeetingDoneCount(meetingDoneTotal);
-          }
-
           if (isMeetingTab) {
             // On Meeting tab, force call cards to 0 so the user does not see
             // a non‑zero call count with an empty Meeting list.
@@ -1358,26 +1277,13 @@ export default function ActivitiesList(): JSX.Element {
             setTotalCallDurationMinutes(0);
           }
 
-          // Overdue card should be context-sensitive:
-          // - On Call tab: show overdue calls
-          // - On Meeting scheduler tab: show overdue meetings
-          // - On Activity tab: prefer backend summary (handled above)
-          const isActivityTab = category === 'Activity';
-
-          if (category === 'Call') {
-            setOverdueCount(callOverdue);
-          } else if (category === 'Meeting scheduler') {
-            setOverdueCount(meetingOverdue);
-          } else if (!isActivityTab) {
-            // Fallback for any future categories that might use combined overdue.
-            const combinedOverdue = activityOverdue + callOverdue + meetingOverdue;
-            setOverdueCount(summary.overdueCount ?? combinedOverdue);
-          }
-        }
+        // Return summary for use in activity counts
+        return summary;
       } catch (error) {
         if (!abortController.signal.aborted) {
           console.error('Failed to load activity summary:', error);
         }
+        return null;
       } finally {
         // Clear the ref if this was the current request
         if (loadCountsAbortControllerRef.current === abortController) {
@@ -1394,8 +1300,24 @@ export default function ActivitiesList(): JSX.Element {
   // missing some fields. Call / meeting cards are driven by loadCounts so that they
   // stay consistent across the Activity / Call / Meeting tabs.
   useEffect(() => {
+    // Check if filters are applied (user-applied filters, not tab-based date filters)
+    const currentFilters = filtersRef.current;
+    const hasUserFilters = !!(currentFilters?.assignedUserId || currentFilters?.organizationId ||
+                             (selectedCategoryFilter && (Array.isArray(selectedCategoryFilter) ? selectedCategoryFilter.length > 0 : selectedCategoryFilter)) ||
+                             (selectedOrganizationFilter && (Array.isArray(selectedOrganizationFilter) ? selectedOrganizationFilter.length > 0 : selectedOrganizationFilter)) ||
+                             (selectedManagerFilter && (Array.isArray(selectedManagerFilter) ? selectedManagerFilter.length > 0 : selectedManagerFilter)));
+
+    // If no user filters are selected, don't recalculate counts from loaded data
+    // The counts should come from backend (totalElements and summary endpoint)
+    // which are set in loadActivities and loadCounts
+    // This prevents the counts from being reset to 0 after they're set correctly
+    if (!hasUserFilters) {
+      return;
+    }
+
     if (!data?.content || data.content.length === 0) {
       if (category === 'Activity') {
+        // Only reset counts if we have no data AND user filters are applied
         setActivityTotalCount(0);
         setActivityPendingCount(0);
         setActivityCompletedCount(0);
@@ -1412,14 +1334,18 @@ export default function ActivitiesList(): JSX.Element {
       return;
     }
 
+    // Only recalculate when user filters are applied
+    // Don't recalculate activityTotalCount from loaded data - it should come from API response.totalElements
+    // This prevents showing wrong counts from partial data (only 20 items loaded initially)
     const visible = data.content.filter((a) => shouldShow(a));
 
     if (category === 'Activity') {
-      setActivityTotalCount(visible.length);
+      // Don't set activityTotalCount here - it should come from API response.totalElements
+      // Only set pending/completed counts when user filters are applied
       setActivityPendingCount(visible.filter((a) => !a.done).length);
       setActivityCompletedCount(visible.filter((a) => a.done).length);
     }
-  }, [data, category, selectedCategoryFilter]);
+  }, [data, category, selectedCategoryFilter, selectedOrganizationFilter, selectedManagerFilter]);
 
   // When a service category filter is active, override counts by fetching activities
   // for the relevant type(s) and mapping them to the service category locally. We
@@ -1597,18 +1523,52 @@ export default function ActivitiesList(): JSX.Element {
   useEffect(() => {
     // Use filtersRef to get the latest filters value, ensuring we always use current state
     const currentFilters = filtersRef.current;
-    loadActivities(currentFilters);
-    loadCounts(currentFilters); // Pass current filters to loadCounts so COMPLETED and PENDING reflect the selected tab's date range
+    loadActivities(currentFilters, false); // Reset to page 0 when filters/category change
+    // loadCounts is called from within loadActivities when no filters are selected
+    // For filters applied case, we need to call it separately with a small delay
+    // to avoid cancelling the loadActivities request
+    const hasUserFilters = !!(currentFilters?.assignedUserId || currentFilters?.organizationId);
+    if (hasUserFilters) {
+      // Small delay to ensure loadActivities completes first
+      setTimeout(() => {
+        loadCounts(currentFilters);
+      }, 100);
+    }
     // Clear selections when filters or category change
     setSelectedActivities(new Set());
   }, [category, filtersKey, loadActivities, loadCounts]);
+
+  // Infinite scroll: Load more activities when user scrolls near bottom
+  useEffect(() => {
+    const handleScroll = () => {
+      // Check if we're near the bottom of the page (within 200px)
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      // If we're within 200px of the bottom and not already loading
+      if (documentHeight - (scrollTop + windowHeight) < 200) {
+        if (hasMore && !loading && !loadingMore) {
+          // Load next page using current filters
+          const currentFilters = filtersRef.current;
+          loadActivities(currentFilters, true);
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [hasMore, loading, loadingMore, data, loadActivities]);
 
   // Sync selectedManagerFilter with filters.assignedUserId (not assignedUser string)
   // This ensures the dropdown shows the correct user when a user is selected
   // Check if modal should be opened from navigation state
   useEffect(() => {
     const state = location?.state as any;
-    if (state?.openModal && !isAddOpen && !hasHandledOpenModal.current) {
+    // Don't open modal if confirmation is showing
+    if (state?.openModal && !isAddOpen && !hasHandledOpenModal.current && !showActivityConfirmation) {
       hasHandledOpenModal.current = true;
       setIsAddOpen(true);
       // Clear the state to prevent reopening on re-render
@@ -1616,7 +1576,7 @@ export default function ActivitiesList(): JSX.Element {
         navigate(location.pathname, { replace: true, state: {} });
       });
     }
-  }, [location?.pathname, location?.state, isAddOpen, navigate]);
+  }, [location?.pathname, location?.state, isAddOpen, navigate, showActivityConfirmation]);
   
   // Reset the ref when modal is closed and state is cleared
   useEffect(() => {
@@ -2044,59 +2004,6 @@ export default function ActivitiesList(): JSX.Element {
     });
   };
 
-  const handleManagerFilterChange = (value: string) => {
-    if (isAdmin || isCategoryManager || isSales || isPresales) {
-      // Multi-select for ADMIN, CATEGORY_MANAGER, SALES, and PRESALES
-      const userId = Number(value);
-      if (!Number.isNaN(userId)) {
-        setSelectedManagerFilter((prev) => {
-          const current = Array.isArray(prev) ? prev : [];
-          const newArray = current.includes(userId)
-            ? current.filter((id) => id !== userId)
-            : [...current, userId];
-          // Update filters
-          setFilters((filtersPrev) => {
-            const filtersNext: ActivityFilters = { ...filtersPrev, page: 0 };
-            if (newArray.length > 0) {
-              filtersNext.assignedUserId = newArray;
-            } else {
-              delete filtersNext.assignedUserId;
-            }
-            // Only use assignedUserId, don't set assignedUser
-            delete filtersNext.assignedUser;
-            return filtersNext;
-          });
-          return newArray;
-        });
-      }
-    } else {
-      // Single select for other roles
-    const normalizedValue = value.trim();
-    setSelectedManagerFilter(normalizedValue);
-    setFilters((prev) => {
-      const next: ActivityFilters = { ...prev, page: 0 };
-      if (normalizedValue) {
-        const userId = Number(normalizedValue);
-        if (!Number.isNaN(userId)) {
-            // Backend now handles all scoping by assigned user
-            // SALES users: backend returns activities assigned to them and their PRESALES team
-            // CATEGORY_MANAGER users: backend returns activities assigned to them, their SALES reports, and PRESALES under those SALES
-            // PRESALES users: backend returns activities assigned to them and their Sales manager
-            // We just need to set assignedUserId and let the backend handle the filtering
-              next.assignedUserId = userId;
-            // Remove organizationId filter - backend handles scoping by assignment only
-              delete next.organizationId;
-            // Only use assignedUserId, don't set assignedUser
-            delete next.assignedUser;
-        }
-      } else {
-        delete next.assignedUserId;
-        delete next.organizationId;
-      }
-        return next;
-      });
-    }
-  };
 
   const handleUserMultiSelectToggle = (userId: number) => {
     setSelectedManagerFilter((prev) => {
@@ -3270,11 +3177,11 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         break;
       case 'activityPending':
         setCategory('Activity');
-        setFilters({ ...dateFilters, done: false });
+        setFilters(dateFilters);
         break;
       case 'activityCompleted':
         setCategory('Activity');
-        setFilters({ ...dateFilters, done: true });
+        setFilters(dateFilters);
         break;
       case 'callAll':
         setCategory('Call');
@@ -3631,19 +3538,19 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
               )}
             </div>
           ) : (
-            <select
-              className="toolbar-select"
-              value={selectedCategoryFilter}
-              onChange={(e) => setSelectedCategoryFilter(e.target.value.trim())}
-              title="Filters by service categories on the backend"
-            >
-              <option value="">All Categories</option>
-              {categoryFilterOptions.map((opt) => (
-                <option key={opt.code} value={opt.code}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+          <select
+            className="toolbar-select"
+            value={selectedCategoryFilter}
+            onChange={(e) => setSelectedCategoryFilter(e.target.value.trim())}
+            title="Filters by service categories on the backend"
+          >
+            <option value="">All Categories</option>
+            {categoryFilterOptions.map((opt) => (
+              <option key={opt.code} value={opt.code}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
           )}
           {(isAdmin || isCategoryManager || isSales || isPresales) ? (
             // Multi-select for ADMIN, CATEGORY_MANAGER, SALES, and PRESALES
@@ -3823,52 +3730,19 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           ) : (
             // Single select for other roles
             <>
-              <select
-                className="toolbar-select"
+          <select
+            className="toolbar-select"
                 value={typeof selectedOrganizationFilter === 'string' ? selectedOrganizationFilter : ''}
-                onChange={(e) => handleOrganizationFilterChange(e.target.value)}
-              >
-                <option value="">All Organizations</option>
-                {organizationOptions.map((org) => (
-                  <option key={org.id} value={String(org.id)}>
-                    {org.name || `Organization #${org.id}`}
-                  </option>
-                ))}
-              </select>
-            <select
-              className="toolbar-select"
-              value={typeof selectedManagerFilter === 'string' ? selectedManagerFilter : ''}
-              onChange={(e) => handleManagerFilterChange(e.target.value)}
-            >
-              <option value="">All Users</option>
-              {managerOptions.map((manager) => {
-                const label = getUserDisplayLabel(manager);
-                return (
-                  <option key={manager.id} value={String(manager.id)}>
-                    {label}
-                  </option>
-                );
-              })}
+            onChange={(e) => handleOrganizationFilterChange(e.target.value)}
+          >
+            <option value="">All Organizations</option>
+            {organizationOptions.map((org) => (
+              <option key={org.id} value={String(org.id)}>
+                {org.name || `Organization #${org.id}`}
+              </option>
+            ))}
             </select>
             </>
-          )}
-          {!isPresales && (
-            <select
-              className="toolbar-select"
-              value={typeof selectedManagerFilter === 'string' ? selectedManagerFilter : ''}
-              onChange={(e) => handleManagerFilterChange(e.target.value)}
-            >
-              <option value="">All Users</option>
-              {managerOptions.map((manager) => {
-                const fullName = `${manager.firstName || ''} ${manager.lastName || ''}`.trim();
-                const label = fullName || manager.email || `User #${manager.id}`;
-                return (
-                  <option key={manager.id} value={String(manager.id)}>
-                    {label}
-                  </option>
-                );
-              })}
-            </select>
           )}
         </div>
       </div>
@@ -4066,94 +3940,30 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
       </table>
       </div>
 
-      {/* Pagination Controls */}
-      {data && data.totalElements > 10 && (
+      {/* Infinite Scroll Loading Indicator */}
+      {loadingMore && (
         <div style={{
           display: 'flex',
-          justifyContent: 'space-between',
+          justifyContent: 'center',
           alignItems: 'center',
-          padding: '16px 20px',
+          padding: '20px',
+          borderTop: '1px solid #e5e7eb',
+          backgroundColor: '#f9fafb'
+        }}>
+          <div style={{ fontSize: '14px', color: '#6b7280' }}>Loading more activities...</div>
+          </div>
+      )}
+      {!hasMore && data && data.content.length > 0 && (
+            <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '20px',
           borderTop: '1px solid #e5e7eb',
           backgroundColor: '#f9fafb'
         }}>
           <div style={{ fontSize: '14px', color: '#6b7280' }}>
-            Showing {data.content.length > 0 ? (data.number * data.size + 1) : 0} to {Math.min((data.number * data.size + data.content.length), data.totalElements)} of {data.totalElements} activities
-          </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button
-              onClick={() => {
-                if (data.number > 0) {
-                  setFilters({ ...filters, page: data.number - 1 });
-                }
-              }}
-              disabled={data.number === 0}
-              style={{
-                padding: '8px 16px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                backgroundColor: data.number === 0 ? '#f3f4f6' : '#ffffff',
-                color: data.number === 0 ? '#9ca3af' : '#374151',
-                cursor: data.number === 0 ? 'not-allowed' : 'pointer',
-                fontSize: '14px',
-                fontWeight: 500,
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                if (data.number > 0) {
-                  e.currentTarget.style.backgroundColor = '#f9fafb';
-                  e.currentTarget.style.borderColor = '#9ca3af';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (data.number > 0) {
-                  e.currentTarget.style.backgroundColor = '#ffffff';
-                  e.currentTarget.style.borderColor = '#d1d5db';
-                }
-              }}
-            >
-              Previous
-            </button>
-            <div style={{
-              padding: '8px 12px',
-              fontSize: '14px',
-              color: '#374151',
-              fontWeight: 500
-            }}>
-              Page {data.number + 1} of {data.totalPages}
-            </div>
-            <button
-              onClick={() => {
-                if (data.number < data.totalPages - 1) {
-                  setFilters({ ...filters, page: data.number + 1 });
-                }
-              }}
-              disabled={data.number >= data.totalPages - 1}
-              style={{
-                padding: '8px 16px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                backgroundColor: data.number >= data.totalPages - 1 ? '#f3f4f6' : '#ffffff',
-                color: data.number >= data.totalPages - 1 ? '#9ca3af' : '#374151',
-                cursor: data.number >= data.totalPages - 1 ? 'not-allowed' : 'pointer',
-                fontSize: '14px',
-                fontWeight: 500,
-                transition: 'all 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                if (data.number < data.totalPages - 1) {
-                  e.currentTarget.style.backgroundColor = '#f9fafb';
-                  e.currentTarget.style.borderColor = '#9ca3af';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (data.number < data.totalPages - 1) {
-                  e.currentTarget.style.backgroundColor = '#ffffff';
-                  e.currentTarget.style.borderColor = '#d1d5db';
-                }
-              }}
-            >
-              Next
-            </button>
+            Showing all {data.content.length} of {data.totalElements} activities
           </div>
         </div>
       )}
@@ -4337,27 +4147,84 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
             if (created?.id && v.serviceCategory) {
               updateServiceCategory(created.id, v.serviceCategory);
             }
-            // Reset to "All" tab to ensure new activity is visible
-            setTab('All');
-            // Clear category filter to show the newly created activity
-            // The activity might have a different category than the page filter
+            // Close modal first
+            setIsAddOpen(false);
+            // Show confirmation popup
+            setShowActivityConfirmation(true);
+            
+            // Get current filters to preserve important ones (assignedUserId, organizationId, etc.)
+            const currentFilters = filtersRef.current;
+            
+            // Clear date and category filters, but preserve other filters (assignedUserId, organizationId, etc.)
+            // This ensures the activity is visible regardless of date/category filters
             const newFilters: ActivityFilters = { 
+              ...currentFilters, // Preserve existing filters like assignedUserId, organizationId
               page: 0, 
               size: 10,
-              category: undefined // Explicitly set to undefined to show all activities
+              // Clear date filters to show activity regardless of date
+              dateFrom: undefined,
+              dateTo: undefined,
+              done: undefined,
+              // Clear category filter to show the newly created activity
+              category: undefined,
+              // Preserve sort
+              sort: currentFilters.sort || 'dueDate,desc',
             };
+            
+            // Reset to "All" tab and set filters, then refresh
+            setTab('All');
             setFilters(newFilters);
-            // Load activities without category filter to show the new activity
-            loadActivities(newFilters);
-            loadCounts(newFilters);
-            // Don't close modal here - let ActivityModal handle it after showing confirmation
-            // setIsAddOpen(false);
+            
+            // Refresh activities after a short delay to ensure state updates complete
+            setTimeout(() => {
+              // Use filtersRef to get the latest filters (in case tab change modified them)
+              const latestFilters = filtersRef.current;
+              // Ensure date filters are cleared
+              const refreshFilters: ActivityFilters = {
+                ...latestFilters,
+                dateFrom: undefined,
+                dateTo: undefined,
+                done: undefined,
+                category: undefined,
+                page: 0,
+              };
+              loadActivities(refreshFilters);
+              loadCounts(refreshFilters);
+            }, 300);
           } catch (error: any) {
             console.error('Failed to create activity:', error);
             alert(`Failed to create activity: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
           }
         }}
       />
+
+      {/* Confirmation popup for successful activity creation */}
+      {showActivityConfirmation && typeof document !== 'undefined' && document.body ? createPortal(
+        <div 
+          className="am-confirmation-overlay" 
+          onClick={() => setShowActivityConfirmation(false)}
+          style={{ zIndex: 1000002 }}
+        >
+          <div className="am-confirmation-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="am-confirmation-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" fill="#10b981" opacity="0.1"/>
+                <path d="M9 12l2 2 4-4" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="#10b981" strokeWidth="2"/>
+              </svg>
+            </div>
+            <h3 className="am-confirmation-title">Activity Scheduled Successfully!</h3>
+            <p className="am-confirmation-message">Your activity has been scheduled and saved.</p>
+            <button 
+              className="am-confirmation-button" 
+              onClick={() => setShowActivityConfirmation(false)}
+            >
+              OK
+            </button>
+          </div>
+        </div>,
+        document.body
+      ) : null}
 
       {editingActivity && (
         <ActivityModal

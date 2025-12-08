@@ -100,7 +100,7 @@ export default function ActivityModal({
   const [values, setValues] = useState<ActivityFormValues>({ subject: '' });
   const [_categories, setCategories] = useState<Array<{ id: string; label: string }>>([]);
   const [categoryLoading, setCategoryLoading] = useState(false);
-  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [dealOptions, setDealOptions] = useState<Deal[]>([]);
   const [personOptions, setPersonOptions] = useState<Person[]>([]);
   const [organizationLookup, setOrganizationLookup] = useState<Record<number, string>>({});
@@ -109,8 +109,13 @@ export default function ActivityModal({
   const [filteredOrganizations, setFilteredOrganizations] = useState<Organization[]>([]);
   const [showOrgSuggestions, setShowOrgSuggestions] = useState(false);
   const [dealInput, setDealInput] = useState('');
+  const [filteredDeals, setFilteredDeals] = useState<Deal[]>([]);
+  const [showDealSuggestions, setShowDealSuggestions] = useState(false);
+  const dealInputRef = useRef<HTMLInputElement>(null);
+  const dealSuggestionsRef = useRef<HTMLDivElement>(null);
   const [personInput, setPersonInput] = useState('');
   const [serviceCategory, setServiceCategory] = useState<string>(initialServiceCategory);
+  const [filteredUserOptions, setFilteredUserOptions] = useState<User[]>([]);
   const [showNotesInfo, setShowNotesInfo] = useState(false);
   const infoIconRef = useRef<HTMLButtonElement>(null);
 
@@ -119,6 +124,70 @@ export default function ActivityModal({
     const last = (user.lastName || '').trim();
     const fullName = [first, last].filter(Boolean).join(' ');
     return fullName || user.email || `User ${user.id}`;
+  };
+
+  // Filter users based on service category
+  const filterUsersByCategory = (category: string, orgs: Organization[], users: User[]) => {
+    if (!category || !orgs.length || !users.length) {
+      // If no category selected or no data, show all users
+      setFilteredUserOptions(users);
+      return;
+    }
+
+    // Normalize category for comparison
+    const normalizeCategory = (cat: string | null | undefined): string => {
+      if (!cat) return '';
+      return cat
+        .toUpperCase()
+        .replace(/&/g, 'AND')
+        .replace(/_/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+
+    const categoryNormalized = normalizeCategory(category);
+
+    // Filter organizations by category
+    const filteredOrgs = orgs.filter((org) => {
+      if (!org.category) return false;
+      const orgCategoryNormalized = normalizeCategory(org.category);
+      return orgCategoryNormalized === categoryNormalized;
+    });
+
+    // Get owner IDs from filtered organizations (these are SALES users)
+    const ownerIdsInCategory = new Set(
+      filteredOrgs
+        .map((org) => org.owner?.id)
+        .filter((id): id is number => id !== undefined && id !== null)
+    );
+
+    // Filter users: 
+    // 1. SALES users who own organizations in this category
+    // 2. PRESALES users who report to those SALES users
+    // 3. Other roles (ADMIN, CATEGORY_MANAGER, etc.) - show all
+    const presalesRoleCodes = ['PRESALES', 'PRE_SALES', 'PRE-SALES'];
+    const filteredUsers = users.filter((user) => {
+      const role = (user.role || '').toUpperCase();
+      
+      // Include SALES users who own organizations in this category
+      if (role === 'SALES' && ownerIdsInCategory.has(user.id)) {
+        return true;
+      }
+      
+      // Include PRESALES users whose manager (SALES user) owns organizations in this category
+      if (presalesRoleCodes.includes(role) && user.managerId !== null && ownerIdsInCategory.has(user.managerId)) {
+        return true;
+      }
+      
+      // Include other roles (ADMIN, CATEGORY_MANAGER, etc.) - show all
+      if (role !== 'SALES' && !presalesRoleCodes.includes(role)) {
+        return true;
+      }
+      
+      return false;
+    });
+
+    setFilteredUserOptions(filteredUsers);
   };
 
   const update = (k: keyof ActivityFormValues, v: string | number) => {
@@ -199,6 +268,9 @@ export default function ActivityModal({
 
   useEffect(() => {
     if (isOpen) {
+      // Clear validation errors when modal opens
+      setValidationError(null);
+      
       const baseType = initialActivity?.type || deriveTypeFromCategory(initialCategory);
       const baseCategory =
         mapActivityTypeToCategory(initialActivity?.type || baseType) || 'ACTIVITY';
@@ -250,7 +322,14 @@ export default function ActivityModal({
           organizationsApi.list().catch(() => []),
         ]);
         if (cancelled) return;
-        setDealOptions(deals ?? []);
+        const dealsList = deals ?? [];
+        // Deduplicate deals by ID
+        const uniqueDeals = dealsList.filter((deal, index, self) =>
+          index === self.findIndex((d) => d.id === deal.id)
+        );
+        setDealOptions(uniqueDeals);
+        // Initialize filtered deals with all deals (limited to 10 for initial display)
+        setFilteredDeals(uniqueDeals.slice(0, 10));
         setPersonOptions(personsResponse?.content ?? []);
         const orgs = organizations ?? [];
         // Store organizations for potential future use (setters are used, but state variables are not read)
@@ -263,6 +342,7 @@ export default function ActivityModal({
           }
         });
         setOrganizationLookup(lookup);
+        // User filtering will happen in useEffect when organizations are set
       } catch (error) {
         if (!cancelled) {
           console.error('Failed to load deal/person options for activities:', error);
@@ -275,23 +355,40 @@ export default function ActivityModal({
     };
   }, [isOpen]);
 
+  // Filter users when service category, organizations, or userOptions change
+  useEffect(() => {
+    if (isOpen && organizations.length > 0 && userOptions.length > 0) {
+      filterUsersByCategory(serviceCategory, organizations, userOptions);
+    } else if (isOpen && userOptions.length > 0) {
+      // If organizations not loaded yet, show all users
+      setFilteredUserOptions(userOptions);
+    }
+  }, [serviceCategory, organizations, userOptions, isOpen]);
+
   // Close info popup when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (infoIconRef.current && !infoIconRef.current.contains(event.target as Node)) {
         setShowNotesInfo(false);
       }
+      // Close deal suggestions when clicking outside
+      if (
+        dealInputRef.current &&
+        dealSuggestionsRef.current &&
+        !dealInputRef.current.contains(event.target as Node) &&
+        !dealSuggestionsRef.current.contains(event.target as Node)
+      ) {
+        setShowDealSuggestions(false);
+      }
     };
 
-    if (showNotesInfo) {
+    if (showNotesInfo || showDealSuggestions) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-  }, [showNotesInfo]);
-
-  if (!isOpen) return null;
+  }, [showNotesInfo, showDealSuggestions]);
 
   const toIsoDate = (dateStr?: string): string | undefined => {
     if (!dateStr) return undefined;
@@ -317,11 +414,34 @@ export default function ActivityModal({
   };
 
   const handleDealInputChange = (value: string) => {
-    const trimmed = value.trim();
     setDealInput(value);
+    
+    // Always show suggestions when user is typing/editing
+    // Filter deals based on search query
+    if (value.trim()) {
+      const query = value.toLowerCase().trim();
+      const filtered = dealOptions.filter((deal) =>
+        deal.name?.toLowerCase().includes(query)
+      );
+      // Deduplicate filtered results by ID
+      const uniqueFiltered = filtered.filter((deal, index, self) =>
+        index === self.findIndex((d) => d.id === deal.id)
+      );
+      setFilteredDeals(uniqueFiltered);
+      // Show suggestions when user is actively typing
+      setShowDealSuggestions(true);
+    } else {
+      // If input is cleared, hide suggestions
+      setFilteredDeals([]);
+      setShowDealSuggestions(false);
+    }
+
+    // Check for exact match
+    const trimmed = value.trim();
     const matchingDeal = dealOptions.find(
       (d) => d.name?.toLowerCase() === trimmed.toLowerCase(),
     );
+    
     setValues((prev) => {
       const next: ActivityFormValues = { ...prev };
 
@@ -349,6 +469,7 @@ export default function ActivityModal({
         return next;
       }
 
+      // If exact match found, auto-fill related data
       if (matchingDeal.name) {
         setDealInput(matchingDeal.name);
       }
@@ -388,6 +509,56 @@ export default function ActivityModal({
 
       return next;
     });
+  };
+
+  const handleDealSelect = (deal: Deal) => {
+    setDealInput(deal.name || '');
+    // Close suggestions immediately after selection
+    setShowDealSuggestions(false);
+    setFilteredDeals([]);
+    
+    setValues((prev) => {
+      const next: ActivityFormValues = { ...prev };
+      next.dealId = deal.id || undefined;
+      next.dealName = deal.name || '';
+
+      if (deal.personId) {
+        next.personId = deal.personId;
+        const relatedPerson = personOptions.find((p) => p.id === deal.personId);
+        if (relatedPerson) {
+          setPersonInput(relatedPerson.name || '');
+          if (relatedPerson.organization || relatedPerson.organizationName) {
+            next.organization = relatedPerson.organization || relatedPerson.organizationName || next.organization;
+          }
+          if (relatedPerson.phone) {
+            next.phone = relatedPerson.phone;
+          }
+          if (relatedPerson.instagramId) {
+            next.instagramId = relatedPerson.instagramId;
+          }
+        }
+      } else {
+        setPersonInput('');
+        next.personId = undefined;
+        next.phone = '';
+        next.instagramId = '';
+      }
+
+      if (deal.organizationId) {
+        next.organizationId = deal.organizationId;
+        const orgName = organizationLookup[deal.organizationId];
+        if (orgName) {
+          next.organization = orgName;
+        }
+      }
+
+      return next;
+    });
+    
+    // Blur the input to remove focus
+    if (dealInputRef.current) {
+      dealInputRef.current.blur();
+    }
   };
 
   const handlePersonInputChange = (value: string) => {
@@ -431,6 +602,20 @@ export default function ActivityModal({
   };
 
   const handleSave = async () => {
+    // Clear previous validation errors
+    setValidationError(null);
+
+    // Validate assigned user is mandatory
+    if (!values.assignedUserId) {
+      setValidationError('Please select an assigned user');
+      // Scroll to the assigned user field
+      const assignedUserField = document.querySelector('.am-field:has(select[value*="assignedUser"])') as HTMLElement;
+      if (assignedUserField) {
+        assignedUserField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
     try {
       const isoDate = toIsoDate(values.date);
       const activityType = values.type || values.category;
@@ -451,29 +636,20 @@ export default function ActivityModal({
         assignedUserId: values.assignedUserId || undefined,
       };
       await onSave({ ...formattedValues, id: initialActivity?.id });
-      // Show confirmation pop-up - don't reset form or close modal yet
-      // The confirmation handler will handle closing
-      setShowConfirmation(true);
+      // Don't show confirmation here - parent component (ActivitiesList) handles it
+      // Close modal immediately after successful save
+      onClose();
     } catch (error) {
       console.error('Error saving activity:', error);
+      setValidationError('Failed to save activity. Please try again.');
       // Don't show confirmation on error
     }
   };
 
-  const handleConfirmationClose = () => {
-    setShowConfirmation(false);
-    // Reset form and close modal
-    setValues({ subject: '' });
-    setDealInput('');
-    setPersonInput('');
-    setServiceCategory(initialServiceCategory || 'PHOTOGRAPHY');
-    onClose();
-  };
+  // Don't render anything if modal is not open
+  if (!isOpen) return null;
 
-  // Show confirmation pop-up even if modal is closed (but was just open)
-  if (!isOpen && !showConfirmation) return null;
-
-  const modalContent = isOpen ? (
+  const modalContent = (
     <div className="am-overlay" onClick={onClose}>
       <div className="am-modal" onClick={(e) => e.stopPropagation()}>
         <div className="am-header">
@@ -580,7 +756,12 @@ export default function ActivityModal({
                   <select
                     className="am-input"
                     value={serviceCategory}
-                    onChange={(e) => setServiceCategory(e.target.value)}
+                    onChange={(e) => {
+                      const newCategory = e.target.value;
+                      setServiceCategory(newCategory);
+                      // Filter users when category changes
+                      filterUsersByCategory(newCategory, organizations, userOptions);
+                    }}
                   >
                     {SERVICE_CATEGORY_OPTIONS.map((option) => (
                       <option key={option.code} value={option.code}>
@@ -613,17 +794,26 @@ export default function ActivityModal({
               </div>
             </label>
             <label className="am-field">
-              <span>Assigned user</span>
+              <span>Assigned user <span style={{ color: '#ef4444' }}>*</span></span>
               <div style={{ position: 'relative' }}>
                 <select
-                  className="am-input"
+                  className={`am-input ${validationError && !values.assignedUserId ? 'am-input-error' : ''}`}
                   value={values.assignedUser || ''}
                   onChange={(e) => {
                     const selectedLabel = e.target.value;
                     update('assignedUser', selectedLabel);
-                    // Find the user by display name and set the userId
+                    // Clear validation error when user selects someone
                     if (selectedLabel) {
-                      const selectedUser = userOptions.find((user) => {
+                      setValidationError(null);
+                    }
+                    // Find the user by display name and set the userId (search in filtered users)
+                    if (selectedLabel) {
+                      const selectedUser = filteredUserOptions.length > 0 
+                        ? filteredUserOptions.find((user) => {
+                            const label = getUserDisplayName(user);
+                            return label === selectedLabel;
+                          })
+                        : userOptions.find((user) => {
                         const label = getUserDisplayName(user);
                         return label === selectedLabel;
                       });
@@ -637,8 +827,8 @@ export default function ActivityModal({
                     }
                   }}
                 >
-                  <option value="">All Users</option>
-                  {userOptions.map((user) => {
+                  <option value="">Select a user</option>
+                  {(filteredUserOptions.length > 0 ? filteredUserOptions : userOptions).map((user) => {
                     const label = getUserDisplayName(user);
                     return (
                       <option key={user.id} value={label}>
@@ -647,10 +837,15 @@ export default function ActivityModal({
                     );
                   })}
                 </select>
-                <div className="am-input-tooltip" data-tooltip={values.assignedUser || 'All Users'}>
-                  {values.assignedUser || 'All Users'}
+                <div className="am-input-tooltip" data-tooltip={values.assignedUser || 'Select a user'}>
+                  {values.assignedUser || 'Select a user'}
                 </div>
               </div>
+              {validationError && !values.assignedUserId && (
+                <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                  {validationError}
+                </span>
+              )}
             </label>
             <label className="am-field">
               <span>Phone</span>
@@ -703,14 +898,100 @@ export default function ActivityModal({
 
             <label className="am-field full">
               <span>Deal or Lead</span>
+              <div style={{ position: 'relative' }}>
               <input
+                  ref={dealInputRef}
                 className="am-input"
                 placeholder="Deal name"
                 value={dealInput}
                 onChange={(e) => handleDealInputChange(e.target.value)}
+                  onFocus={() => {
+                    // Only show suggestions if user is actively typing/editing
+                    // Don't show on focus if there's already a selected value (exact match)
+                    const trimmed = dealInput.trim();
+                    if (trimmed) {
+                      // Check if current input matches a deal exactly
+                      const exactMatch = dealOptions.find(
+                        (d) => d.name?.toLowerCase() === trimmed.toLowerCase()
+                      );
+                      // Only show suggestions if it's not an exact match (user is editing)
+                      if (!exactMatch) {
+                        const query = trimmed.toLowerCase();
+                        const filtered = dealOptions.filter((deal) =>
+                          deal.name?.toLowerCase().includes(query)
+                        );
+                        // Deduplicate filtered results by ID
+                        const uniqueFiltered = filtered.filter((deal, index, self) =>
+                          index === self.findIndex((d) => d.id === deal.id)
+                        );
+                        setFilteredDeals(uniqueFiltered);
+                        setShowDealSuggestions(true);
+                      }
+                    } else {
+                      // Show all deals when focused and input is empty
+                      setFilteredDeals(dealOptions.slice(0, 10)); // Limit to first 10 for performance
+                      setShowDealSuggestions(true);
+                    }
+                  }}
                 disabled={!!dealData}
                 readOnly={!!dealData}
               />
+                {showDealSuggestions && filteredDeals.length > 0 && !dealData && (
+                  <div
+                    ref={dealSuggestionsRef}
+                    className="am-suggestions"
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      zIndex: 1000,
+                      background: 'white',
+                      border: '1px solid #ccc',
+                      borderRadius: '8px',
+                      maxHeight: '200px',
+                      overflowY: 'auto',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                      marginTop: '4px',
+                    }}
+                  >
+                    {filteredDeals.map((deal) => (
+                      <div
+                        key={deal.id}
+                        className="am-suggestion-item"
+                        style={{
+                          padding: '10px 12px',
+                          cursor: 'pointer',
+                          borderBottom: '1px solid #eee',
+                          transition: 'background-color 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#f5f5f5';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'white';
+                        }}
+                        onClick={() => handleDealSelect(deal)}
+                      >
+                        <div style={{ fontWeight: 500, color: '#0f172a' }}>{deal.name}</div>
+                        {deal.personId && (() => {
+                          const person = personOptions.find(p => p.id === deal.personId);
+                          return person ? (
+                            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                              Person: {person.name}
+                            </div>
+                          ) : null;
+                        })()}
+                        {deal.organizationId && organizationLookup[deal.organizationId] && (
+                          <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                            Org: {organizationLookup[deal.organizationId]}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </label>
 
             <label className="am-field full">
@@ -786,31 +1067,8 @@ export default function ActivityModal({
         </div>
       </div>
     </div>
-  ) : null;
-
-  return (
-    <>
-      {modalContent && createPortal(modalContent, document.body)}
-      {showConfirmation && createPortal(
-        <div className="am-confirmation-overlay" onClick={handleConfirmationClose}>
-          <div className="am-confirmation-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="am-confirmation-icon">
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="10" fill="#10b981" opacity="0.1"/>
-                <path d="M9 12l2 2 4-4" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="12" cy="12" r="10" stroke="#10b981" strokeWidth="2"/>
-              </svg>
-            </div>
-            <h3 className="am-confirmation-title">Activity Scheduled Successfully!</h3>
-            <p className="am-confirmation-message">Your activity has been scheduled and saved.</p>
-            <button className="am-confirmation-button" onClick={handleConfirmationClose}>
-              OK
-            </button>
-          </div>
-        </div>,
-        document.body
-      )}
-    </>
   );
+
+  return modalContent ? createPortal(modalContent, document.body) : null;
 }
 
