@@ -13,6 +13,7 @@ import { dealsApi } from '../services/deals';
 import type { Organization } from '../types/organization';
 import type { User } from '../types/user';
 import { getStoredUser } from '../utils/authToken';
+import '../components/SetTargetModal.css';
 
 const tabOptions = ['All', 'To‑do', 'Overdue', 'Today', 'Tomorrow', 'This week', 'Next week', 'This month', 'Prev month', 'This year', 'Select period', 'Select Date'] as const;
 const primaryTabs: Array<(typeof tabOptions)[number]> = ['All', 'Overdue', 'Today'];
@@ -112,9 +113,19 @@ export default function ActivitiesList() {
   const [baseOrganizationOptions, setBaseOrganizationOptions] = useState<Organization[]>([]);
   const [managerOptions, setManagerOptions] = useState<User[]>([]);
   const [baseManagerOptions, setBaseManagerOptions] = useState<User[]>([]);
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('');
-  const [selectedOrganizationFilter, setSelectedOrganizationFilter] = useState<string>('');
-  const [selectedManagerFilter, setSelectedManagerFilter] = useState<string>('');
+  // For ADMIN, CATEGORY_MANAGER, SALES, and PRESALES: support multi-select (array), for others: single select (string)
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | string[]>('');
+  const [selectedOrganizationFilter, setSelectedOrganizationFilter] = useState<string | number[]>('');
+  const [selectedManagerFilter, setSelectedManagerFilter] = useState<string | number[]>('');
+  const [showCategoryMultiSelect, setShowCategoryMultiSelect] = useState(false);
+  const [showOrgMultiSelect, setShowOrgMultiSelect] = useState(false);
+  const [showUserMultiSelect, setShowUserMultiSelect] = useState(false);
+  const [categorySearchQuery, setCategorySearchQuery] = useState('');
+  const [orgSearchQuery, setOrgSearchQuery] = useState('');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const categoryMultiSelectRef = useRef<HTMLDivElement>(null);
+  const orgMultiSelectRef = useRef<HTMLDivElement>(null);
+  const userMultiSelectRef = useRef<HTMLDivElement>(null);
   const [attachmentPreviews, setAttachmentPreviews] = useState<Record<number, string>>({});
   const [durationEntries, setDurationEntries] = useState<Record<number, string>>({});
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
@@ -462,21 +473,38 @@ export default function ActivitiesList() {
         } else if (isSales && currentUserId) {
           // Sales user:
           // - Organizations: only those where this Sales user is set as owner (shown in "All Organizations" dropdown)
-          // - Users: only Presales users reporting directly to this Sales user (shown in "All Users" dropdown)
+          // - Users: the Sales user themselves and their Presales users (shown in "All Users" dropdown)
           scopedOrganizations = allOrganizations.filter(
             (org) => org.owner && org.owner.id === currentUserId,
           );
-          scopedUsers = allUsers.filter(
-            (u) => presalesRoleCodes.includes(getUpperRole(u)) && u.managerId === currentUserId,
+          // Include the SALES user themselves and their PRESALES team members
+          // Sort: SALES user first, then PRESALES team members
+          const salesAndPresales = allUsers.filter(
+            (u) => u.id === currentUserId || (presalesRoleCodes.includes(getUpperRole(u)) && u.managerId === currentUserId),
           );
+          scopedUsers = salesAndPresales.sort((a, b) => {
+            if (a.id === currentUserId) return -1; // SALES user first
+            if (b.id === currentUserId) return 1;
+            return 0;
+          });
         } else if (isPresales && currentFullUser?.managerId) {
           // Presales:
           // - Organizations: those owned by their Sales manager
-          // - Users filter is hidden in the UI, so we don't need scopedUsers here
+          // - Users: themselves and their Sales manager
           const salesManagerId = currentFullUser.managerId;
           scopedOrganizations = allOrganizations.filter(
             (org) => org.owner && org.owner.id === salesManagerId,
           );
+          // Include both the PRESALES user and their Sales manager
+          // Sort: PRESALES user first, then Sales manager
+          const presalesAndSales = allUsers.filter(
+            (u) => u.id === currentUserId || u.id === salesManagerId,
+          );
+          scopedUsers = presalesAndSales.sort((a, b) => {
+            if (a.id === currentUserId) return -1; // PRESALES user first
+            if (b.id === currentUserId) return 1;
+            return 0;
+          });
         }
 
         const orgCategoryMap: Record<string, string> = {};
@@ -532,19 +560,17 @@ export default function ActivitiesList() {
       return role === 'SALES' || presalesRoleCodes.includes(role);
     });
 
-    // For admin: apply category filter if selected
-    if (!selectedCategoryFilter) {
+    // For admin: apply category filter if selected (handle both single and multiple categories)
+    const selectedCategories = Array.isArray(selectedCategoryFilter) 
+      ? selectedCategoryFilter 
+      : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
+    
+    if (selectedCategories.length === 0) {
       // No category selected: show all organizations and all SALES/PRESALES users
       setOrganizationOptions(baseOrganizationOptions);
       setManagerOptions(allSalesAndPresales);
       return;
     }
-
-    // Category selected: filter organizations by category and users by role (SALES and PRESALES only)
-    // Get the category option to match both code and label
-    const selectedCategoryOption = categoryFilterOptions.find(
-      (opt) => opt.code === selectedCategoryFilter
-    );
     
     // Normalize category for comparison (handle different formats)
     const normalizeCategory = (cat: string | null | undefined): string => {
@@ -557,28 +583,32 @@ export default function ActivitiesList() {
         .trim();
     };
     
-    const selectedCategoryCode = selectedCategoryFilter.toUpperCase();
-    const selectedCategoryLabel = selectedCategoryOption?.label?.toUpperCase() || '';
-    const selectedCategoryNormalized = normalizeCategory(selectedCategoryFilter);
-    
-    // Filter organizations by category - match code, label, or normalized value
+    // Filter organizations by any of the selected categories
     const filteredOrgs = baseOrganizationOptions.filter((org) => {
       if (!org.category) return false;
       
       const orgCategory = org.category.toUpperCase();
       const orgCategoryNormalized = normalizeCategory(org.category);
       
-      // Match by code, label, or normalized comparison
+      // Check if organization matches any of the selected categories
+      return selectedCategories.some((selectedCat) => {
+        const selectedCategoryOption = categoryFilterOptions.find(
+          (opt) => opt.code === selectedCat
+        );
+        const selectedCategoryCode = selectedCat.toUpperCase();
+        const selectedCategoryLabel = selectedCategoryOption?.label?.toUpperCase() || '';
+        const selectedCategoryNormalized = normalizeCategory(selectedCat);
+        
       return (
         orgCategory === selectedCategoryCode ||
         orgCategory === selectedCategoryLabel ||
         orgCategoryNormalized === selectedCategoryNormalized ||
-        // Also try matching the label's normalized version
         (selectedCategoryOption?.label && normalizeCategory(selectedCategoryOption.label) === orgCategoryNormalized)
       );
+      });
     });
     
-    // Filter users to only SALES and PRESALES linked to the selected category
+    // Filter users to only SALES and PRESALES linked to any of the selected categories
     // Get owner IDs from filtered organizations (these are SALES users)
     const salesOwnerIdsInCategory = new Set(
       filteredOrgs
@@ -587,16 +617,16 @@ export default function ActivitiesList() {
     );
     
     // Filter users:
-    // 1. SALES users who own organizations in the selected category
+    // 1. SALES users who own organizations in any of the selected categories
     // 2. PRESALES users who report to those SALES users
     const filteredUsers = allSalesAndPresales.filter((u) => {
       const role = getUpperRole(u);
       
       if (role === 'SALES') {
-        // Include SALES users who own organizations in the category
+        // Include SALES users who own organizations in any of the categories
         return salesOwnerIdsInCategory.has(u.id);
       } else if (presalesRoleCodes.includes(role)) {
-        // Include PRESALES users whose manager (SALES user) owns organizations in the category
+        // Include PRESALES users whose manager (SALES user) owns organizations in any of the categories
         return u.managerId !== null && salesOwnerIdsInCategory.has(u.managerId);
       }
       
@@ -607,7 +637,11 @@ export default function ActivitiesList() {
     setManagerOptions(filteredUsers);
   }, [selectedCategoryFilter, isAdmin, baseOrganizationOptions, baseManagerOptions, categoryFilterOptions]);
 
-  // Ensure initial role-based scoping for SALES/PRESALES when filters are empty
+  // Note: Backend now automatically scopes activities by role:
+  // - SALES: activities assigned to themselves and their PRESALES team
+  // - CATEGORY_MANAGER: activities assigned to themselves, their SALES reports, and PRESALES under those SALES
+  // - PRESALES: activities assigned to themselves and their Sales manager
+  // Setting assignedUserId here is optional but makes the filter explicit in the UI
   useEffect(() => {
     if ((isSales || isPresales) && storedUser?.userId && !filters.assignedUserId) {
       setFilters((prev) => ({
@@ -649,6 +683,12 @@ export default function ActivitiesList() {
     }
     if (source?.assignedUserId) {
       normalized.assignedUserId = source.assignedUserId;
+    }
+    if (source?.serviceCategory) {
+      normalized.serviceCategory = source.serviceCategory;
+    }
+    if (source?.organizationCategory) {
+      normalized.organizationCategory = source.organizationCategory;
     }
     return normalized;
   };
@@ -727,47 +767,6 @@ export default function ActivitiesList() {
     return `${String(hours).padStart(2, '0')}:${String(remainingMinutes).padStart(2, '0')}`;
   };
 
-  const loadCallDuration = async (dateFilters: ActivityFilters) => {
-    try {
-      const pageSize = 200;
-      let cumulativeMinutes = 0;
-      let page = 0;
-      let totalPages = 1;
-
-      while (page < totalPages) {
-        const response = await activitiesApi.list({
-          ...dateFilters,
-          category: 'CALL',
-          page,
-          size: pageSize,
-        });
-
-        response.content.forEach((activity) => {
-          const startMinutes = parseTimeToMinutes(activity.startTime);
-          const endMinutes = parseTimeToMinutes(activity.endTime);
-          if (
-            startMinutes !== null &&
-            endMinutes !== null &&
-            endMinutes >= startMinutes
-          ) {
-            cumulativeMinutes += endMinutes - startMinutes;
-          }
-        });
-
-        totalPages = response.totalPages || 1;
-        page += 1;
-        if (!response.content.length) {
-          break;
-        }
-      }
-
-      setTotalCallDurationMinutes(cumulativeMinutes);
-    } catch (error) {
-      console.error('Failed to load total call duration:', error);
-      setTotalCallDurationMinutes(0);
-    }
-  };
-
   const loadActivities = useCallback((customFilters?: ActivityFilters) => {
     // Cancel any pending request with the same purpose
     if (abortControllerRef.current) {
@@ -789,6 +788,173 @@ export default function ActivitiesList() {
         : filtersToUse.category 
           ? filtersToUse 
           : { ...filtersToUse, category: getCategoryEnum(category) };
+    const normalizedFilters: ActivityFilters = { ...finalFilters };
+    // When a service category filter is selected (e.g. Makeup / Photography),
+    // also forward the first selected value to the backend so that it can
+    // reduce the result set server‑side. We still keep the client‑side
+    // filtering in shouldShow for safety and for multi‑select behaviour.
+    const selectedCategories = Array.isArray(selectedCategoryFilter)
+      ? selectedCategoryFilter
+      : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
+    if (selectedCategories.length > 0) {
+      // Send comma‑separated list so backend can treat this as an IN‑filter
+      // (e.g. "PHOTOGRAPHY,MAKEUP"), while still working for a single value.
+      const joinedCategories = selectedCategories.join(',');
+      // Send both `serviceCategory` and `organizationCategory` so that whichever
+      // parameter name the backend expects will be honoured. Both carry the
+      // same PHOTOGRAPHY / MAKEUP / PLANNING_DECOR codes.
+      normalizedFilters.serviceCategory = joinedCategories;
+      normalizedFilters.organizationCategory = joinedCategories;
+    } else {
+      delete normalizedFilters.serviceCategory;
+      delete normalizedFilters.organizationCategory;
+    }
+    if (normalizedFilters.dateFrom) {
+      normalizedFilters.dateFrom = toBackendDateString(normalizedFilters.dateFrom);
+    }
+    if (normalizedFilters.dateTo) {
+      normalizedFilters.dateTo = toBackendDateString(normalizedFilters.dateTo);
+    }
+
+    // Handle multiple assignedUserId and organizationId values by making separate API calls
+    const assignedUserIds = normalizedFilters.assignedUserId;
+    const organizationIds = normalizedFilters.organizationId;
+    const userIdsArray = Array.isArray(assignedUserIds) ? assignedUserIds : (assignedUserIds ? [assignedUserIds] : []);
+    const orgIdsArray = Array.isArray(organizationIds) ? organizationIds : (organizationIds ? [organizationIds] : []);
+
+    // If multiple users or organizations selected, make separate calls and merge results
+    if (userIdsArray.length > 1 || orgIdsArray.length > 1) {
+      // Create all combinations of user and org filters
+      const filterCombinations: ActivityFilters[] = [];
+      
+      if (userIdsArray.length > 0 && orgIdsArray.length > 0) {
+        // Both users and orgs selected - create cartesian product
+        userIdsArray.forEach((userId) => {
+          orgIdsArray.forEach((orgId) => {
+            filterCombinations.push({
+              ...normalizedFilters,
+              assignedUserId: userId,
+              organizationId: orgId,
+            });
+          });
+        });
+      } else if (userIdsArray.length > 1) {
+        // Only multiple users
+        userIdsArray.forEach((userId) => {
+          filterCombinations.push({
+            ...normalizedFilters,
+            assignedUserId: userId,
+          });
+        });
+      } else if (orgIdsArray.length > 1) {
+        // Only multiple organizations
+        orgIdsArray.forEach((orgId) => {
+          filterCombinations.push({
+            ...normalizedFilters,
+            organizationId: orgId,
+          });
+        });
+      }
+
+      const requests = filterCombinations.map((filters) => {
+        return activitiesApi.list(filters, { signal: abortController.signal });
+      });
+
+      Promise.all(requests)
+        .then(async (responses) => {
+          if (abortController.signal.aborted) return;
+
+          // Merge all responses: combine content, sum totals, take max pages
+          const mergedContent: Activity[] = [];
+          const seenIds = new Set<number>();
+          let totalElements = 0;
+          let totalPages = 0;
+
+          responses.forEach((response) => {
+            response.content.forEach((activity) => {
+              if (!seenIds.has(activity.id)) {
+                seenIds.add(activity.id);
+                mergedContent.push(activity);
+              }
+            });
+            totalElements += response.totalElements || 0;
+            totalPages = Math.max(totalPages, response.totalPages || 0);
+          });
+
+          // Sort by date (most recent first) or keep original order
+          mergedContent.sort((a, b) => {
+            const dateA = a.dateTime || a.date || a.dueDate || '';
+            const dateB = b.dateTime || b.date || b.dueDate || '';
+            return dateB.localeCompare(dateA);
+          });
+
+          const mergedResponse: PageResponse<Activity> = {
+            content: mergedContent,
+            totalElements: mergedContent.length, // Use actual merged count
+            totalPages: Math.ceil(mergedContent.length / (normalizedFilters.size || 25)),
+            number: normalizedFilters.page || 0,
+            size: normalizedFilters.size || 25,
+          };
+
+          // Fetch deal names for activities that have dealId but no dealName
+          const activitiesWithDealId = mergedResponse.content.filter(a => a.dealId && !a.dealName);
+          if (activitiesWithDealId.length > 0) {
+            try {
+              const allDeals = await dealsApi.list();
+              if (abortController.signal.aborted) return mergedResponse;
+
+              const newDealsMap = new Map<number, string>();
+              allDeals.forEach(deal => {
+                if (deal.id) {
+                  newDealsMap.set(deal.id, deal.name);
+                }
+              });
+              setDealsMap(newDealsMap);
+
+              const updatedContent = mergedResponse.content.map(activity => {
+                if (activity.dealId && !activity.dealName) {
+                  const dealName = newDealsMap.get(activity.dealId);
+                  if (dealName) {
+                    return { ...activity, dealName };
+                  }
+                }
+                return activity;
+              });
+
+              return { ...mergedResponse, content: updatedContent };
+            } catch (err) {
+              if (!abortController.signal.aborted) {
+                console.error('Failed to load deals for activity names:', err);
+              }
+              return mergedResponse;
+            }
+          }
+
+          return mergedResponse;
+        })
+        .then((response) => {
+          if (response && !abortController.signal.aborted) {
+            setData(response);
+          }
+        })
+        .catch((e) => {
+          if (!abortController.signal.aborted) {
+            setError(e?.message ?? 'Failed to load');
+          }
+        })
+        .finally(() => {
+          if (!abortController.signal.aborted) {
+            setLoading(false);
+          }
+          if (abortControllerRef.current === abortController) {
+            abortControllerRef.current = null;
+          }
+        });
+      return; // Exit early for multi-user case
+    }
+
+    // Single user or no user filter - use normal flow
+    activitiesApi
       const normalizedFilters: ActivityFilters = { ...finalFilters };
       if (normalizedFilters.dateFrom) {
         normalizedFilters.dateFrom = toBackendDateString(normalizedFilters.dateFrom);
@@ -874,6 +1040,18 @@ export default function ActivitiesList() {
             })) || []
           });
           setData(response);
+
+          // Keep activity summary cards in sync with the list response so that
+          // TOTAL / PENDING / COMPLETED always reflect what the user sees in
+          // the table for the current tab (All / Overdue / Today, etc.).
+          const activities = response.content ?? [];
+          const total = response.totalElements ?? activities.length;
+          const pending = activities.filter((a) => !a.done).length;
+          const completed = activities.filter((a) => a.done).length;
+
+          setActivityTotalCount(total);
+          setActivityPendingCount(pending);
+          setActivityCompletedCount(completed);
         }
       })
       .catch((e) => {
@@ -892,108 +1070,357 @@ export default function ActivitiesList() {
       });
   }, [category]); // Remove filters from dependencies - use filtersRef instead
 
-  const loadCounts = useCallback(async (currentFilters?: ActivityFilters) => {
-    // Cancel any pending loadCounts request
-    if (loadCountsAbortControllerRef.current) {
-      loadCountsAbortControllerRef.current.abort();
-    }
-    
-    // Create new AbortController for this request
-    const abortController = new AbortController();
-    loadCountsAbortControllerRef.current = abortController;
-    
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const yesterday = new Date(today);
-      yesterday.setDate(today.getDate() - 1);
-      const yesterdayFormatted = formatDateDDMMYYYY(yesterday);
-
-      const dateOnlyFilters = normalizeDateFilters(currentFilters);
-
-      const baseRequests: Promise<PageResponse<Activity>>[] = [
-        activitiesApi.list({
-          ...dateOnlyFilters,
-          category: 'CALL',
-          size: 1,
-          page: 0,
-        }, { signal: abortController.signal }),
-        activitiesApi.list({
-          ...dateOnlyFilters,
-          category: 'CALL',
-          done: true,
-          size: 1,
-          page: 0,
-        }, { signal: abortController.signal }),
-        activitiesApi.list({
-          ...dateOnlyFilters,
-          category: 'MEETING_SCHEDULER',
-          size: 1,
-          page: 0,
-        }, { signal: abortController.signal }),
-        activitiesApi.list({
-          ...dateOnlyFilters,
-          category: 'MEETING_SCHEDULER',
-          done: true,
-          size: 1,
-          page: 0,
-        }, { signal: abortController.signal }),
-        activitiesApi.list({
-          ...dateOnlyFilters,
-          dateTo: yesterdayFormatted, 
-          done: false, 
-          category: getCategoryEnum(category),
-          size: 1,
-          page: 0,
-        }, { signal: abortController.signal }),
-      ];
-
-      if (category === 'Activity') {
-        const activityBaseFilters = {
-          ...dateOnlyFilters,
-          category: 'ACTIVITY',
-          size: 1,
-        page: 0,
-      };
-        baseRequests.push(
-          activitiesApi.list(activityBaseFilters, { signal: abortController.signal }),
-          activitiesApi.list({ ...activityBaseFilters, done: false }, { signal: abortController.signal }),
-          activitiesApi.list({ ...activityBaseFilters, done: true }, { signal: abortController.signal }),
-        );
+  const loadCounts = useCallback(
+    async (currentFilters?: ActivityFilters) => {
+      // Cancel any pending loadCounts request
+      if (loadCountsAbortControllerRef.current) {
+        loadCountsAbortControllerRef.current.abort();
       }
 
-      const responses = await Promise.all(baseRequests);
-      
-      // Check if request was aborted
-      if (abortController.signal.aborted) {
-        return;
+      // Create new AbortController for this request
+      const abortController = new AbortController();
+      loadCountsAbortControllerRef.current = abortController;
+
+      try {
+        const dateOnlyFilters = normalizeDateFilters(currentFilters);
+
+        // Preserve org/user/done filters when asking backend for summary
+        const summaryFilters: ActivityFilters = {
+          ...dateOnlyFilters,
+        };
+        if (currentFilters?.organizationId) summaryFilters.organizationId = currentFilters.organizationId;
+        if (currentFilters?.assignedUserId) summaryFilters.assignedUserId = currentFilters.assignedUserId;
+        if (currentFilters?.done !== undefined) summaryFilters.done = currentFilters.done;
+
+        // Let the backend compute all aggregates in a single /summary call
+        const summary = await activitiesApi.summary(summaryFilters, { signal: abortController.signal });
+
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        setCallAssignedCount(summary.callAssignedCount ?? 0);
+        setCallTakenCount(summary.callTakenCount ?? 0);
+        setMeetingAssignedCount(summary.meetingAssignedCount ?? 0);
+        setMeetingDoneCount(summary.meetingDoneCount ?? 0);
+        setOverdueCount(summary.overdueCount ?? 0);
+        setTotalCallDurationMinutes(summary.totalCallDurationMinutes ?? 0);
+
+        // IMPORTANT:
+        // Do NOT take activity TOTAL / PENDING / COMPLETED from the /summary
+        // endpoint. Different backends / roles can return 0 or incomplete data
+        // here, which caused the summary cards to show 0 when switching to
+        // date-based tabs such as "Today".
+        //
+        // Instead, we always derive the three activity counts from the
+        // currently loaded table rows in the list-sync effect below
+        // (`useEffect` that depends on `data` + `category`). That logic already
+        // respects the active tab (All / Overdue / Today / etc.) via
+        // `shouldShow`, so the numbers in the cards will always match what the
+        // user actually sees in the table.
+
+        // Ensure Call / Meeting counts, overdue, and total call duration are
+        // consistent across Call / Meeting tabs by explicitly querying the
+        // list endpoint with the same filters. We aggregate over the required
+        // categories only (not all three) to avoid unnecessary requests.
+        // - On Call tab we need CALL + MEETING_SCHEDULER stats
+        // - On Meeting scheduler tab we need MEETING_SCHEDULER + CALL stats
+        // - On Activity tab we also want CALL + MEETING_SCHEDULER stats
+        //   restricted by the current tab's date filters (Today / This week /
+        //   etc.) so that "Total Assign Call" and "Total Meeting Scheduled"
+        //   reflect what the user is looking at.
+        const baseFilters: ActivityFilters = {
+          ...summaryFilters,
+        };
+        if (currentFilters?.organizationId) baseFilters.organizationId = currentFilters.organizationId;
+        if (currentFilters?.assignedUserId) baseFilters.assignedUserId = currentFilters.assignedUserId;
+
+        const fetchPaged = async (categoryCode: string): Promise<Activity[]> => {
+          const pageSize = 200;
+          let page = 0;
+          let totalPages = 1;
+          const collected: Activity[] = [];
+          while (page < totalPages) {
+            const resp = await activitiesApi.list(
+              {
+                ...baseFilters,
+                category: categoryCode,
+                page,
+                size: pageSize,
+              },
+              { signal: abortController.signal },
+            );
+            if (abortController.signal.aborted) break;
+            collected.push(...(resp.content || []));
+            totalPages = resp.totalPages ?? 1;
+            page += 1;
+          }
+          return collected;
+        };
+        // Decide which backend categories we actually need for the active tab.
+        // Avoid fetching all three categories blindly.
+        let allCalls: Activity[] = [];
+        let allMeetings: Activity[] = [];
+        let allActivities: Activity[] = [];
+
+        const isCallTab = category === 'Call';
+        const isMeetingTab = category === 'Meeting scheduler';
+
+        // For all three main categories (Activity / Call / Meeting scheduler)
+        // we want CALL and MEETING_SCHEDULER stats to stay in sync so that
+        // "Total Assign Call" and "Call Taken" always show the same numbers
+        // regardless of which tab the user is on.
+        if (isCallTab || isMeetingTab || category === 'Activity') {
+          allCalls = await fetchPaged('CALL');
+        }
+        if (isMeetingTab || isCallTab || category === 'Activity') {
+          allMeetings = await fetchPaged('MEETING_SCHEDULER');
+        }
+        if (!isCallTab && !isMeetingTab && category !== 'Activity') {
+          // Fallback for any future categories: preserve previous behaviour.
+          [allCalls, allMeetings, allActivities] = await Promise.all([
+            fetchPaged('CALL'),
+            fetchPaged('MEETING_SCHEDULER'),
+            fetchPaged('ACTIVITY'),
+          ]);
+        }
+
+        if (!abortController.signal.aborted) {
+          // Call / Meeting stats
+          const todayDate = new Date();
+          todayDate.setHours(0, 0, 0, 0);
+
+          const parseDateSafe = (a: Activity): Date | undefined => {
+            const raw = (a.date ?? a.dueDate) || undefined;
+            if (!raw) return undefined;
+            const p = raw.includes('-') ? raw.split('-') : raw.split('/');
+            let y: number, m: number, d: number;
+            if (p.length === 3 && p[0].length === 2) {
+              d = +p[0]; m = +p[1] - 1; y = +p[2];
+            } else if (p.length === 3) {
+              y = +p[0]; m = +p[1] - 1; d = +p[2];
+            } else {
+              return undefined;
+            }
+            const dt = new Date(y, m, d);
+            dt.setHours(0, 0, 0, 0);
+            return dt;
+          };
+
+          const parseTimeToMinutes = (time?: string | null): number | null => {
+            if (!time) return null;
+            const [h, m] = time.split(':');
+            if (h === undefined || m === undefined) return null;
+            const hours = Number(h);
+            const minutes = Number(m);
+            if (Number.isNaN(hours) || Number.isNaN(minutes)) return null;
+            return hours * 60 + minutes;
+          };
+
+          let callTotal = 0;
+          let callDoneTotal = 0;
+          let callOverdue = 0;
+          let callDurationMinutes = 0;
+
+          const isDateScopedTab = (t: TabOption) =>
+            t === 'Today' ||
+            t === 'Tomorrow' ||
+            t === 'Overdue' ||
+            t === 'This week' ||
+            t === 'Next week' ||
+            t === 'This month' ||
+            t === 'Prev month' ||
+            t === 'This year';
+
+          const matchesTabDateForAgg = (ed?: Date) => {
+            if (!ed) return !isDateScopedTab(tab);
+            // Mirror the date logic used in `shouldShow` so that the counts
+            // match the rows visible in the table.
+            if (tab === 'Today') {
+              return ed.getTime() === todayDate.getTime();
+            }
+            if (tab === 'Tomorrow') {
+              const tomorrow = new Date(todayDate);
+              tomorrow.setDate(tomorrow.getDate() + 1);
+              return ed.getTime() === tomorrow.getTime();
+            }
+            if (tab === 'Overdue') {
+              return ed.getTime() < todayDate.getTime();
+            }
+            if (tab === 'This week') {
+              const weekStart = new Date(todayDate);
+              weekStart.setDate(todayDate.getDate() - todayDate.getDay());
+              const weekEnd = new Date(weekStart);
+              weekEnd.setDate(weekStart.getDate() + 6);
+              weekEnd.setHours(23, 59, 59, 999);
+              return ed.getTime() >= weekStart.getTime() && ed.getTime() <= weekEnd.getTime();
+            }
+            if (tab === 'Next week') {
+              const weekStart = new Date(todayDate);
+              weekStart.setDate(todayDate.getDate() - todayDate.getDay());
+              const nextWeekStart = new Date(weekStart);
+              nextWeekStart.setDate(weekStart.getDate() + 7);
+              const nextWeekEnd = new Date(nextWeekStart);
+              nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
+              nextWeekEnd.setHours(23, 59, 59, 999);
+              return ed.getTime() >= nextWeekStart.getTime() && ed.getTime() <= nextWeekEnd.getTime();
+            }
+            if (tab === 'This month') {
+              const monthStart = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+              monthStart.setHours(0, 0, 0, 0);
+              const monthEnd = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0);
+              monthEnd.setHours(23, 59, 59, 999);
+              return ed.getTime() >= monthStart.getTime() && ed.getTime() <= monthEnd.getTime();
+            }
+            if (tab === 'Prev month') {
+              const prevMonthStart = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
+              prevMonthStart.setHours(0, 0, 0, 0);
+              const prevMonthEnd = new Date(todayDate.getFullYear(), todayDate.getMonth(), 0);
+              prevMonthEnd.setHours(23, 59, 59, 999);
+              return ed.getTime() >= prevMonthStart.getTime() && ed.getTime() <= prevMonthEnd.getTime();
+            }
+            if (tab === 'This year') {
+              const yearStart = new Date(todayDate.getFullYear(), 0, 1);
+              yearStart.setHours(0, 0, 0, 0);
+              const yearEnd = new Date(todayDate.getFullYear(), 11, 31);
+              yearEnd.setHours(23, 59, 59, 999);
+              return ed.getTime() >= yearStart.getTime() && ed.getTime() <= yearEnd.getTime();
+            }
+            // For non date-specific tabs (All, To‑do, Select period / Date),
+            // rely on backend filters instead of local date checks.
+            return true;
+          };
+
+          allCalls.forEach((a) => {
+            const ed = parseDateSafe(a);
+            if (!matchesTabDateForAgg(ed)) return;
+
+            callTotal += 1;
+            if (a.done) {
+              callDoneTotal += 1;
+              const start = parseTimeToMinutes(a.startTime);
+              const end = parseTimeToMinutes(a.endTime);
+              if (start != null && end != null && end > start) {
+                callDurationMinutes += end - start;
+              }
+            } else if (ed && ed.getTime() < todayDate.getTime()) {
+              // Overdue = not done and past today, regardless of which
+              // date-based tab is active (matches existing overdue semantics).
+              callOverdue += 1;
+            }
+          });
+
+          // Meeting stats
+          let meetingTotal = 0;
+          let meetingDoneTotal = 0;
+          let meetingOverdue = 0;
+          allMeetings.forEach((a) => {
+            const ed = parseDateSafe(a);
+            if (!matchesTabDateForAgg(ed)) return;
+
+            meetingTotal += 1;
+            if (a.done) {
+              meetingDoneTotal += 1;
+            } else if (ed && ed.getTime() < todayDate.getTime()) {
+              meetingOverdue += 1;
+            }
+          });
+
+          // Activity stats (for overdue aggregation)
+          let activityOverdue = 0;
+          allActivities.forEach((a) => {
+            if (!a.done) {
+              const ed = parseDateSafe(a);
+              if (ed && ed.getTime() < todayDate.getTime()) {
+                activityOverdue += 1;
+              }
+            }
+          });
+
+          // Only override counts that are actually based on the categories we
+          // fetched. This keeps /summary values for anything we did not
+          // re‑compute locally.
+          //
+          // Behaviour by main tab:
+          // - Activity tab: show BOTH call + meeting stats.
+          // - Call tab: show call stats and keep meeting stats from /summary.
+          // - Meeting scheduler tab: show ONLY meeting stats; hide call stats
+          //   so that we never display a non‑zero "Total Assign Call / Call
+          //   Taken" when the Meeting list is empty.
+          const isCallTab = category === 'Call';
+          const isMeetingTab = category === 'Meeting scheduler';
+
+          if (!isMeetingTab && allCalls.length > 0) {
+            setCallAssignedCount(callTotal);
+            setCallTakenCount(callDoneTotal);
+            setTotalCallDurationMinutes(callDurationMinutes);
+          }
+
+          if (allMeetings.length > 0) {
+            setMeetingAssignedCount(meetingTotal);
+            setMeetingDoneCount(meetingDoneTotal);
+          }
+
+          if (isMeetingTab) {
+            // On Meeting tab, force call cards to 0 so the user does not see
+            // a non‑zero call count with an empty Meeting list.
+            setCallAssignedCount(0);
+            setCallTakenCount(0);
+            setTotalCallDurationMinutes(0);
+          }
+
+          // Overdue card should be context-sensitive:
+          // - On Call tab: show overdue calls
+          // - On Meeting scheduler tab: show overdue meetings
+          // - On Activity tab: prefer backend summary (handled above)
+          const isActivityTab = category === 'Activity';
+
+          if (category === 'Call') {
+            setOverdueCount(callOverdue);
+          } else if (category === 'Meeting scheduler') {
+            setOverdueCount(meetingOverdue);
+          } else if (!isActivityTab) {
+            // Fallback for any future categories that might use combined overdue.
+            const combinedOverdue = activityOverdue + callOverdue + meetingOverdue;
+            setOverdueCount(summary.overdueCount ?? combinedOverdue);
+          }
+        }
+      } catch (error) {
+        if (!abortController.signal.aborted) {
+          console.error('Failed to load activity summary:', error);
+        }
+      } finally {
+        // Clear the ref if this was the current request
+        if (loadCountsAbortControllerRef.current === abortController) {
+          loadCountsAbortControllerRef.current = null;
+        }
       }
-      const [
-        callAssignedResponse,
-        callTakenResponse,
-        meetingAssignedResponse,
-        meetingDoneResponse,
-        overdueResult,
-        ...activityResponses
-      ] = responses;
+    },
+    [category, tab],
+  );
 
-      setCallAssignedCount(callAssignedResponse.totalElements || 0);
-      setCallTakenCount(callTakenResponse.totalElements || 0);
-      setMeetingAssignedCount(meetingAssignedResponse.totalElements || 0);
-      setMeetingDoneCount(meetingDoneResponse.totalElements || 0);
-      setOverdueCount(overdueResult.totalElements || 0);
-
+  // Keep summary cards in sync with the currently loaded list data for the active category.
+  // This ensures that "Total Activities", "Pending", and "Completed" always reflect what
+  // the user sees in the table, even if the backend summary endpoint returns 0 or is
+  // missing some fields. Call / meeting cards are driven by loadCounts so that they
+  // stay consistent across the Activity / Call / Meeting tabs.
+  useEffect(() => {
+    if (!data?.content || data.content.length === 0) {
       if (category === 'Activity') {
-        const [activityTotalResponse, activityPendingResponse, activityCompletedResponse] = activityResponses;
-        setActivityTotalCount(activityTotalResponse?.totalElements || 0);
-        setActivityPendingCount(activityPendingResponse?.totalElements || 0);
-        setActivityCompletedCount(activityCompletedResponse?.totalElements || 0);
-      } else {
         setActivityTotalCount(0);
         setActivityPendingCount(0);
         setActivityCompletedCount(0);
       }
+      return;
+    }
 
+    // When a service category filter is active, counts are already recomputed
+    // in the service‑category effect below; don't override those here.
+    const selectedCategories = Array.isArray(selectedCategoryFilter) 
+      ? selectedCategoryFilter 
+      : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
+    if (selectedCategories.length > 0) {
+      return;
       if (!abortController.signal.aborted) {
       await loadCallDuration(dateOnlyFilters);
       }
@@ -1007,12 +1434,26 @@ export default function ActivitiesList() {
         loadCountsAbortControllerRef.current = null;
       }
     }
-  }, [category]);
+
+    const visible = data.content.filter((a) => shouldShow(a));
+
+    if (category === 'Activity') {
+      setActivityTotalCount(visible.length);
+      setActivityPendingCount(visible.filter((a) => !a.done).length);
+      setActivityCompletedCount(visible.filter((a) => a.done).length);
+    }
+  }, [data, category, selectedCategoryFilter]);
 
   // When a service category filter is active, override counts by fetching activities
-  // for each type (ACTIVITY / CALL / MEETING) and mapping them to the service category locally.
+  // for the relevant type(s) and mapping them to the service category locally. We
+  // avoid fetching all three categories when only one or two are needed for the
+  // currently selected tab.
   useEffect(() => {
-    if (!selectedCategoryFilter) return;
+    const selectedCategories = Array.isArray(selectedCategoryFilter) 
+      ? selectedCategoryFilter 
+      : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
+    
+    if (selectedCategories.length === 0) return;
 
     let isCancelled = false;
 
@@ -1020,7 +1461,8 @@ export default function ActivitiesList() {
       const normalized = normalizeDateFilters(filters);
       const payload: ActivityFilters = { ...normalized };
       // Always include organizationId and assignedUserId if they're set
-      // This ensures counts respect organization and user filters
+      // Note: Backend now scopes activities by assigned user (SALES/PRESALES/CATEGORY_MANAGER see only assigned activities)
+      // organizationId can still be sent to further filter results, but visibility is based on assignment
       if (filters.organizationId) payload.organizationId = filters.organizationId;
       if (filters.assignedUserId) payload.assignedUserId = filters.assignedUserId;
       if (filters.done !== undefined) payload.done = filters.done;
@@ -1051,29 +1493,56 @@ export default function ActivitiesList() {
 
     const recalc = async () => {
       try {
-        const [activityItems, callItems, meetingItems] = await Promise.all([
-          fetchActivitiesForCategory('ACTIVITY'),
-          fetchActivitiesForCategory('CALL'),
-          fetchActivitiesForCategory('MEETING_SCHEDULER'),
-        ]);
+        // Decide which backend categories we actually need to look at based on
+        // the active tab. This keeps network usage low while still keeping the
+        // visible summary cards accurate.
+        const categoriesToFetch: string[] =
+          category === 'Activity'
+            ? ['ACTIVITY']
+            : category === 'Call'
+              ? ['CALL', 'MEETING_SCHEDULER']
+              : ['MEETING_SCHEDULER', 'CALL'];
+
+        const results = await Promise.all(
+          categoriesToFetch.map((code) => fetchActivitiesForCategory(code)),
+        );
+
+        const getItems = (code: string): Activity[] => {
+          const index = categoriesToFetch.indexOf(code);
+          return index === -1 ? [] : results[index];
+        };
+
+        const activityItems = getItems('ACTIVITY');
+        const callItems = getItems('CALL');
+        const meetingItems = getItems('MEETING_SCHEDULER');
 
         if (isCancelled) return;
 
+        // Filter by any of the selected service categories
         const filterByServiceCategory = (list: Activity[]) =>
-          list.filter((a) => getServiceCategoryForActivity(a.id) === selectedCategoryFilter);
+          list.filter((a) => {
+            const activityCategory = getServiceCategoryForActivity(a.id);
+            return selectedCategories.includes(activityCategory);
+          });
 
         const matchingActivities = filterByServiceCategory(activityItems);
-        setActivityTotalCount(matchingActivities.length);
-        setActivityPendingCount(matchingActivities.filter((a) => !a.done).length);
-        setActivityCompletedCount(matchingActivities.filter((a) => a.done).length);
+        if (activityItems.length > 0) {
+          setActivityTotalCount(matchingActivities.length);
+          setActivityPendingCount(matchingActivities.filter((a) => !a.done).length);
+          setActivityCompletedCount(matchingActivities.filter((a) => a.done).length);
+        }
 
         const matchingCalls = filterByServiceCategory(callItems);
-        setCallAssignedCount(matchingCalls.length);
-        setCallTakenCount(matchingCalls.filter((a) => a.done).length);
+        if (callItems.length > 0) {
+          setCallAssignedCount(matchingCalls.length);
+          setCallTakenCount(matchingCalls.filter((a) => a.done).length);
+        }
 
         const matchingMeetings = filterByServiceCategory(meetingItems);
-        setMeetingAssignedCount(matchingMeetings.length);
-        setMeetingDoneCount(matchingMeetings.filter((a) => a.done).length);
+        if (meetingItems.length > 0) {
+          setMeetingAssignedCount(matchingMeetings.length);
+          setMeetingDoneCount(matchingMeetings.filter((a) => a.done).length);
+        }
       } catch (error) {
         if (!isCancelled) {
           console.warn('Failed to recalculate service category counts', error);
@@ -1087,22 +1556,37 @@ export default function ActivitiesList() {
       isCancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategoryFilter, filtersKey, getServiceCategoryForActivity]);
+  }, [selectedCategoryFilter, filtersKey, getServiceCategoryForActivity, category]);
 
   // When service category filter is cleared, reload backend counts to include all categories again.
-  // This ensures counts are recalculated when category filter is removed, respecting current org/user filters
+  // This ensures counts are recalculated when category filter is removed, respecting current org/user/date/done filters
   useEffect(() => {
-    if (!selectedCategoryFilter) {
+    const selectedCategories = Array.isArray(selectedCategoryFilter) 
+      ? selectedCategoryFilter 
+      : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
+    
+    if (selectedCategories.length === 0) {
       void loadCounts(filters);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategoryFilter, filters.organizationId, filters.assignedUserId]);
+  }, [
+    selectedCategoryFilter,
+    filters.organizationId,
+    filters.assignedUserId,
+    filters.dateFrom,
+    filters.dateTo,
+    filters.done,
+  ]);
 
   // For category managers, reload activities when category filter is first set to ensure
   // activities get the correct service category mapping from organizationCategoryLookup
   const categoryManagerCategorySetRef = useRef(false);
   useEffect(() => {
-    if (isCategoryManager && selectedCategoryFilter && organizationCategoryLookup && Object.keys(organizationCategoryLookup).length > 0 && !categoryManagerCategorySetRef.current) {
+    const selectedCategories = Array.isArray(selectedCategoryFilter) 
+      ? selectedCategoryFilter 
+      : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
+    
+    if (isCategoryManager && selectedCategories.length > 0 && organizationCategoryLookup && Object.keys(organizationCategoryLookup).length > 0 && !categoryManagerCategorySetRef.current) {
       categoryManagerCategorySetRef.current = true;
       // Reload activities once to ensure they get mapped to the correct service category
     loadActivities();
@@ -1171,13 +1655,119 @@ export default function ActivitiesList() {
   }, [isAddOpen, location?.state]);
 
   useEffect(() => {
+    if (isAdmin || isCategoryManager || isSales || isPresales) {
+      // For ADMIN, CATEGORY_MANAGER, SALES, and PRESALES: handle arrays
+      if (!filters.assignedUserId) {
+        setSelectedManagerFilter([]);
+      } else {
+        const userIds = Array.isArray(filters.assignedUserId) 
+          ? filters.assignedUserId 
+          : [filters.assignedUserId];
+        setSelectedManagerFilter(userIds);
+      }
+    } else {
+      // For other roles: handle single value
     if (!filters.assignedUserId) {
       setSelectedManagerFilter('');
     } else {
-      // Keep the user ID in selectedManagerFilter, not the name string
-      setSelectedManagerFilter(String(filters.assignedUserId));
+        const userId = Array.isArray(filters.assignedUserId) 
+          ? filters.assignedUserId[0] 
+          : filters.assignedUserId;
+        setSelectedManagerFilter(String(userId));
+      }
     }
-  }, [filters.assignedUserId]);
+  }, [filters.assignedUserId, isAdmin, isCategoryManager, isSales, isPresales]);
+
+  // Initialize multi-select arrays for ADMIN, CATEGORY_MANAGER, SALES, and PRESALES on mount
+  useEffect(() => {
+    if (isAdmin || isCategoryManager || isSales || isPresales) {
+      if (!Array.isArray(selectedCategoryFilter)) {
+        setSelectedCategoryFilter([]);
+      }
+      if (!Array.isArray(selectedOrganizationFilter)) {
+        setSelectedOrganizationFilter([]);
+      }
+      if (!Array.isArray(selectedManagerFilter)) {
+        setSelectedManagerFilter([]);
+      }
+    }
+  }, [isAdmin, isCategoryManager, isSales, isPresales]); // Only run once on mount or when role changes
+
+  // Click outside handlers for multi-select dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (categoryMultiSelectRef.current && !categoryMultiSelectRef.current.contains(event.target as Node)) {
+        setShowCategoryMultiSelect(false);
+      }
+      if (orgMultiSelectRef.current && !orgMultiSelectRef.current.contains(event.target as Node)) {
+        setShowOrgMultiSelect(false);
+      }
+      if (userMultiSelectRef.current && !userMultiSelectRef.current.contains(event.target as Node)) {
+        setShowUserMultiSelect(false);
+      }
+    };
+
+    if (showCategoryMultiSelect || showOrgMultiSelect || showUserMultiSelect) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [showCategoryMultiSelect, showOrgMultiSelect, showUserMultiSelect]);
+
+  // Helper function to format user names hierarchically (Sales - Presales)
+  const getUserDisplayLabel = useCallback((user: User): string => {
+    const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    const baseLabel = fullName || user.email || `User #${user.id}`;
+    
+    const currentUserId = storedUser?.userId;
+    
+    // If this is the logged-in user, show "Name - me"
+    if (currentUserId === user.id) {
+      return `${baseLabel} - me`;
+    }
+    
+    // For other users, just show their name
+    return baseLabel;
+  }, [storedUser?.userId]);
+
+  // Filter categories, organizations, and users based on search query
+  const filteredCategoriesForMultiSelect = useMemo(() => {
+    if (!categorySearchQuery.trim()) return categoryFilterOptions;
+    const query = categorySearchQuery.toLowerCase();
+    return categoryFilterOptions.filter((opt) =>
+      opt.label?.toLowerCase().includes(query) || opt.code?.toLowerCase().includes(query)
+    );
+  }, [categoryFilterOptions, categorySearchQuery]);
+
+  const filteredOrganizationsForMultiSelect = useMemo(() => {
+    if (!orgSearchQuery.trim()) return organizationOptions;
+    const query = orgSearchQuery.toLowerCase();
+    return organizationOptions.filter((org) =>
+      org.name?.toLowerCase().includes(query)
+    );
+  }, [organizationOptions, orgSearchQuery]);
+
+  const filteredUsersForMultiSelect = useMemo(() => {
+    const currentUserId = storedUser?.userId;
+    let filtered = managerOptions;
+    
+    // Filter by search query if provided
+    if (userSearchQuery.trim()) {
+      const query = userSearchQuery.toLowerCase();
+      filtered = managerOptions.filter((user) => {
+        const label = getUserDisplayLabel(user);
+        return label.toLowerCase().includes(query);
+      });
+    }
+    
+    // Sort: logged-in user first, then others
+    return [...filtered].sort((a, b) => {
+      if (a.id === currentUserId) return -1; // Logged-in user first
+      if (b.id === currentUserId) return 1;
+      return 0; // Keep original order for others
+    });
+  }, [managerOptions, userSearchQuery, getUserDisplayLabel, storedUser?.userId]);
 
   // Handle scrolling to activity when activityId is in URL
   useEffect(() => {
@@ -1392,7 +1982,64 @@ export default function ActivitiesList() {
     setIsTabDropdownOpen(false);
   };
 
+  const handleCategoryFilterChange = (value: string) => {
+    if (isAdmin) {
+      // Multi-select for ADMIN
+      const categoryCode = value.trim();
+      if (categoryCode) {
+        setSelectedCategoryFilter((prev) => {
+          const current = Array.isArray(prev) ? prev : (prev ? [prev] : []);
+          const newArray = current.includes(categoryCode)
+            ? current.filter((cat) => cat !== categoryCode)
+            : [...current, categoryCode];
+          return newArray;
+        });
+      }
+    } else {
+      // Single select for other roles
+      setSelectedCategoryFilter(value.trim());
+    }
+  };
+
+  const handleCategoryMultiSelectToggle = (categoryCode: string) => {
+    setSelectedCategoryFilter((prev) => {
+      const current = Array.isArray(prev) ? prev : (prev ? [prev] : []);
+      const newArray = current.includes(categoryCode)
+        ? current.filter((cat) => cat !== categoryCode)
+        : [...current, categoryCode];
+      return newArray;
+    });
+  };
+
+  const clearCategoryFilter = () => {
+    setSelectedCategoryFilter([]);
+  };
+
   const handleOrganizationFilterChange = (value: string) => {
+    if (isAdmin || isCategoryManager || isSales || isPresales) {
+      // Multi-select for ADMIN, CATEGORY_MANAGER, SALES, and PRESALES
+      const orgId = Number(value);
+      if (!Number.isNaN(orgId)) {
+        setSelectedOrganizationFilter((prev) => {
+          const current = Array.isArray(prev) ? prev : [];
+          const newArray = current.includes(orgId)
+            ? current.filter((id) => id !== orgId)
+            : [...current, orgId];
+          // Update filters
+          setFilters((filtersPrev) => {
+            const filtersNext: ActivityFilters = { ...filtersPrev, page: 0 };
+            if (newArray.length > 0) {
+              filtersNext.organizationId = newArray;
+            } else {
+              delete filtersNext.organizationId;
+            }
+            return filtersNext;
+          });
+          return newArray;
+        });
+      }
+    } else {
+      // Single select for other roles
     const trimmed = value.trim();
     setSelectedOrganizationFilter(trimmed);
     setFilters((prev) => {
@@ -1405,11 +2052,67 @@ export default function ActivitiesList() {
       } else {
         delete next.organizationId;
       }
+        return next;
+      });
+    }
+  };
+
+  const handleOrganizationMultiSelectToggle = (orgId: number) => {
+    setSelectedOrganizationFilter((prev) => {
+      const current = Array.isArray(prev) ? prev : [];
+      const newArray = current.includes(orgId)
+        ? current.filter((id) => id !== orgId)
+        : [...current, orgId];
+      // Update filters
+      setFilters((filtersPrev) => {
+        const filtersNext: ActivityFilters = { ...filtersPrev, page: 0 };
+        if (newArray.length > 0) {
+          filtersNext.organizationId = newArray;
+        } else {
+          delete filtersNext.organizationId;
+        }
+        return filtersNext;
+      });
+      return newArray;
+    });
+  };
+
+  const clearOrganizationFilter = () => {
+    setSelectedOrganizationFilter([]);
+    setFilters((prev) => {
+      const next = { ...prev, page: 0 };
+      delete next.organizationId;
       return next;
     });
   };
 
   const handleManagerFilterChange = (value: string) => {
+    if (isAdmin || isCategoryManager || isSales || isPresales) {
+      // Multi-select for ADMIN, CATEGORY_MANAGER, SALES, and PRESALES
+      const userId = Number(value);
+      if (!Number.isNaN(userId)) {
+        setSelectedManagerFilter((prev) => {
+          const current = Array.isArray(prev) ? prev : [];
+          const newArray = current.includes(userId)
+            ? current.filter((id) => id !== userId)
+            : [...current, userId];
+          // Update filters
+          setFilters((filtersPrev) => {
+            const filtersNext: ActivityFilters = { ...filtersPrev, page: 0 };
+            if (newArray.length > 0) {
+              filtersNext.assignedUserId = newArray;
+            } else {
+              delete filtersNext.assignedUserId;
+            }
+            // Only use assignedUserId, don't set assignedUser
+            delete filtersNext.assignedUser;
+            return filtersNext;
+          });
+          return newArray;
+        });
+      }
+    } else {
+      // Single select for other roles
     const normalizedValue = value.trim();
     setSelectedManagerFilter(normalizedValue);
     setFilters((prev) => {
@@ -1417,54 +2120,54 @@ export default function ActivitiesList() {
       if (normalizedValue) {
         const userId = Number(normalizedValue);
         if (!Number.isNaN(userId)) {
-          const user = managerOptions.find((u) => u.id === userId);
-          if (user) {
-            // For sales users: get all organizations they own
-            // For presales users: get all organizations under their sales manager
-            const presalesRoleCodes = ['PRESALES', 'PRE_SALES', 'PRE-SALES'];
-            const getUpperRole = (u: User) => (u.role || '').toUpperCase();
-            const userRole = getUpperRole(user);
-            
-            let orgIdsToFilter: number[] = [];
-            
-            if (userRole === 'SALES') {
-              // Sales user: get organizations they own
-              orgIdsToFilter = baseOrganizationOptions
-                .filter((org) => org.owner && org.owner.id === userId)
-                .map((org) => org.id)
-                .filter((id): id is number => id !== undefined && id !== null);
-            } else if (presalesRoleCodes.includes(userRole) && user.managerId) {
-              // Presales user: get organizations owned by their sales manager
-              orgIdsToFilter = baseOrganizationOptions
-                .filter((org) => org.owner && org.owner.id === user.managerId)
-                .map((org) => org.id)
-                .filter((id): id is number => id !== undefined && id !== null);
-            }
-            
-            // When a user is selected, don't filter by organizationId in backend
-            // Instead, fetch all activities and filter client-side to show activities from all their orgs
-            // This ensures we get activities from ALL organizations owned by the user, not just one
-            if (orgIdsToFilter.length > 0) {
-              // Don't set organizationId - we want activities from all their orgs
-              // Client-side filtering in shouldShow will handle showing activities from all orgs
-              // Store the selected user ID for client-side filtering
+            // Backend now handles all scoping by assigned user
+            // SALES users: backend returns activities assigned to them and their PRESALES team
+            // CATEGORY_MANAGER users: backend returns activities assigned to them, their SALES reports, and PRESALES under those SALES
+            // PRESALES users: backend returns activities assigned to them and their Sales manager
+            // We just need to set assignedUserId and let the backend handle the filtering
               next.assignedUserId = userId;
-              // Remove organizationId filter so we get activities from all orgs
+            // Remove organizationId filter - backend handles scoping by assignment only
               delete next.organizationId;
-            } else {
-              // Fallback: if no organizations found, use assignedUserId only
-              next.assignedUserId = userId;
-              delete next.organizationId;
-            }
-            
             // Only use assignedUserId, don't set assignedUser
             delete next.assignedUser;
-          }
         }
       } else {
         delete next.assignedUserId;
         delete next.organizationId;
       }
+        return next;
+      });
+    }
+  };
+
+  const handleUserMultiSelectToggle = (userId: number) => {
+    setSelectedManagerFilter((prev) => {
+      const current = Array.isArray(prev) ? prev : [];
+      const newArray = current.includes(userId)
+        ? current.filter((id) => id !== userId)
+        : [...current, userId];
+      // Update filters
+      setFilters((filtersPrev) => {
+        const filtersNext: ActivityFilters = { ...filtersPrev, page: 0 };
+        if (newArray.length > 0) {
+          filtersNext.assignedUserId = newArray;
+        } else {
+          delete filtersNext.assignedUserId;
+        }
+        // Only use assignedUserId, don't set assignedUser
+        delete filtersNext.assignedUser;
+        return filtersNext;
+      });
+      return newArray;
+    });
+  };
+
+  const clearUserFilter = () => {
+    setSelectedManagerFilter([]);
+    setFilters((prev) => {
+      const next = { ...prev, page: 0 };
+      delete next.assignedUserId;
+      delete next.assignedUser;
       return next;
     });
   };
@@ -1515,12 +2218,6 @@ export default function ActivitiesList() {
       const tomorrowStr = formatDateDDMMYYYY(tomorrow);
       newFilters.dateFrom = tomorrowStr;
       newFilters.dateTo = tomorrowStr;
-    } else if (tab === 'Overdue') {
-      const yesterday = new Date(today);
-      yesterday.setDate(today.getDate() - 1);
-      const yesterdayStr = formatDateDDMMYYYY(yesterday);
-      newFilters.dateTo = yesterdayStr;
-      newFilters.done = false;
     } else if (tab === 'This week') {
       const weekStartStr = formatDateDDMMYYYY(weekStart);
       const weekEndStr = formatDateDDMMYYYY(weekEnd);
@@ -1637,7 +2334,9 @@ export default function ActivitiesList() {
         // Skip assignedUser - we only use assignedUserId
         // If needed, this could be mapped to assignedUserId by looking up the user
       } else if (condition.field === 'organization') {
-        // Organization filtering is handled by backend, skip here
+        // Organization filtering: Backend can filter by organizationId if provided,
+        // but activity visibility is now primarily based on assigned user (not organization ownership)
+        // The organizationId filter can still be used to narrow down results further
         } else if (condition.field === 'category') {
           newFilters.category = getCategoryEnum(condition.value);
       } else if (condition.field === 'status') {
@@ -2135,6 +2834,23 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
   };
 
   const shouldShow = (a: Activity) => {
+    // Backend now handles all activity scoping by assigned user:
+    // - SALES users: Only see activities assigned to themselves and their PRESALES team
+    // - CATEGORY_MANAGER users: Only see activities assigned to themselves, their SALES reports, and PRESALES under those SALES
+    // - PRESALES users: Only see activities assigned to themselves and their Sales manager
+    // Organization-based filtering is no longer used for activity visibility
+    // We trust the backend to return only the activities the user should see
+
+    // Service category filtering (PHOTOGRAPHY, MAKEUP, PLANNING_DECOR)
+    // Note: This is separate from activity visibility scoping (which backend handles by assignment)
+    // This filters activities by service category for display purposes
+    const selectedCategories = Array.isArray(selectedCategoryFilter) 
+      ? selectedCategoryFilter 
+      : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
+    
+    if (selectedCategories.length > 0) {
+      const activityServiceCategory = getServiceCategoryForActivity(a.id);
+      if (!selectedCategories.includes(activityServiceCategory)) {
     // When a user is selected from "All Users" dropdown, show activities from all their organizations
     if (filters.assignedUserId && selectedManagerFilter) {
       const selectedUserId = Number(selectedManagerFilter);
@@ -2203,11 +2919,6 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
 
     // For category managers, be more lenient: if activity belongs to their scoped organizations,
     // show it even if service category doesn't match exactly (backend already scoped it)
-    if (selectedCategoryFilter) {
-      const activityServiceCategory = getServiceCategoryForActivity(a.id);
-      if (activityServiceCategory !== selectedCategoryFilter) {
-        // For category managers, if the activity's organization is in our scoped list,
-        // trust the backend scoping and show it anyway
         if (isCategoryManager) {
           const activityOrgName = a.organization?.toLowerCase() || '';
           const belongsToScopedOrg = baseOrganizationOptions.some(
@@ -2241,6 +2952,21 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
       return true;
     }
     
+    // "Today" tab: only show activities with date = today
+    if (tab === 'Today') {
+      return ed.getTime() === today.getTime();
+    }
+    
+    // "Tomorrow" tab: only show activities with date = tomorrow
+    if (tab === 'Tomorrow') {
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+      return ed.getTime() === tomorrow.getTime();
+    }
+    
+    // "Overdue" tab: show activities with date < today (both done and not done)
+    if (tab === 'Overdue') {
+      return ed.getTime() < today.getTime();
     // For "Overdue" tab, backend sets dateTo to yesterday and done=false,
     // but we still need to verify the done status client-side as a safety check
     if (tab === 'Overdue') {
@@ -2871,6 +3597,96 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         </div>
         <div className="toolbar-filters">
           {isAdmin && (
+            <div className="set-target-multi" ref={categoryMultiSelectRef} style={{ minWidth: '200px' }}>
+              <button
+                type="button"
+                className={`set-target-multi-trigger${Array.isArray(selectedCategoryFilter) && selectedCategoryFilter.length === 0 ? ' placeholder' : ''}`}
+                onClick={() => setShowCategoryMultiSelect(!showCategoryMultiSelect)}
+              >
+                {Array.isArray(selectedCategoryFilter) && selectedCategoryFilter.length === 0 ? (
+                  <span>All Categories</span>
+                ) : (
+                  <div className="set-target-multi-tags">
+                    {Array.isArray(selectedCategoryFilter) ? selectedCategoryFilter.map((categoryCode) => {
+                      const category = categoryFilterOptions.find((opt) => opt.code === categoryCode);
+                      return category ? (
+                        <span key={category.code} className="set-target-tag">
+                          {category.label}
+                          <span
+                            className="set-target-tag-remove"
+                            role="button"
+                            tabIndex={0}
+                            aria-label={`Remove ${category.label}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleCategoryMultiSelectToggle(category.code);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                handleCategoryMultiSelectToggle(category.code);
+                              }
+                            }}
+                          >
+                            ×
+                          </span>
+                        </span>
+                      ) : null;
+                    }) : (
+                      typeof selectedCategoryFilter === 'string' && selectedCategoryFilter ? (
+                        <span className="set-target-tag">
+                          {categoryFilterOptions.find((opt) => opt.code === selectedCategoryFilter)?.label || selectedCategoryFilter}
+                        </span>
+                      ) : null
+                    )}
+                  </div>
+                )}
+                <span className="set-target-multi-caret">▾</span>
+              </button>
+              {showCategoryMultiSelect && (
+                <div className="set-target-multi-dropdown">
+                  <div className="set-target-multi-search">
+                    <input
+                      type="text"
+                      placeholder="Search categories"
+                      value={categorySearchQuery}
+                      onChange={(e) => setCategorySearchQuery(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="set-target-multi-option special"
+                    onClick={clearCategoryFilter}
+                  >
+                    All Categories
+                    {Array.isArray(selectedCategoryFilter) && selectedCategoryFilter.length === 0 && (
+                      <span className="set-target-check">✓</span>
+                    )}
+                  </button>
+                  <div className="set-target-multi-options">
+                    {filteredCategoriesForMultiSelect.map((opt) => {
+                      const isSelected = Array.isArray(selectedCategoryFilter) && selectedCategoryFilter.includes(opt.code);
+                      return (
+                        <button
+                          key={opt.code}
+                          type="button"
+                          className={`set-target-multi-option${isSelected ? ' selected' : ''}`}
+                          onClick={() => handleCategoryMultiSelectToggle(opt.code)}
+                        >
+                          <span>{opt.label}</span>
+                          {isSelected && <span className="set-target-check">✓</span>}
+                        </button>
+                      );
+                    })}
+                    {filteredCategoriesForMultiSelect.length === 0 && (
+                      <div className="set-target-empty">No matches found.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           <select
             className="toolbar-select"
             value={selectedCategoryFilter}
@@ -2885,9 +3701,187 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
             ))}
           </select>
           )}
+          {(isAdmin || isCategoryManager || isSales || isPresales) ? (
+            // Multi-select for ADMIN, CATEGORY_MANAGER, SALES, and PRESALES
+            <>
+              <div className="set-target-multi" ref={orgMultiSelectRef} style={{ minWidth: '200px' }}>
+                <button
+                  type="button"
+                  className={`set-target-multi-trigger${Array.isArray(selectedOrganizationFilter) && selectedOrganizationFilter.length === 0 ? ' placeholder' : ''}`}
+                  onClick={() => setShowOrgMultiSelect(!showOrgMultiSelect)}
+                >
+                  {Array.isArray(selectedOrganizationFilter) && selectedOrganizationFilter.length === 0 ? (
+                    <span>All Organizations</span>
+                  ) : (
+                    <div className="set-target-multi-tags">
+                      {Array.isArray(selectedOrganizationFilter) ? selectedOrganizationFilter.map((orgId) => {
+                        const org = organizationOptions.find((o) => o.id === orgId);
+                        return org ? (
+                          <span key={org.id} className="set-target-tag">
+                            {org.name}
+                            <span
+                              className="set-target-tag-remove"
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Remove ${org.name}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleOrganizationMultiSelectToggle(org.id);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleOrganizationMultiSelectToggle(org.id);
+                                }
+                              }}
+                            >
+                              ×
+                            </span>
+                          </span>
+                        ) : null;
+                      }) : null}
+                    </div>
+                  )}
+                  <span className="set-target-multi-caret">▾</span>
+                </button>
+                {showOrgMultiSelect && (
+                  <div className="set-target-multi-dropdown">
+                    <div className="set-target-multi-search">
+                      <input
+                        type="text"
+                        placeholder="Search organizations"
+                        value={orgSearchQuery}
+                        onChange={(e) => setOrgSearchQuery(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="set-target-multi-option special"
+                      onClick={clearOrganizationFilter}
+                    >
+                      All Organizations
+                      {Array.isArray(selectedOrganizationFilter) && selectedOrganizationFilter.length === 0 && (
+                        <span className="set-target-check">✓</span>
+                      )}
+                    </button>
+                    <div className="set-target-multi-options">
+                      {filteredOrganizationsForMultiSelect.map((org) => {
+                        const isSelected = Array.isArray(selectedOrganizationFilter) && selectedOrganizationFilter.includes(org.id || 0);
+                        return (
+                          <button
+                            key={org.id}
+                            type="button"
+                            className={`set-target-multi-option${isSelected ? ' selected' : ''}`}
+                            onClick={() => handleOrganizationMultiSelectToggle(org.id || 0)}
+                          >
+                            <span>{org.name || `Organization #${org.id}`}</span>
+                            {isSelected && <span className="set-target-check">✓</span>}
+                          </button>
+                        );
+                      })}
+                      {filteredOrganizationsForMultiSelect.length === 0 && (
+                        <div className="set-target-empty">No matches found.</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="set-target-multi" ref={userMultiSelectRef} style={{ minWidth: '200px' }}>
+                <button
+                  type="button"
+                  className={`set-target-multi-trigger${Array.isArray(selectedManagerFilter) && selectedManagerFilter.length === 0 ? ' placeholder' : ''}`}
+                  onClick={() => setShowUserMultiSelect(!showUserMultiSelect)}
+                >
+                  {Array.isArray(selectedManagerFilter) && selectedManagerFilter.length === 0 ? (
+                    <span>All Users</span>
+                  ) : (
+                    <div className="set-target-multi-tags">
+                      {Array.isArray(selectedManagerFilter) ? selectedManagerFilter.map((userId) => {
+                        const user = managerOptions.find((u) => u.id === userId);
+                        if (!user) return null;
+                        const label = getUserDisplayLabel(user);
+                        return (
+                          <span key={user.id} className="set-target-tag">
+                            {label}
+                            <span
+                              className="set-target-tag-remove"
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`Remove ${label}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleUserMultiSelectToggle(user.id);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleUserMultiSelectToggle(user.id);
+                                }
+                              }}
+                            >
+                              ×
+                            </span>
+                          </span>
+                        );
+                      }) : null}
+                    </div>
+                  )}
+                  <span className="set-target-multi-caret">▾</span>
+                </button>
+                {showUserMultiSelect && (
+                  <div className="set-target-multi-dropdown">
+                    <div className="set-target-multi-search">
+                      <input
+                        type="text"
+                        placeholder="Search users"
+                        value={userSearchQuery}
+                        onChange={(e) => setUserSearchQuery(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="set-target-multi-option special"
+                      onClick={clearUserFilter}
+                    >
+                      All Users
+                      {Array.isArray(selectedManagerFilter) && selectedManagerFilter.length === 0 && (
+                        <span className="set-target-check">✓</span>
+                      )}
+                    </button>
+                    <div className="set-target-multi-options">
+                      {filteredUsersForMultiSelect.map((user) => {
+                        const isSelected = Array.isArray(selectedManagerFilter) && selectedManagerFilter.includes(user.id);
+                        const label = getUserDisplayLabel(user);
+                        return (
+                          <button
+                            key={user.id}
+                            type="button"
+                            className={`set-target-multi-option${isSelected ? ' selected' : ''}`}
+                            onClick={() => handleUserMultiSelectToggle(user.id)}
+                          >
+                            <span>{label}</span>
+                            {isSelected && <span className="set-target-check">✓</span>}
+                          </button>
+                        );
+                      })}
+                      {filteredUsersForMultiSelect.length === 0 && (
+                        <div className="set-target-empty">No matches found.</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            // Single select for other roles
+            <>
           <select
             className="toolbar-select"
-            value={selectedOrganizationFilter}
+                value={typeof selectedOrganizationFilter === 'string' ? selectedOrganizationFilter : ''}
             onChange={(e) => handleOrganizationFilterChange(e.target.value)}
           >
             <option value="">All Organizations</option>
@@ -2897,6 +3891,22 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
               </option>
             ))}
           </select>
+            <select
+              className="toolbar-select"
+                value={typeof selectedManagerFilter === 'string' ? selectedManagerFilter : ''}
+              onChange={(e) => handleManagerFilterChange(e.target.value)}
+            >
+              <option value="">All Users</option>
+              {managerOptions.map((manager) => {
+                const label = getUserDisplayLabel(manager);
+                return (
+                  <option key={manager.id} value={String(manager.id)}>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
+            </>
           {!isPresales && (
           <select
             className="toolbar-select"
