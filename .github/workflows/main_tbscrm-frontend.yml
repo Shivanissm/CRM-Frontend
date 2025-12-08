@@ -61,5 +61,5 @@ jobs:
         with:
           app-name: 'TBSCRM-Frontend'
           slot-name: 'Production'
-          package: ./dist
+          package: .
           
