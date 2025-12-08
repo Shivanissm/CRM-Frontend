@@ -34,25 +34,28 @@ goto :eof
 
 :DeployToWwwroot
 echo Deploying to wwwroot - only copying built files...
-if exist "%DEPLOYMENT_TARGET%\wwwroot" (
+echo DEPLOYMENT_TARGET is already wwwroot: %DEPLOYMENT_TARGET%
+
+REM Clean wwwroot completely - DEPLOYMENT_TARGET IS wwwroot
+if exist "%DEPLOYMENT_TARGET%" (
     echo Cleaning wwwroot...
-    del /F /Q "%DEPLOYMENT_TARGET%\wwwroot\*" 2>nul
-    for /d %%p in ("%DEPLOYMENT_TARGET%\wwwroot\*") do rmdir /s /q "%%p" 2>nul
+    del /F /Q "%DEPLOYMENT_TARGET%\*" 2>nul
+    for /d %%p in ("%DEPLOYMENT_TARGET%\*") do rmdir /s /q "%%p" 2>nul
+) else (
+    mkdir "%DEPLOYMENT_TARGET%"
 )
-if not exist "%DEPLOYMENT_TARGET%\wwwroot" (
-    mkdir "%DEPLOYMENT_TARGET%\wwwroot"
-)
+
 echo Copying only built files: assets, index.html, web.config...
 if exist "%DEPLOYMENT_SOURCE%\dist\assets" (
-    xcopy /E /I /Y "%DEPLOYMENT_SOURCE%\dist\assets" "%DEPLOYMENT_TARGET%\wwwroot\assets\"
+    xcopy /E /I /Y "%DEPLOYMENT_SOURCE%\dist\assets" "%DEPLOYMENT_TARGET%\assets\"
     echo Copied: assets/
 )
 if exist "%DEPLOYMENT_SOURCE%\dist\index.html" (
-    copy /Y "%DEPLOYMENT_SOURCE%\dist\index.html" "%DEPLOYMENT_TARGET%\wwwroot\"
+    copy /Y "%DEPLOYMENT_SOURCE%\dist\index.html" "%DEPLOYMENT_TARGET%\"
     echo Copied: index.html
 )
 if exist "%DEPLOYMENT_SOURCE%\dist\web.config" (
-    copy /Y "%DEPLOYMENT_SOURCE%\dist\web.config" "%DEPLOYMENT_TARGET%\wwwroot\"
+    copy /Y "%DEPLOYMENT_SOURCE%\dist\web.config" "%DEPLOYMENT_TARGET%\"
     echo Copied: web.config
 )
 if %ERRORLEVEL% neq 0 goto error

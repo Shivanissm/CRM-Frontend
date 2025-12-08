@@ -1,4 +1,4 @@
-# Ignore everything except dist folder during deployment
+# Ignore everything during deployment - we only want dist contents
 *
 !dist/
 !dist/assets/
@@ -11,4 +11,4 @@
 !.deployment
 !deploy.sh
 !deploy.cmd
-
+!.gitignore

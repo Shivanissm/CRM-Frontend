@@ -7,12 +7,19 @@ const __dirname = dirname(__filename);
 
 const projectRoot = join(__dirname, '..');
 const distDir = join(projectRoot, 'dist');
-// For Azure App Service, wwwroot might be in a different location
-// Check environment variable first, then fall back to project root
-const wwwrootPath = process.env.AZURE_WWWROOT_PATH || 
-                    process.env.WWWROOT_PATH || 
-                    join(projectRoot, 'wwwroot');
-const wwwrootDir = wwwrootPath;
+
+// For Azure App Service, use DEPLOYMENT_TARGET (which is wwwroot)
+// For local deployment, use project root wwwroot
+// IMPORTANT: Never create nested wwwroot folders
+const isAzure = process.env.DEPLOYMENT_TARGET !== undefined || 
+                process.env.WEBSITE_SITE_NAME !== undefined;
+
+const wwwrootDir = isAzure 
+  ? (process.env.DEPLOYMENT_TARGET || '/home/site/wwwroot')
+  : join(projectRoot, 'wwwroot');
+
+console.log(`Deployment target: ${wwwrootDir}`);
+console.log(`Is Azure: ${isAzure}`);
 
 // Function to copy specific files/folders from dist to wwwroot
 function copyBuiltFiles(src, dest) {
