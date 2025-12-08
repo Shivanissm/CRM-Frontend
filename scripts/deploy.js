@@ -21,6 +21,13 @@ const wwwrootDir = isAzure
 console.log(`Deployment target: ${wwwrootDir}`);
 console.log(`Is Azure: ${isAzure}`);
 
+// Verify path structure for Azure
+if (isAzure && wwwrootDir.includes('/site/wwwroot')) {
+  console.log('✓ Detected Azure App Service path structure (includes /site/wwwroot)');
+  console.log('  Working directly with wwwroot folder inside site folder');
+  console.log('  IMPORTANT: Only cleaning wwwroot, NOT touching site folder');
+}
+
 // Function to copy specific files/folders from dist to wwwroot
 function copyBuiltFiles(src, dest) {
   if (!existsSync(dest)) {
@@ -114,18 +121,48 @@ function deploy() {
     process.exit(1);
   }
 
-  console.log('Step 1: Cleaning wwwroot directory...');
-  // Remove all existing files in wwwroot
+  console.log('\n==========================================');
+  console.log('STEP 1: REMOVING ALL FILES FROM WWWROOT');
+  console.log('==========================================');
+  console.log(`Target path: ${wwwrootDir}`);
+  console.log('IMPORTANT: Removing EVERYTHING inside wwwroot first');
+  console.log('IMPORTANT: NOT touching site folder or parent directories');
+  
+  // FIRST: Remove ALL existing files and folders in wwwroot
+  // Note: wwwrootDir is the full path (e.g., /home/site/wwwroot)
+  // We only clean wwwroot, never touch the site folder
   if (existsSync(wwwrootDir)) {
+    const contentsBefore = readdirSync(wwwrootDir);
+    console.log(`\nCurrent contents BEFORE cleaning (${contentsBefore.length} items):`);
+    contentsBefore.forEach(item => console.log(`  - ${item}`));
+    
     removeDirectoryContents(wwwrootDir);
+    
+    const contentsAfter = readdirSync(wwwrootDir);
+    console.log(`\n✓ wwwroot cleaned successfully (${contentsAfter.length} items remaining)`);
+    if (contentsAfter.length > 0) {
+      console.log('WARNING: Some items remain after cleaning!');
+      contentsAfter.forEach(item => console.log(`  - ${item}`));
+    } else {
+      console.log('✓ wwwroot is now empty (correct!)');
+    }
   } else {
-    // Create wwwroot if it doesn't exist
+    // Create wwwroot if it doesn't exist (mkdir -p will create parent directories if needed)
+    // But in Azure, wwwroot should already exist
     mkdirSync(wwwrootDir, { recursive: true });
     console.log('Created wwwroot directory');
   }
 
-  console.log('\nStep 2: Copying only built files (assets, index.html, web.config) to wwwroot...');
-  // Copy only the specific built files from dist to wwwroot
+  console.log('\n==========================================');
+  console.log('STEP 2: COPYING FILES FROM DIST TO WWWROOT');
+  console.log('==========================================');
+  console.log(`Source: ${distDir}`);
+  console.log(`Target: ${wwwrootDir}`);
+  console.log('IMPORTANT: Copying ONLY 3 items from dist, NOT the dist folder itself');
+  console.log('Items to copy: assets/, index.html, web.config\n');
+  
+  // THEN: Copy only the specific built files from dist to wwwroot
+  // We copy the CONTENTS of dist, not the dist folder itself
   copyBuiltFiles(distDir, wwwrootDir);
 
   console.log('\n✅ Deployment completed successfully!');
