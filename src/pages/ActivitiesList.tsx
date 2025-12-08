@@ -51,7 +51,7 @@ export default function ActivitiesList() {
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const year = today.getFullYear();
     const todayStr = `${day}/${month}/${year}`;
-    return { page: 0, size: 25, dateFrom: todayStr, dateTo: todayStr };
+    return { page: 0, size: 10, dateFrom: todayStr, dateTo: todayStr, sort: 'dueDate,desc' };
   };
   
   const [filters, setFilters] = useState<ActivityFilters>(getInitialFilters());
@@ -290,10 +290,19 @@ export default function ActivitiesList() {
 
   const toBackendDateString = (dateStr?: string): string | undefined => {
     if (!dateStr) return undefined;
+    // If it's already in YYYY-MM-DD format, convert to DD/MM/YYYY
     if (dateStr.includes('-')) {
       const parts = dateStr.split('-');
       if (parts.length === 3) {
         return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+    }
+    // If it's in DD/MM/YYYY format, convert to YYYY-MM-DD for backend
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split('/');
+      if (parts.length === 3) {
+        const [dd, mm, yyyy] = parts;
+        return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
       }
     }
     return dateStr;
@@ -645,7 +654,7 @@ export default function ActivitiesList() {
   }, []);
 
   const getDatePreservingFilters = () => {
-    const next: ActivityFilters = { page: 0, size: 25 };
+    const next: ActivityFilters = { page: 0, size: 10 };
     if (filters.dateFrom) {
       next.dateFrom = filters.dateFrom;
     }
@@ -771,13 +780,13 @@ export default function ActivitiesList() {
     setLoading(true);
     // Use filtersRef to get the latest filters, avoiding stale closure issues
     const filtersToUse = customFilters || filtersRef.current;
-    // Only apply page category if category is not already specified in filters
-    // If category is explicitly undefined/null, don't apply any category filter
+      // Only apply page category if category is not already specified in filters
+      // If category is explicitly undefined/null, don't apply any category filter
     const finalFilters =
       Object.prototype.hasOwnProperty.call(filtersToUse, 'category') && filtersToUse.category === undefined
         ? filtersToUse
-        : filtersToUse.category
-          ? filtersToUse
+        : filtersToUse.category 
+          ? filtersToUse 
           : { ...filtersToUse, category: getCategoryEnum(category) };
     const normalizedFilters: ActivityFilters = { ...finalFilters };
     // When a service category filter is selected (e.g. Makeup / Photography),
@@ -946,6 +955,26 @@ export default function ActivitiesList() {
 
     // Single user or no user filter - use normal flow
     activitiesApi
+      const normalizedFilters: ActivityFilters = { ...finalFilters };
+      if (normalizedFilters.dateFrom) {
+        normalizedFilters.dateFrom = toBackendDateString(normalizedFilters.dateFrom);
+      }
+      if (normalizedFilters.dateTo) {
+        normalizedFilters.dateTo = toBackendDateString(normalizedFilters.dateTo);
+      }
+
+    // Debug logging for API calls
+    console.log('[ActivitiesList] API Request Filters:', {
+      dateFrom: normalizedFilters.dateFrom,
+      dateTo: normalizedFilters.dateTo,
+      category: normalizedFilters.category,
+      tab: tab,
+      sort: normalizedFilters.sort,
+      page: normalizedFilters.page,
+      size: normalizedFilters.size
+    });
+
+      activitiesApi
       .list(normalizedFilters, { signal: abortController.signal })
       .then(async (response) => {
         // Check if request was aborted
@@ -994,6 +1023,22 @@ export default function ActivitiesList() {
       })
       .then((response) => {
         if (response && !abortController.signal.aborted) {
+          console.log('[ActivitiesList] API Response:', {
+            totalElements: response.totalElements,
+            contentLength: response.content?.length || 0,
+            firstActivity: response.content?.[0] ? {
+              id: response.content[0].id,
+              subject: response.content[0].subject,
+              date: response.content[0].date,
+              dueDate: response.content[0].dueDate
+            } : null,
+            sampleDates: response.content?.slice(0, 5).map(a => ({
+              id: a.id,
+              subject: a.subject,
+              date: a.date,
+              dueDate: a.dueDate
+            })) || []
+          });
           setData(response);
 
           // Keep activity summary cards in sync with the list response so that
@@ -1376,6 +1421,18 @@ export default function ActivitiesList() {
       : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
     if (selectedCategories.length > 0) {
       return;
+      if (!abortController.signal.aborted) {
+      await loadCallDuration(dateOnlyFilters);
+      }
+    } catch (error) {
+      if (!abortController.signal.aborted) {
+      console.error('Failed to load activity counts:', error);
+    }
+    } finally {
+      // Clear the ref if this was the current request
+      if (loadCountsAbortControllerRef.current === abortController) {
+        loadCountsAbortControllerRef.current = null;
+      }
     }
 
     const visible = data.content.filter((a) => shouldShow(a));
@@ -1532,7 +1589,7 @@ export default function ActivitiesList() {
     if (isCategoryManager && selectedCategories.length > 0 && organizationCategoryLookup && Object.keys(organizationCategoryLookup).length > 0 && !categoryManagerCategorySetRef.current) {
       categoryManagerCategorySetRef.current = true;
       // Reload activities once to ensure they get mapped to the correct service category
-      loadActivities();
+    loadActivities();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCategoryManager, selectedCategoryFilter, organizationCategoryLookup]);
@@ -1730,6 +1787,16 @@ export default function ActivitiesList() {
       }
     }
     
+    // Wait for tab to be set to "All" if activityId is present
+    if (activityId && tab !== 'All') {
+      return; // Wait for tab to be set to "All"
+    }
+    
+    // Wait for filters to be cleared (no date filters) when on "All" tab
+    if (activityId && tab === 'All' && (filters.dateFrom || filters.dateTo)) {
+      return; // Wait for filters to be cleared
+    }
+    
     if (activityId && data?.content && !loading) {
       const id = Number(activityId);
       // Set highlighted activity ID in state to persist even if URL changes
@@ -1737,6 +1804,19 @@ export default function ActivitiesList() {
       
       // Check if activity exists in the data (it should be there if category matches)
       const activity = data.content.find(a => a.id === id);
+      
+      // If activity is not found in current page, it might be on a different page
+      // or filtered out. Since we're on "All" tab, try loading with larger page size
+      if (!activity && data.totalElements > data.content.length) {
+        // Activity exists but is on a different page
+        // Load with larger page size to include it
+        const filtersWithoutDates = { ...filtersRef.current };
+        delete filtersWithoutDates.dateFrom;
+        delete filtersWithoutDates.dateTo;
+        // Increase page size to try to include the activity
+        loadActivities({ ...filtersWithoutDates, page: 0, size: Math.max(100, data.totalElements) });
+        return;
+      }
       
       // Only proceed if activity exists in the data
       if (activity) {
@@ -1889,7 +1969,7 @@ export default function ActivitiesList() {
       // Clear highlighted activity if URL param is removed
       setHighlightedActivityId(null);
     }
-  }, [data, searchParams, setSearchParams, loading, category, tab, highlightedActivityId]);
+  }, [data, searchParams, setSearchParams, loading, category, tab, highlightedActivityId, filters, loadActivities]);
 
   const handleTabSelection = (nextTab: TabOption) => {
     if (nextTab === 'Select period') {
@@ -2117,8 +2197,13 @@ export default function ActivitiesList() {
     let newFilters: ActivityFilters = { 
       ...filters, 
       page: 0, 
-      size: 25 
+      size: 10 
     };
+    
+    // Preserve sort if it exists, otherwise set default sort by dueDate desc
+    if (!newFilters.sort) {
+      newFilters.sort = 'dueDate,desc';
+    }
     
     // Clear date filters and done status (they'll be set based on tab)
     delete newFilters.dateFrom;
@@ -2169,8 +2254,12 @@ export default function ActivitiesList() {
       newFilters = { 
         ...filters,
         page: 0, 
-        size: 25 
+        size: 10 
       };
+      // Preserve sort if it exists, otherwise set default sort by dueDate desc
+      if (!newFilters.sort) {
+        newFilters.sort = 'dueDate,desc';
+      }
       delete newFilters.dateFrom;
       delete newFilters.dateTo;
       delete newFilters.done;
@@ -2471,14 +2560,14 @@ export default function ActivitiesList() {
         }
       }
       
-      const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
-      const startMinutes = existingStartMinutes ?? 0;
-      const endMinutes = startMinutes + durationMinutes;
-      const startTimeFormatted =
-        existingStartMinutes !== null && pendingDoneActivity.startTime
-          ? pendingDoneActivity.startTime
-          : formatMinutesToHHMM(startMinutes);
-      const endTimeFormatted = formatMinutesToHHMM(endMinutes);
+    const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
+    const startMinutes = existingStartMinutes ?? 0;
+    const endMinutes = startMinutes + durationMinutes;
+    const startTimeFormatted =
+      existingStartMinutes !== null && pendingDoneActivity.startTime
+        ? pendingDoneActivity.startTime
+        : formatMinutesToHHMM(startMinutes);
+    const endTimeFormatted = formatMinutesToHHMM(endMinutes);
       
       const updatedActivity = await activitiesApi.update(pendingDoneActivity.id, {
         startTime: startTimeFormatted,
@@ -2762,6 +2851,72 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
     if (selectedCategories.length > 0) {
       const activityServiceCategory = getServiceCategoryForActivity(a.id);
       if (!selectedCategories.includes(activityServiceCategory)) {
+    // When a user is selected from "All Users" dropdown, show activities from all their organizations
+    if (filters.assignedUserId && selectedManagerFilter) {
+      const selectedUserId = Number(selectedManagerFilter);
+      if (!Number.isNaN(selectedUserId)) {
+        const selectedUser = managerOptions.find((u) => u.id === selectedUserId);
+        if (selectedUser) {
+          const presalesRoleCodes = ['PRESALES', 'PRE_SALES', 'PRE-SALES'];
+          const getUpperRole = (u: User) => (u.role || '').toUpperCase();
+          const userRole = getUpperRole(selectedUser);
+          
+          let userOrgIds: number[] = [];
+          
+          if (userRole === 'SALES') {
+            // Sales user: get all organizations they own
+            userOrgIds = baseOrganizationOptions
+              .filter((org) => org.owner && org.owner.id === selectedUserId)
+              .map((org) => org.id)
+              .filter((id): id is number => id !== undefined && id !== null);
+          } else if (presalesRoleCodes.includes(userRole) && selectedUser.managerId) {
+            // Presales user: get all organizations owned by their sales manager
+            userOrgIds = baseOrganizationOptions
+              .filter((org) => org.owner && org.owner.id === selectedUser.managerId)
+              .map((org) => org.id)
+              .filter((id): id is number => id !== undefined && id !== null);
+          }
+          
+          // Check if activity belongs to any of the user's organizations
+          if (userOrgIds.length > 0) {
+            const activityOrgName = a.organization?.toLowerCase() || '';
+            const belongsToUserOrgs = baseOrganizationOptions.some(
+              (org) => userOrgIds.includes(org.id) && org.name?.toLowerCase() === activityOrgName
+            );
+            if (!belongsToUserOrgs) {
+      return false;
+    }
+          } else {
+            // If no organizations found, only show activities directly assigned to this user
+            // This is already handled by backend filtering with assignedUserId
+            return true;
+          }
+        }
+      }
+    }
+
+    // For sales users (when no specific user selected), ensure activities are only from organizations they own
+    if (isSales && baseOrganizationOptions.length > 0 && !selectedManagerFilter) {
+      const activityOrgName = a.organization?.toLowerCase() || '';
+      const belongsToSalesOrgs = baseOrganizationOptions.some(
+        (org) => org.name?.toLowerCase() === activityOrgName
+      );
+      if (!belongsToSalesOrgs) {
+        return false;
+      }
+    }
+
+    // For presales users (when no specific user selected), ensure activities are only from organizations owned by their sales manager
+    if (isPresales && baseOrganizationOptions.length > 0 && !selectedManagerFilter) {
+      const activityOrgName = a.organization?.toLowerCase() || '';
+      const belongsToManagerOrgs = baseOrganizationOptions.some(
+        (org) => org.name?.toLowerCase() === activityOrgName
+      );
+      if (!belongsToManagerOrgs) {
+        return false;
+      }
+    }
+
     // For category managers, be more lenient: if activity belongs to their scoped organizations,
     // show it even if service category doesn't match exactly (backend already scoped it)
         if (isCategoryManager) {
@@ -2781,8 +2936,6 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
     }
     // organizationId / assignedUserId are now sent to backend;
     // we rely on backend scoping instead of client-side matching here.
-
-    const ed = effectiveDate(a);
     
     // "All" tab shows everything
     if (tab === 'All') return true;
@@ -2790,12 +2943,12 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
     // "To-do" tab shows all activities that are not done
     if (tab === 'To‑do') return !a.done;
     
-    // For date-based tabs, we need the activity to have a date
-    if (!ed) {
-      // Activities without dates don't show in date-specific tabs
-      if (tab === 'Today' || tab === 'Tomorrow' || tab === 'Overdue' || tab === 'This week' || tab === 'Next week' || tab === 'This month' || tab === 'Prev month' || tab === 'This year' || tab === 'Select period' || tab === 'Select Date') {
-        return false;
-      }
+    // For tabs with backend date filtering (Today, Tomorrow, This week, etc.),
+    // trust the backend results since dateFrom/dateTo filters are already applied.
+    // The backend handles the date filtering, so we don't need to filter again client-side.
+    const tabsWithBackendDateFilter = ['Today', 'Tomorrow', 'This week', 'Next week', 'This month', 'Prev month', 'This year', 'Select period', 'Select Date'];
+    if (tabsWithBackendDateFilter.includes(tab)) {
+      // Backend already filtered by date, so trust the results
       return true;
     }
     
@@ -2814,61 +2967,12 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
     // "Overdue" tab: show activities with date < today (both done and not done)
     if (tab === 'Overdue') {
       return ed.getTime() < today.getTime();
-    }
-    
-    // "This week" tab: show activities within this week (Sunday to Saturday)
-    if (tab === 'This week') {
-      const weekStart = new Date(today);
-      weekStart.setDate(today.getDate() - today.getDay()); // Start of week (Sunday)
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6); // End of week (Saturday)
-      weekEnd.setHours(23, 59, 59, 999);
-      return ed.getTime() >= weekStart.getTime() && ed.getTime() <= weekEnd.getTime();
-    }
-    
-    // "Next week" tab: show activities within next week
-    if (tab === 'Next week') {
-      const weekStart = new Date(today);
-      weekStart.setDate(today.getDate() - today.getDay()); // Start of current week
-      const nextWeekStart = new Date(weekStart);
-      nextWeekStart.setDate(weekStart.getDate() + 7); // Start of next week
-      const nextWeekEnd = new Date(nextWeekStart);
-      nextWeekEnd.setDate(nextWeekStart.getDate() + 6); // End of next week
-      nextWeekEnd.setHours(23, 59, 59, 999);
-      return ed.getTime() >= nextWeekStart.getTime() && ed.getTime() <= nextWeekEnd.getTime();
-    }
-    
-    // "This month" tab: show activities within current month
-    if (tab === 'This month') {
-      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-      monthStart.setHours(0, 0, 0, 0);
-      const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      monthEnd.setHours(23, 59, 59, 999);
-      return ed.getTime() >= monthStart.getTime() && ed.getTime() <= monthEnd.getTime();
-    }
-    
-    // "Prev month" tab: show activities within previous month
-    if (tab === 'Prev month') {
-      const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      prevMonthStart.setHours(0, 0, 0, 0);
-      const prevMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
-      prevMonthEnd.setHours(23, 59, 59, 999);
-      return ed.getTime() >= prevMonthStart.getTime() && ed.getTime() <= prevMonthEnd.getTime();
-    }
-    
-    // "This year" tab: show activities within current year
-    if (tab === 'This year') {
-      const yearStart = new Date(today.getFullYear(), 0, 1);
-      yearStart.setHours(0, 0, 0, 0);
-      const yearEnd = new Date(today.getFullYear(), 11, 31);
-      yearEnd.setHours(23, 59, 59, 999);
-      return ed.getTime() >= yearStart.getTime() && ed.getTime() <= yearEnd.getTime();
-    }
-    
-    // "Select period" and "Select Date": rely on backend filtering
-    // The backend filters by dateFrom/dateTo, so show all results from API
-    if (tab === 'Select period' || tab === 'Select Date') {
-      return true;
+    // For "Overdue" tab, backend sets dateTo to yesterday and done=false,
+    // but we still need to verify the done status client-side as a safety check
+    if (tab === 'Overdue') {
+      const ed = effectiveDate(a);
+      if (!ed) return false;
+      return ed.getTime() < today.getTime() && !a.done;
     }
     
     return true;
@@ -3413,7 +3517,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
             onClick={() => {
               setActiveCustomFilters([]);
               setActiveFilterName(null);
-              setFilters({ page: 0, size: 25 });
+              setFilters({ page: 0, size: 10 });
             }}
           >
             ×
@@ -3583,6 +3687,19 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
                 </div>
               )}
             </div>
+          <select
+            className="toolbar-select"
+            value={selectedCategoryFilter}
+            onChange={(e) => setSelectedCategoryFilter(e.target.value.trim())}
+            title="Filters by service categories on the backend"
+          >
+            <option value="">All Categories</option>
+            {categoryFilterOptions.map((opt) => (
+              <option key={opt.code} value={opt.code}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
           )}
           {(isAdmin || isCategoryManager || isSales || isPresales) ? (
             // Multi-select for ADMIN, CATEGORY_MANAGER, SALES, and PRESALES
@@ -3790,6 +3907,23 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
               })}
             </select>
             </>
+          {!isPresales && (
+          <select
+            className="toolbar-select"
+            value={selectedManagerFilter}
+            onChange={(e) => handleManagerFilterChange(e.target.value)}
+          >
+            <option value="">All Users</option>
+            {managerOptions.map((manager) => {
+              const fullName = `${manager.firstName || ''} ${manager.lastName || ''}`.trim();
+              const label = fullName || manager.email || `User #${manager.id}`;
+              return (
+                  <option key={manager.id} value={String(manager.id)}>
+                  {label}
+                </option>
+              );
+            })}
+          </select>
           )}
         </div>
       </div>
@@ -3867,12 +4001,12 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
       <style>{`
         @keyframes highlightPulse {
           0%, 100% {
-            box-shadow: 0 0 0 6px #1976d2, 0 8px 24px rgba(33, 150, 243, 0.6), inset 0 0 0 2px rgba(33, 150, 243, 0.3);
-            background-color: #bbdefb;
+            box-shadow: 0 0 0 6px #10b981, 0 8px 24px rgba(16, 185, 129, 0.6), inset 0 0 0 2px rgba(16, 185, 129, 0.3);
+            background-color: #d1fae5;
           }
           50% {
-            box-shadow: 0 0 0 10px #1976d2, 0 12px 32px rgba(33, 150, 243, 0.8), inset 0 0 0 2px rgba(33, 150, 243, 0.4);
-            background-color: #90caf9;
+            box-shadow: 0 0 0 10px #10b981, 0 12px 32px rgba(16, 185, 129, 0.8), inset 0 0 0 2px rgba(16, 185, 129, 0.4);
+            background-color: #a7f3d0;
           }
         }
       `}</style>
@@ -3944,13 +4078,13 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
               onClick={() => handleRowClick(a)} 
               style={{ 
                 cursor: 'pointer',
-                backgroundColor: isHighlighted ? '#bbdefb' : 'transparent',
+                backgroundColor: isHighlighted ? '#d1fae5' : 'transparent',
                 transition: 'background-color 0.3s ease, box-shadow 0.3s ease, border 0.3s ease',
-                boxShadow: isHighlighted ? '0 0 0 6px #1976d2, 0 8px 24px rgba(33, 150, 243, 0.6), inset 0 0 0 2px rgba(33, 150, 243, 0.3)' : 'none',
-                outline: isHighlighted ? '4px solid #1976d2' : 'none',
+                boxShadow: isHighlighted ? '0 0 0 6px #10b981, 0 8px 24px rgba(16, 185, 129, 0.6), inset 0 0 0 2px rgba(16, 185, 129, 0.3)' : 'none',
+                outline: isHighlighted ? '4px solid #10b981' : 'none',
                 outlineOffset: isHighlighted ? '-4px' : '0',
-                borderLeft: isHighlighted ? '8px solid #1976d2' : 'none',
-                borderRight: isHighlighted ? '2px solid #1976d2' : 'none',
+                borderLeft: isHighlighted ? '8px solid #10b981' : 'none',
+                borderRight: isHighlighted ? '2px solid #10b981' : 'none',
                 position: isHighlighted ? 'relative' : 'static',
                 zIndex: isHighlighted ? 100 : 'auto',
                 transform: isHighlighted ? 'scale(1.01)' : 'scale(1)',
@@ -3986,6 +4120,98 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         </tbody>
       </table>
       </div>
+
+      {/* Pagination Controls */}
+      {data && data.totalElements > 10 && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '16px 20px',
+          borderTop: '1px solid #e5e7eb',
+          backgroundColor: '#f9fafb'
+        }}>
+          <div style={{ fontSize: '14px', color: '#6b7280' }}>
+            Showing {data.content.length > 0 ? (data.number * data.size + 1) : 0} to {Math.min((data.number * data.size + data.content.length), data.totalElements)} of {data.totalElements} activities
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              onClick={() => {
+                if (data.number > 0) {
+                  setFilters({ ...filters, page: data.number - 1 });
+                }
+              }}
+              disabled={data.number === 0}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                backgroundColor: data.number === 0 ? '#f3f4f6' : '#ffffff',
+                color: data.number === 0 ? '#9ca3af' : '#374151',
+                cursor: data.number === 0 ? 'not-allowed' : 'pointer',
+                fontSize: '14px',
+                fontWeight: 500,
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                if (data.number > 0) {
+                  e.currentTarget.style.backgroundColor = '#f9fafb';
+                  e.currentTarget.style.borderColor = '#9ca3af';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (data.number > 0) {
+                  e.currentTarget.style.backgroundColor = '#ffffff';
+                  e.currentTarget.style.borderColor = '#d1d5db';
+                }
+              }}
+            >
+              Previous
+            </button>
+            <div style={{
+              padding: '8px 12px',
+              fontSize: '14px',
+              color: '#374151',
+              fontWeight: 500
+            }}>
+              Page {data.number + 1} of {data.totalPages}
+            </div>
+            <button
+              onClick={() => {
+                if (data.number < data.totalPages - 1) {
+                  setFilters({ ...filters, page: data.number + 1 });
+                }
+              }}
+              disabled={data.number >= data.totalPages - 1}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                backgroundColor: data.number >= data.totalPages - 1 ? '#f3f4f6' : '#ffffff',
+                color: data.number >= data.totalPages - 1 ? '#9ca3af' : '#374151',
+                cursor: data.number >= data.totalPages - 1 ? 'not-allowed' : 'pointer',
+                fontSize: '14px',
+                fontWeight: 500,
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                if (data.number < data.totalPages - 1) {
+                  e.currentTarget.style.backgroundColor = '#f9fafb';
+                  e.currentTarget.style.borderColor = '#9ca3af';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (data.number < data.totalPages - 1) {
+                  e.currentTarget.style.backgroundColor = '#ffffff';
+                  e.currentTarget.style.borderColor = '#d1d5db';
+                }
+              }}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {rowMenu && (
         <div
@@ -4172,7 +4398,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
             // The activity might have a different category than the page filter
             const newFilters: ActivityFilters = { 
               page: 0, 
-              size: 25,
+              size: 10,
               category: undefined // Explicitly set to undefined to show all activities
             };
             setFilters(newFilters);

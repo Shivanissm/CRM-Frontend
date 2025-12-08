@@ -18,6 +18,24 @@ type ActiveTab = 'Activity' | 'Notes' | 'Meeting scheduler' | 'Call' | 'Email' |
 export default function PersonDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
+  // Format currency with Indian Rupee symbol
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(value);
+  };
+
+  // Format deal status for display
+  const formatDealStatus = (status: string) => {
+    if (status === 'IN_PROGRESS') {
+      return 'Open';
+    }
+    return status;
+  };
   const [summary, setSummary] = useState<PersonSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -33,7 +51,7 @@ export default function PersonDetail() {
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [weddingDetailsExpanded, setWeddingDetailsExpanded] = useState(true);
   const [organizationExpanded, setOrganizationExpanded] = useState(true);
-  const [dealsExpanded, setDealsExpanded] = useState(false);
+  const [dealsExpanded, setDealsExpanded] = useState(true);
   const [_focusExpanded, _setFocusExpanded] = useState(true);
   const [historyExpanded, setHistoryExpanded] = useState(true);
   const [weddingDetailsMenuOpen, setWeddingDetailsMenuOpen] = useState(false);
@@ -234,11 +252,15 @@ export default function PersonDetail() {
   // Load all deals for this person
   const loadPersonDeals = async (personId: number) => {
     try {
+      console.log('[loadPersonDeals] Loading deals for personId:', personId);
       const allDeals = await dealsApi.list();
+      console.log('[loadPersonDeals] All deals loaded:', allDeals.length, allDeals);
       const personDeals = allDeals.filter(deal => deal.personId === personId);
+      console.log('[loadPersonDeals] Filtered deals for person:', personDeals.length, personDeals);
       setDeals(personDeals);
     } catch (error) {
       console.error('Failed to load person deals:', error);
+      setDeals([]);
     }
   };
 
@@ -1482,24 +1504,51 @@ export default function PersonDetail() {
         <div className="person-section">
           <div className="person-section-header" onClick={() => setDealsExpanded(!dealsExpanded)}>
             <span className="person-section-title">
-              {dealsExpanded ? '▼' : '▶'} Deals
+              {dealsExpanded ? '▼' : '▶'} Deals {deals.length > 0 && `(${deals.length})`}
             </span>
           </div>
           {dealsExpanded && (
             <div className="person-section-content">
-              <div className="deals-overview">
-                <div className="deals-item">
-                  <span>Overview</span>
+              {deals.length === 0 ? (
+                <div className="person-empty-state">
+                  <p>No deals associated with this person.</p>
                 </div>
-                <div className="deals-item">
-                  <span>Top activities</span>
-                  <span className="deals-value">- 0 0%</span>
+              ) : (
+                <div className="person-deals-list">
+                  {deals.map((deal) => (
+                    <div 
+                      key={deal.id} 
+                      className="person-deal-item"
+                      onClick={() => navigate(`/deals/${deal.id}`)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <div className="person-deal-item-header">
+                        <span className="person-deal-name">{deal.name || 'Unnamed Deal'}</span>
+                        {deal.status && (
+                          <span className={`person-deal-status person-deal-status-${deal.status.toLowerCase()}`}>
+                            {formatDealStatus(deal.status)}
+                          </span>
+                        )}
+                      </div>
+                      {deal.organizationId && (() => {
+                        const org = organizations.find(o => o.id === deal.organizationId);
+                        return org ? (
+                          <div className="person-deal-org">
+                            <span className="person-deal-org-icon">🏢</span>
+                            <span>{org.name}</span>
+                          </div>
+                        ) : null;
+                      })()}
+                      {(deal.value !== null && deal.value !== undefined) && (
+                        <div className="person-deal-value">
+                          <span>Value: </span>
+                          <span className="person-deal-value-amount">{formatCurrency(deal.value)}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                <div className="deals-item">
-                  <span>Most active users</span>
-                  <span className="deals-value">- 0 0%</span>
-                </div>
-            </div>
+              )}
             </div>
           )}
         </div>

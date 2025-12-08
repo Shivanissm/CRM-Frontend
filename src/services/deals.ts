@@ -136,5 +136,15 @@ export const dealsApi = {
     const response = await api.get('/sub-sources');
     return unwrap<Array<{ code: string; label: string }>>(response.data);
   },
+
+  getStageDurations: async (dealId: number): Promise<Record<number, number>> => {
+    const response = await api.get(`/${dealId}/stage-durations`);
+    return unwrap<Record<number, number>>(response.data);
+  },
+
+  getCurrentStageDuration: async (dealId: number): Promise<number> => {
+    const response = await api.get(`/${dealId}/current-stage-duration`);
+    return unwrap<number>(response.data);
+  },
 };
 
