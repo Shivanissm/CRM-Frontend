@@ -1,14 +1,25 @@
-# Ignore everything during deployment - we only want dist contents
+# Azure deployment ignore file
+# This tells Azure to NOT deploy these files/folders to wwwroot
+# However, Azure might not respect this, so our script cleans wwwroot first
+
+# Ignore everything except what we need for build
 *
-!dist/
-!dist/assets/
-!dist/index.html
-!dist/web.config
+!.deployment
+!deploy.sh
+!deploy.cmd
 !package.json
 !package-lock.json
 !scripts/
 !scripts/deploy.js
-!.deployment
-!deploy.sh
-!deploy.cmd
-!.gitignore
+
+# After build, we only copy dist contents
+# So ignore source files
+src/
+public/
+node_modules/
+dist/
+wwwroot/
+reference/
+*.md
+.gitignore
+.deploymentignore
