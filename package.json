@@ -6,7 +6,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "deploy": "node scripts/deploy.js",
+    "build:deploy": "npm run build && npm run deploy",
+    "build:azure": "AZURE_APP_SERVICE=true npm run build"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.17",

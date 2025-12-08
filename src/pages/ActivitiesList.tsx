@@ -28,7 +28,7 @@ type SummaryCardAction =
   | 'meetingDone'
   | 'overdue';
 
-export default function ActivitiesList() {
+export default function ActivitiesList(): JSX.Element {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -953,16 +953,6 @@ export default function ActivitiesList() {
       return; // Exit early for multi-user case
     }
 
-    // Single user or no user filter - use normal flow
-    activitiesApi
-      const normalizedFilters: ActivityFilters = { ...finalFilters };
-      if (normalizedFilters.dateFrom) {
-        normalizedFilters.dateFrom = toBackendDateString(normalizedFilters.dateFrom);
-      }
-      if (normalizedFilters.dateTo) {
-        normalizedFilters.dateTo = toBackendDateString(normalizedFilters.dateTo);
-      }
-
     // Debug logging for API calls
     console.log('[ActivitiesList] API Request Filters:', {
       dateFrom: normalizedFilters.dateFrom,
@@ -974,7 +964,7 @@ export default function ActivitiesList() {
       size: normalizedFilters.size
     });
 
-      activitiesApi
+    activitiesApi
       .list(normalizedFilters, { signal: abortController.signal })
       .then(async (response) => {
         // Check if request was aborted
@@ -1347,7 +1337,6 @@ export default function ActivitiesList() {
           // - Meeting scheduler tab: show ONLY meeting stats; hide call stats
           //   so that we never display a non‑zero "Total Assign Call / Call
           //   Taken" when the Meeting list is empty.
-          const isCallTab = category === 'Call';
           const isMeetingTab = category === 'Meeting scheduler';
 
           if (!isMeetingTab && allCalls.length > 0) {
@@ -1421,18 +1410,6 @@ export default function ActivitiesList() {
       : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
     if (selectedCategories.length > 0) {
       return;
-      if (!abortController.signal.aborted) {
-      await loadCallDuration(dateOnlyFilters);
-      }
-    } catch (error) {
-      if (!abortController.signal.aborted) {
-      console.error('Failed to load activity counts:', error);
-    }
-    } finally {
-      // Clear the ref if this was the current request
-      if (loadCountsAbortControllerRef.current === abortController) {
-        loadCountsAbortControllerRef.current = null;
-      }
     }
 
     const visible = data.content.filter((a) => shouldShow(a));
@@ -1980,25 +1957,6 @@ export default function ActivitiesList() {
       setTab(nextTab);
     }
     setIsTabDropdownOpen(false);
-  };
-
-  const handleCategoryFilterChange = (value: string) => {
-    if (isAdmin) {
-      // Multi-select for ADMIN
-      const categoryCode = value.trim();
-      if (categoryCode) {
-        setSelectedCategoryFilter((prev) => {
-          const current = Array.isArray(prev) ? prev : (prev ? [prev] : []);
-          const newArray = current.includes(categoryCode)
-            ? current.filter((cat) => cat !== categoryCode)
-            : [...current, categoryCode];
-          return newArray;
-        });
-      }
-    } else {
-      // Single select for other roles
-      setSelectedCategoryFilter(value.trim());
-    }
   };
 
   const handleCategoryMultiSelectToggle = (categoryCode: string) => {
@@ -2952,26 +2910,11 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
       return true;
     }
     
-    // "Today" tab: only show activities with date = today
-    if (tab === 'Today') {
-      return ed.getTime() === today.getTime();
-    }
-    
-    // "Tomorrow" tab: only show activities with date = tomorrow
-    if (tab === 'Tomorrow') {
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
-      return ed.getTime() === tomorrow.getTime();
-    }
-    
-    // "Overdue" tab: show activities with date < today (both done and not done)
-    if (tab === 'Overdue') {
-      return ed.getTime() < today.getTime();
-    // For "Overdue" tab, backend sets dateTo to yesterday and done=false,
-    // but we still need to verify the done status client-side as a safety check
+    // Client-side fallback for Overdue tab (should rarely run because backend filters it)
     if (tab === 'Overdue') {
       const ed = effectiveDate(a);
       if (!ed) return false;
+      // Backend already filters done=false for overdue, but enforce again for safety
       return ed.getTime() < today.getTime() && !a.done;
     }
     
@@ -3596,7 +3539,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           </button>
         </div>
         <div className="toolbar-filters">
-          {isAdmin && (
+          {isAdmin ? (
             <div className="set-target-multi" ref={categoryMultiSelectRef} style={{ minWidth: '200px' }}>
               <button
                 type="button"
@@ -3687,19 +3630,20 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
                 </div>
               )}
             </div>
-          <select
-            className="toolbar-select"
-            value={selectedCategoryFilter}
-            onChange={(e) => setSelectedCategoryFilter(e.target.value.trim())}
-            title="Filters by service categories on the backend"
-          >
-            <option value="">All Categories</option>
-            {categoryFilterOptions.map((opt) => (
-              <option key={opt.code} value={opt.code}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          ) : (
+            <select
+              className="toolbar-select"
+              value={selectedCategoryFilter}
+              onChange={(e) => setSelectedCategoryFilter(e.target.value.trim())}
+              title="Filters by service categories on the backend"
+            >
+              <option value="">All Categories</option>
+              {categoryFilterOptions.map((opt) => (
+                <option key={opt.code} value={opt.code}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           )}
           {(isAdmin || isCategoryManager || isSales || isPresales) ? (
             // Multi-select for ADMIN, CATEGORY_MANAGER, SALES, and PRESALES
@@ -3879,21 +3823,21 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           ) : (
             // Single select for other roles
             <>
-          <select
-            className="toolbar-select"
+              <select
+                className="toolbar-select"
                 value={typeof selectedOrganizationFilter === 'string' ? selectedOrganizationFilter : ''}
-            onChange={(e) => handleOrganizationFilterChange(e.target.value)}
-          >
-            <option value="">All Organizations</option>
-            {organizationOptions.map((org) => (
-              <option key={org.id} value={String(org.id)}>
-                {org.name || `Organization #${org.id}`}
-              </option>
-            ))}
-          </select>
+                onChange={(e) => handleOrganizationFilterChange(e.target.value)}
+              >
+                <option value="">All Organizations</option>
+                {organizationOptions.map((org) => (
+                  <option key={org.id} value={String(org.id)}>
+                    {org.name || `Organization #${org.id}`}
+                  </option>
+                ))}
+              </select>
             <select
               className="toolbar-select"
-                value={typeof selectedManagerFilter === 'string' ? selectedManagerFilter : ''}
+              value={typeof selectedManagerFilter === 'string' ? selectedManagerFilter : ''}
               onChange={(e) => handleManagerFilterChange(e.target.value)}
             >
               <option value="">All Users</option>
@@ -3907,23 +3851,24 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
               })}
             </select>
             </>
+          )}
           {!isPresales && (
-          <select
-            className="toolbar-select"
-            value={selectedManagerFilter}
-            onChange={(e) => handleManagerFilterChange(e.target.value)}
-          >
-            <option value="">All Users</option>
-            {managerOptions.map((manager) => {
-              const fullName = `${manager.firstName || ''} ${manager.lastName || ''}`.trim();
-              const label = fullName || manager.email || `User #${manager.id}`;
-              return (
+            <select
+              className="toolbar-select"
+              value={typeof selectedManagerFilter === 'string' ? selectedManagerFilter : ''}
+              onChange={(e) => handleManagerFilterChange(e.target.value)}
+            >
+              <option value="">All Users</option>
+              {managerOptions.map((manager) => {
+                const fullName = `${manager.firstName || ''} ${manager.lastName || ''}`.trim();
+                const label = fullName || manager.email || `User #${manager.id}`;
+                return (
                   <option key={manager.id} value={String(manager.id)}>
-                  {label}
-                </option>
-              );
-            })}
-          </select>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
           )}
         </div>
       </div>
