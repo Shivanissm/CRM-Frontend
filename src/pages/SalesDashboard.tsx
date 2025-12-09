@@ -1,4 +1,5 @@
 import './RoleDashboards.css';
+import ActivitySummaryChart from '../components/ActivitySummaryChart';
 
 export default function SalesDashboard() {
   return (
@@ -11,6 +12,10 @@ export default function SalesDashboard() {
       </header>
 
       <div className="role-dashboard-grid">
+        <section className="role-dashboard-card role-dashboard-card-wide">
+          <ActivitySummaryChart />
+        </section>
+
         <section className="role-dashboard-card">
           <h2>Pipeline Snapshot</h2>
           <div className="role-dashboard-metric">₹ 2.4 Cr</div>

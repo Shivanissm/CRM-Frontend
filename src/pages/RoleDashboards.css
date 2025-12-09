@@ -46,6 +46,10 @@
   overflow: hidden;
 }
 
+.role-dashboard-card-wide {
+  grid-column: 1 / -1;
+}
+
 .role-dashboard-card::after {
   content: '';
   position: absolute;
@@ -141,5 +145,165 @@
   .role-dashboard-header h1 {
     font-size: 1.8rem;
   }
+}
+
+/* Activity chart */
+.activity-chart {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.activity-chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.activity-chart-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.activity-chart-header p {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.activity-chart-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.9);
+}
+
+.activity-chart-toggle button {
+  border: none;
+  background: transparent;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #475569;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.activity-chart-toggle button.active {
+  background: #1d4ed8;
+  color: #eff6ff;
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.3);
+}
+
+.activity-chart-toggle button:hover:not(.active) {
+  background: rgba(148, 163, 184, 0.35);
+}
+
+.activity-chart-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.activity-chart-legend .legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.legend-dot-total {
+  background: #1d4ed8;
+}
+
+.legend-dot-done {
+  background: #22c55e;
+}
+
+.legend-dot-pending {
+  background: #f97316;
+}
+
+.activity-chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 160px;
+  padding-top: 8px;
+}
+
+.activity-chart-bar {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.activity-chart-bar-stack {
+  width: 100%;
+  max-width: 32px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.7);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+.activity-chart-bar-pending {
+  background: linear-gradient(to top, #fb923c, #f97316);
+}
+
+.activity-chart-bar-done {
+  background: linear-gradient(to top, #22c55e, #16a34a);
+}
+
+.activity-chart-bar-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 0.75rem;
+  color: #64748b;
+  gap: 2px;
+}
+
+.activity-chart-bar-day {
+  font-weight: 500;
+}
+
+.activity-chart-bar-count {
+  font-size: 0.8rem;
+  color: #0f172a;
+}
+
+.activity-chart-empty {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: #64748b;
+  background: rgba(226, 232, 240, 0.6);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.activity-chart-error {
+  color: #b91c1c;
+  background: rgba(248, 113, 113, 0.12);
 }
 

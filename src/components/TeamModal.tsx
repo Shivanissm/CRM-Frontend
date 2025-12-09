@@ -87,7 +87,24 @@ export default function TeamModal({ isOpen, mode, team, onClose, onSubmit }: Tea
     setMembersLoading(true);
     teamsApi
       .listMembers()
-      .then((data) => setMemberOptions(data))
+      .then((data) => {
+        // When editing, ensure existing team members are included in options
+        if (mode === 'edit' && team) {
+          const byId = new Map<number, TeamMemberOption>();
+          data.forEach((member) => {
+            byId.set(member.id, member);
+          });
+          (team.members ?? []).forEach((member) => {
+            if (!byId.has(member.id)) {
+              byId.set(member.id, member);
+            }
+          });
+          setMemberOptions(Array.from(byId.values()));
+          return;
+        }
+
+        setMemberOptions(data);
+      })
       .catch((err: any) => {
         console.error('Failed to load member options', err);
         setOptionsError(
@@ -99,7 +116,7 @@ export default function TeamModal({ isOpen, mode, team, onClose, onSubmit }: Tea
         );
       })
       .finally(() => setMembersLoading(false));
-  }, [isOpen]);
+  }, [isOpen, mode, team]);
 
   if (!isOpen) return null;
 

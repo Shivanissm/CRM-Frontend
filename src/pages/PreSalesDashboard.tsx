@@ -1,4 +1,5 @@
 import './RoleDashboards.css';
+import ActivitySummaryChart from '../components/ActivitySummaryChart';
 
 export default function PreSalesDashboard() {
   return (
@@ -11,6 +12,10 @@ export default function PreSalesDashboard() {
       </header>
 
       <div className="role-dashboard-grid">
+        <section className="role-dashboard-card role-dashboard-card-wide">
+          <ActivitySummaryChart />
+        </section>
+
         <section className="role-dashboard-card">
           <h2>Active Briefs</h2>
           <div className="role-dashboard-metric">5</div>
