@@ -17,6 +17,7 @@ import type { Person } from '../types/person';
 import type { Organization } from '../types/organization';
 import type { Pipeline } from '../types/pipeline';
 import ActivityModal, { type ActivityFormValues } from '../components/ActivityModal';
+import Loader from '../components/Loader';
 import MarkAsLostModal from '../components/MarkAsLostModal';
 import DealValueModal from '../components/DealValueModal';
 import { getAllEventDates, normalizeEventDatesForRequest } from '../utils/dealDates';
@@ -1569,11 +1570,7 @@ export default function DealDetail() {
   // };
 
   if (loading) {
-    return (
-      <div className="deal-detail-container">
-        <div className="deal-detail-loading">Loading...</div>
-      </div>
-    );
+    return <Loader message="Loading deal details..." size="large" />;
   }
 
   if (!isNewDeal && !deal) {

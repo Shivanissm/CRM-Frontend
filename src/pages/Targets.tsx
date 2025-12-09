@@ -17,6 +17,7 @@ import './Targets.css';
 import { getStoredUser } from '../utils/authToken';
 import SetTargetModal from '../components/SetTargetModal';
 import EditTargetModal from '../components/EditTargetModal';
+import Loader from '../components/Loader';
 
 type ViewMode = 'USERS' | 'MONTHLY_TOTALS' | 'MONTHLY_GRID';
 
@@ -515,11 +516,7 @@ export default function Targets() {
   }, [gridMonthsWithIndex, gridRowSize]);
 
   if (loading && !dashboardData) {
-    return (
-      <div className="targets-page">
-        <div className="targets-loading">Loading...</div>
-      </div>
-    );
+    return <Loader message="Loading targets..." size="large" />;
   }
 
   return (
@@ -837,7 +834,7 @@ export default function Targets() {
           )}
 
           {breakdownLoading && !categoryBreakdownData && (
-            <div className="targets-loading">Loading category breakdown...</div>
+            <Loader message="Loading category breakdown..." size="medium" />
           )}
 
           {!breakdownLoading && !categoryBreakdownData && (

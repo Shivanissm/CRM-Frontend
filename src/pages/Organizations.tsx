@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import OrganizationModal from '../components/OrganizationModal';
+import Loader from '../components/Loader';
 import { organizationsApi } from '../services/organizations';
 import { dealsApi } from '../services/deals';
 import { usersApi } from '../services/users';
@@ -618,7 +619,7 @@ export default function Organizations() {
       {error && <div className="organizations-error">{error}</div>}
 
       {loading ? (
-        <div className="organizations-loading">Loading organizations…</div>
+        <Loader message="Loading organizations..." size="large" />
       ) : filteredOrganizations.length === 0 ? (
         <div className="organizations-empty">
           <div className="organizations-empty-card">

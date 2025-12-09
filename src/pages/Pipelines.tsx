@@ -4,6 +4,7 @@ import StageModal from '../components/StageModal';
 import PipelineModal from '../components/PipelineModal';
 import { pipelinesApi } from '../services/pipelines';
 import type { Pipeline, PipelineRequest, PipelineUpdateRequest, Stage, StageRequest } from '../types/pipeline';
+import Loader from '../components/Loader';
 import './Pipelines.css';
 import { logoutAndRedirect } from '../utils/authToken';
 
@@ -264,7 +265,7 @@ export default function Pipelines() {
       {error && <div className="pipelines-error">{error}</div>}
 
       {loading ? (
-        <div className="pipelines-loading">Loading pipelines…</div>
+        <Loader message="Loading pipelines..." size="large" />
       ) : (
         <div className="pipelines-grid">
           {sortedPipelines.map((pipeline) => (

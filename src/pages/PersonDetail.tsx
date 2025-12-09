@@ -11,6 +11,7 @@ import type { PersonSummary, PersonRequest, PersonOwner, PersonLabelOption, Pers
 import type { Organization } from '../types/organization';
 import type { Deal } from '../types/deal';
 import ActivityModal, { type ActivityFormValues } from '../components/ActivityModal';
+import Loader from '../components/Loader';
 import './PersonDetail.css';
 
 type ActiveTab = 'Activity' | 'Notes' | 'Meeting scheduler' | 'Call' | 'Email' | 'Send quote' | 'Send Contract' | 'Share Worklinks';
@@ -646,7 +647,7 @@ export default function PersonDetail() {
   };
 
   if (loading) {
-    return <div className="person-detail-loading">Loading...</div>;
+    return <Loader message="Loading person details..." size="large" />;
   }
 
   if (!summary) {

@@ -7,6 +7,7 @@ import FilterModal, { type FilterCondition } from '../components/FilterModal';
 import ActivityModal, { type ActivityFormValues } from '../components/ActivityModal';
 import ColumnMenu from '../components/ColumnMenu';
 import BulkEditModal from '../components/BulkEditModal';
+import Loader from '../components/Loader';
 import { organizationsApi } from '../services/organizations';
 import { usersApi } from '../services/users';
 import { dealsApi } from '../services/deals';
@@ -37,13 +38,15 @@ export default function ActivitiesList(): JSX.Element {
   const [highlightedActivityId, setHighlightedActivityId] = useState<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const loadCountsAbortControllerRef = useRef<AbortController | null>(null);
+  const currentPageRef = useRef(0);
+  const hasMoreRef = useRef(true);
 
   const [data, setData] = useState<PageResponse<Activity> | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  const [currentPage, setCurrentPage] = useState(0);
+  const [_currentPage, setCurrentPage] = useState(0);
   const [category, setCategory] = useState<'Activity' | 'Call' | 'Meeting scheduler'>('Activity');
   const [tab, setTab] = useState<TabOption>('Today');
   
@@ -788,24 +791,24 @@ export default function ActivitiesList(): JSX.Element {
     setLoading(true);
       setCurrentPage(0);
       setHasMore(true);
+      currentPageRef.current = 0;
+      hasMoreRef.current = true;
     }
     // Use filtersRef to get the latest filters, avoiding stale closure issues
     const filtersToUse = customFilters || filtersRef.current;
     // For infinite scroll, calculate page number
-    const pageToUse = append ? currentPage + 1 : 0;
+    // Use ref to get the latest page number to avoid stale closures
+    const pageToUse = append ? currentPageRef.current + 1 : 0;
     const filtersWithPagination = { ...filtersToUse, page: pageToUse, size: 20 };
-      // Only apply page category if category is not already specified in filters
-      // If category is explicitly undefined/null, don't apply any category filter
-      // For date-based tabs (Today, Tomorrow, This week, etc.), don't apply category filter
-      // so users can see all activities for that date range
-    const dateBasedTabs = ['Today', 'Tomorrow', 'This week', 'Next week', 'This month', 'Prev month', 'This year', 'Select period', 'Select Date'];
-    const isDateBasedTab = dateBasedTabs.includes(tab);
+      // Always apply category filter based on selected category tab (Activity, Call, Meeting scheduler)
+      // This ensures Activity tab shows only Activity type, Call tab shows only Call type, etc.
+      // Only skip category filter if it's explicitly set to undefined in filters
     const finalFilters =
       Object.prototype.hasOwnProperty.call(filtersToUse, 'category') && filtersToUse.category === undefined
         ? filtersToUse
         : filtersToUse.category 
-          ? (isDateBasedTab ? { ...filtersToUse, category: undefined } : filtersToUse)
-          : (isDateBasedTab ? filtersToUse : { ...filtersToUse, category: getCategoryEnum(category) });
+          ? filtersToUse 
+          : { ...filtersToUse, category: getCategoryEnum(category) };
     const normalizedFilters: ActivityFilters = { ...finalFilters, ...filtersWithPagination };
     // When a service category filter is selected (e.g. Makeup / Photography),
     // also forward the first selected value to the backend so that it can
@@ -914,38 +917,42 @@ export default function ActivitiesList(): JSX.Element {
             size: normalizedFilters.size || 25,
           };
 
-          // Fetch deal names for activities that have dealId but no dealName
+          // Fetch deal names in the background (non-blocking) for activities that have dealId but no dealName
           const activitiesWithDealId = mergedResponse.content.filter(a => a.dealId && !a.dealName);
           if (activitiesWithDealId.length > 0) {
-            try {
-              const allDeals = await dealsApi.list();
-              if (abortController.signal.aborted) return mergedResponse;
-
-              const newDealsMap = new Map<number, string>();
-              allDeals.forEach(deal => {
-                if (deal.id) {
-                  newDealsMap.set(deal.id, deal.name);
-                }
-              });
-              setDealsMap(newDealsMap);
-
-              const updatedContent = mergedResponse.content.map(activity => {
-                if (activity.dealId && !activity.dealName) {
-                  const dealName = newDealsMap.get(activity.dealId);
-                  if (dealName) {
-                    return { ...activity, dealName };
+            // Don't await - load deals in background and update UI when ready
+            dealsApi.list()
+              .then((allDeals) => {
+                if (abortController.signal.aborted) return;
+                
+                const newDealsMap = new Map<number, string>();
+                allDeals.forEach(deal => {
+                  if (deal.id) {
+                    newDealsMap.set(deal.id, deal.name);
                   }
-                }
-                return activity;
-              });
+                });
+                setDealsMap(newDealsMap);
 
-              return { ...mergedResponse, content: updatedContent };
-            } catch (err) {
-              if (!abortController.signal.aborted) {
-                console.error('Failed to load deals for activity names:', err);
-              }
-              return mergedResponse;
-            }
+                // Update activities with deal names
+                setData((prevData) => {
+                  if (!prevData) return prevData;
+                  const updatedContent = prevData.content.map(activity => {
+                    if (activity.dealId && !activity.dealName) {
+                      const dealName = newDealsMap.get(activity.dealId);
+                      if (dealName) {
+                        return { ...activity, dealName };
+                      }
+                    }
+                    return activity;
+                  });
+                  return { ...prevData, content: updatedContent };
+                });
+              })
+              .catch((err) => {
+                if (!abortController.signal.aborted) {
+                  console.error('Failed to load deals for activity names:', err);
+                }
+              });
           }
 
           return mergedResponse;
@@ -956,18 +963,63 @@ export default function ActivitiesList(): JSX.Element {
               // Append new data to existing data
               const existingIds = new Set(data.content.map(a => a.id));
               const newContent = response.content.filter(a => !existingIds.has(a.id));
+              const mergedContent = [...data.content, ...newContent];
+
               setData({
                 ...response,
-                content: [...data.content, ...newContent],
+                content: mergedContent,
                 number: response.number,
               });
+
+              // If no new items arrived or we've already loaded all items, stop pagination
+              if (newContent.length === 0 || mergedContent.length >= (response.totalElements ?? mergedContent.length)) {
+                setHasMore(false);
+                hasMoreRef.current = false;
+              }
             } else {
               // Replace data (initial load or filter change)
-            setData(response);
+              setData(response);
             }
-            // Update hasMore based on whether there are more pages
-            setHasMore(response.number < response.totalPages - 1);
+            // Update hasMore based on whether there are more pages AND whether we already loaded all items
+            const hasMorePages = response.number < response.totalPages - 1;
+            const totalCount = response.totalElements ?? response.content.length;
+            const loadedCount = (append && data) ? Math.min(data.content.length + (response.content?.length || 0), totalCount) : response.content.length;
+            const finalHasMore = hasMorePages && loadedCount < totalCount;
+            setHasMore(finalHasMore);
             setCurrentPage(response.number);
+            // Update refs for scroll handler
+            currentPageRef.current = response.number;
+            hasMoreRef.current = finalHasMore;
+            
+            // Debug logging
+            console.log('[ActivitiesList] Pagination (deals API path):', {
+              currentPage: response.number,
+              totalPages: response.totalPages,
+              hasMore: finalHasMore,
+              hasMorePages,
+              loadedCount,
+              contentLength: response.content?.length || 0,
+              totalElements: response.totalElements,
+              append: append
+            });
+            
+            // After data is set, check if we need to load more (e.g., if content is shorter than viewport)
+            // Use setTimeout to ensure DOM has updated
+            setTimeout(() => {
+              if (finalHasMore && !loading && !loadingMore) {
+                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                const windowHeight = window.innerHeight;
+                const documentHeight = document.documentElement.scrollHeight;
+                const distanceFromBottom = documentHeight - (scrollTop + windowHeight);
+                
+                // If we're at or near the bottom and there's more data, load it
+                if (distanceFromBottom <= 300 && hasMoreRef.current) {
+                  console.log('[ActivitiesList] Auto-loading more (deals API path): at bottom with more data available');
+                  const currentFilters = filtersRef.current;
+                  loadActivities(currentFilters, true);
+                }
+              }
+            }, 100);
           }
         })
         .catch((e) => {
@@ -1006,42 +1058,42 @@ export default function ActivitiesList(): JSX.Element {
           return;
         }
         
-        // Fetch deal names for activities that have dealId but no dealName
+        // Fetch deal names in the background (non-blocking) for activities that have dealId but no dealName
         const activitiesWithDealId = response.content.filter(a => a.dealId && !a.dealName);
         if (activitiesWithDealId.length > 0) {
-          try {
-            // Fetch all deals to get names
-            const allDeals = await dealsApi.list();
-            if (abortController.signal.aborted) {
-              return;
-            }
-            
-            const newDealsMap = new Map<number, string>();
-            allDeals.forEach(deal => {
-              if (deal.id) {
-                newDealsMap.set(deal.id, deal.name);
-              }
-            });
-            setDealsMap(newDealsMap);
-            
-            // Update activities with deal names
-            const updatedContent = response.content.map(activity => {
-              if (activity.dealId && !activity.dealName) {
-                const dealName = newDealsMap.get(activity.dealId);
-                if (dealName) {
-                  return { ...activity, dealName };
+          // Don't await - load deals in background and update UI when ready
+          dealsApi.list()
+            .then((allDeals) => {
+              if (abortController.signal.aborted) return;
+              
+              const newDealsMap = new Map<number, string>();
+              allDeals.forEach(deal => {
+                if (deal.id) {
+                  newDealsMap.set(deal.id, deal.name);
                 }
+              });
+              setDealsMap(newDealsMap);
+
+              // Update activities with deal names
+              setData((prevData) => {
+                if (!prevData) return prevData;
+                const updatedContent = prevData.content.map(activity => {
+                  if (activity.dealId && !activity.dealName) {
+                    const dealName = newDealsMap.get(activity.dealId);
+                    if (dealName) {
+                      return { ...activity, dealName };
+                    }
+                  }
+                  return activity;
+                });
+                return { ...prevData, content: updatedContent };
+              });
+            })
+            .catch((err) => {
+              if (!abortController.signal.aborted) {
+                console.error('Failed to load deals for activity names:', err);
               }
-              return activity;
             });
-            
-            return { ...response, content: updatedContent };
-          } catch (err) {
-            if (!abortController.signal.aborted) {
-              console.error('Failed to load deals for activity names:', err);
-            }
-            return response;
-          }
         }
         return response;
       })
@@ -1080,11 +1132,18 @@ export default function ActivitiesList(): JSX.Element {
               // Append new data to existing data
               const existingIds = new Set(prevData.content.map(a => a.id));
               const newContent = response.content.filter(a => !existingIds.has(a.id));
+              const accumulatedContent = [...prevData.content, ...newContent];
               const accumulatedData = {
                 ...response,
-                content: [...prevData.content, ...newContent],
+                content: accumulatedContent,
                 number: response.number,
               };
+
+              // If no new items arrived or we've already loaded all items, stop pagination
+              if (newContent.length === 0 || accumulatedContent.length >= (response.totalElements ?? accumulatedContent.length)) {
+                setHasMore(false);
+                hasMoreRef.current = false;
+              }
               
               // If no filters, use totalElements from API for total count (final counts from backend)
               // For pending/completed, also use summary endpoint to get final counts
@@ -1194,8 +1253,63 @@ export default function ActivitiesList(): JSX.Element {
           });
           
           // Update hasMore based on whether there are more pages
-          setHasMore(response.number < response.totalPages - 1);
+          // Check if the current page number is less than the last page index
+          // Also check if we've loaded all activities by comparing content length with totalElements
+          const hasMorePages = response.number < response.totalPages - 1;
+          
+          // After state update, check if we've actually loaded all activities
+          // Use setTimeout to ensure state has updated
+          setTimeout(() => {
+            setData((currentData) => {
+              if (currentData) {
+                // Check if we've loaded all activities
+                const loadedCount = currentData.content.length;
+                const totalCount = currentData.totalElements;
+                const actuallyHasMore = loadedCount < totalCount;
+                
+                // Update hasMore based on both page check and actual loaded count
+                const finalHasMore = hasMorePages || actuallyHasMore;
+                setHasMore(finalHasMore);
+                hasMoreRef.current = finalHasMore;
+                
+                console.log('[ActivitiesList] Pagination check:', {
+                  currentPage: response.number,
+                  totalPages: response.totalPages,
+                  hasMorePages: hasMorePages,
+                  loadedCount: loadedCount,
+                  totalCount: totalCount,
+                  actuallyHasMore: actuallyHasMore,
+                  finalHasMore: finalHasMore,
+                  append: append
+                });
+                
+                // If we haven't loaded all activities and there are more pages, auto-load
+                if (actuallyHasMore && finalHasMore && !loading && !loadingMore) {
+                  console.log('[ActivitiesList] Auto-loading more: not all activities loaded yet');
+                  const currentFilters = filtersRef.current;
+                  loadActivities(currentFilters, true);
+                }
+              }
+              return currentData;
+            });
+          }, 150);
+          
+          // Set initial hasMore state
+          setHasMore(hasMorePages);
           setCurrentPage(response.number);
+          // Update refs for scroll handler
+          currentPageRef.current = response.number;
+          hasMoreRef.current = hasMorePages;
+          
+          // Debug logging
+          console.log('[ActivitiesList] Pagination:', {
+            currentPage: response.number,
+            totalPages: response.totalPages,
+            hasMore: hasMorePages,
+            contentLength: response.content?.length || 0,
+            totalElements: response.totalElements,
+            append: append
+          });
         }
       })
       .catch((e) => {
@@ -1338,6 +1452,17 @@ export default function ActivitiesList(): JSX.Element {
     // Don't recalculate activityTotalCount from loaded data - it should come from API response.totalElements
     // This prevents showing wrong counts from partial data (only 20 items loaded initially)
     const visible = data.content.filter((a) => shouldShow(a));
+    
+    // Debug logging to track filtered vs total activities
+    if (data.content.length !== visible.length) {
+      console.log('[ActivitiesList] Activity filtering:', {
+        totalLoaded: data.content.length,
+        visibleAfterFilter: visible.length,
+        filteredOut: data.content.length - visible.length,
+        category: category,
+        totalElements: data.totalElements
+      });
+    }
 
     if (category === 'Activity') {
       // Don't set activityTotalCount here - it should come from API response.totalElements
@@ -1538,6 +1663,26 @@ export default function ActivitiesList(): JSX.Element {
     setSelectedActivities(new Set());
   }, [category, filtersKey, loadActivities, loadCounts]);
 
+  // Check if all activities are loaded and auto-load if not
+  useEffect(() => {
+    if (!data || loading || loadingMore) return;
+    
+    const loadedCount = data.content.length;
+    const totalCount = data.totalElements;
+    const needsMore = loadedCount < totalCount;
+    
+    if (needsMore && hasMoreRef.current) {
+      console.log('[ActivitiesList] Auto-loading: not all activities loaded', {
+        loadedCount,
+        totalCount,
+        missing: totalCount - loadedCount,
+        hasMore: hasMoreRef.current
+      });
+      const currentFilters = filtersRef.current;
+      loadActivities(currentFilters, true);
+    }
+  }, [data, loading, loadingMore, loadActivities]);
+
   // Infinite scroll: Load more activities when user scrolls near bottom
   useEffect(() => {
     const handleScroll = () => {
@@ -1546,9 +1691,23 @@ export default function ActivitiesList(): JSX.Element {
       const windowHeight = window.innerHeight;
       const documentHeight = document.documentElement.scrollHeight;
       
-      // If we're within 200px of the bottom and not already loading
-      if (documentHeight - (scrollTop + windowHeight) < 200) {
-        if (hasMore && !loading && !loadingMore) {
+      // If we're within 300px of the bottom and not already loading
+      // Increased threshold to ensure we catch the last page
+      const distanceFromBottom = documentHeight - (scrollTop + windowHeight);
+      if (distanceFromBottom <= 300) {
+        // Use refs to get latest values to avoid stale closures
+        const currentHasMore = hasMoreRef.current;
+        const currentLoading = loading;
+        const currentLoadingMore = loadingMore;
+        
+        if (currentHasMore && !currentLoading && !currentLoadingMore) {
+          console.log('[ActivitiesList] Triggering infinite scroll load:', {
+            distanceFromBottom,
+            hasMore: currentHasMore,
+            loading: currentLoading,
+            loadingMore: currentLoadingMore,
+            currentPage: currentPageRef.current
+          });
           // Load next page using current filters
           const currentFilters = filtersRef.current;
           loadActivities(currentFilters, true);
@@ -1556,11 +1715,12 @@ export default function ActivitiesList(): JSX.Element {
       }
     };
 
-    window.addEventListener('scroll', handleScroll);
+    // Use passive listener for better performance
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       window.removeEventListener('scroll', handleScroll);
     };
-  }, [hasMore, loading, loadingMore, data, loadActivities]);
+  }, [hasMore, loading, loadingMore, loadActivities]);
 
   // Sync selectedManagerFilter with filters.assignedUserId (not assignedUser string)
   // This ensures the dropdown shows the correct user when a user is selected
@@ -2699,6 +2859,26 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
   };
 
   const shouldShow = (a: Activity) => {
+    // Filter by activity type based on selected category tab
+    // Activity tab should only show Activity type, Call tab only Call type, Meeting tab only Meeting type
+    const expectedCategory = getCategoryEnum(category);
+    
+    // Map activity type to category enum for comparison
+    const activityCategory = mapActivityTypeToCategory(a.type || '');
+    
+    // Only show activities that match the selected category tab
+    if (activityCategory !== expectedCategory) {
+      // Debug logging to help identify filtered activities
+      console.log('[ActivitiesList] Filtering out activity by type:', {
+        activityId: a.id,
+        activityType: a.type,
+        mappedCategory: activityCategory,
+        expectedCategory: expectedCategory,
+        selectedCategoryTab: category
+      });
+      return false;
+    }
+
     // Backend now handles all activity scoping by assigned user:
     // - SALES users: Only see activities assigned to themselves and their PRESALES team
     // - CATEGORY_MANAGER users: Only see activities assigned to themselves, their SALES reports, and PRESALES under those SALES
@@ -3217,7 +3397,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
     return `${minutes}m`;
   };
 
-  if (loading) return <div style={{ padding: 16 }}>Loading activities…</div>;
+  if (loading) return <Loader message="Loading activities..." size="large" />;
   if (error) return <div style={{ padding: 16, color: 'red' }}>{error}</div>;
 
   type SummaryCard = {

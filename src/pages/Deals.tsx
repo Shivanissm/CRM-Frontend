@@ -20,6 +20,7 @@ import MarkAsLostModal from '../components/MarkAsLostModal';
 import DealValueModal from '../components/DealValueModal';
 import PipelineModal from '../components/PipelineModal';
 import ReorderPipelinesModal from '../components/ReorderPipelinesModal';
+import Loader from '../components/Loader';
 import type { PipelineRequest, PipelineUpdateRequest } from '../types/pipeline';
 import { usersApi } from '../services/users';
 import type { User } from '../types/user';
@@ -3654,11 +3655,7 @@ const Deals = () => {
     : null;
 
   if (loading) {
-    return (
-      <div className="deals-page">
-        <div className="deals-loading">Loading deals...</div>
-      </div>
-    );
+    return <Loader message="Loading deals..." size="large" />;
   }
 
     return (

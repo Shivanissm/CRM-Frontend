@@ -3,6 +3,7 @@ import TeamModal from '../components/TeamModal';
 import type { Team, TeamRequest, TeamUpdateRequest } from '../types/team';
 import { teamsApi } from '../services/teams';
 import { logoutAndRedirect } from '../utils/authToken';
+import Loader from '../components/Loader';
 import './Teams.css';
 
 interface TeamsState {
@@ -127,7 +128,7 @@ export default function Teams() {
       {error && <div className="teams-error">{error}</div>}
 
       {loading ? (
-        <div className="teams-loading">Loading teams…</div>
+        <Loader message="Loading teams..." size="large" />
       ) : sortedTeams.length === 0 ? (
         <div className="teams-empty">
           <h2>No teams yet</h2>

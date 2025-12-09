@@ -9,6 +9,7 @@ import PersonDropdown from '../components/PersonDropdown';
 import ColumnMenu from '../components/ColumnMenu';
 import BulkEditModal from '../components/BulkEditModal';
 import AddPersonModal from '../components/AddPersonModal';
+import Loader from '../components/Loader';
 import { clearAuthSession } from '../utils/authToken';
 import './PersonsList.css';
 
@@ -1997,7 +1998,7 @@ export default function PersonsList() {
       </div>
 
       {loading ? (
-        <div className="loading">Loading...</div>
+        <Loader message="Loading persons..." size="large" />
       ) : (
         <div style={{ position: 'relative' }}>
           {reloading && (

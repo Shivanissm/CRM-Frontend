@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState, useRef } from 're
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import './Users.css';
+import Loader from '../components/Loader';
 import { usersApi } from '../services/users';
 import type { User } from '../types/user';
 import { getStoredUser } from '../utils/authToken';
@@ -755,7 +756,7 @@ const filteredUsers = useMemo(() => {
             )}
 
       {loading && !refreshing ? (
-        <div className="users-loading">Loading users…</div>
+        <Loader message="Loading users..." size="large" />
       ) : filteredUsers.length === 0 ? (
         <div className="users-empty">
           <h2>No users found</h2>
