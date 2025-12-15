@@ -98,7 +98,6 @@ export default function TargetUserDetail() {
   const orgDropdownRef = useRef<HTMLDivElement | null>(null);
   const storedUser = getStoredUser();
   const isAdmin = storedUser?.role === 'ADMIN';
-  const isCategoryManager = storedUser?.role === 'CATEGORY_MANAGER';
   const isSales = storedUser?.role === 'SALES';
   const isPreSales = storedUser?.role === 'PRESALES';
   const loggedInUserId = storedUser?.userId;
@@ -616,7 +615,10 @@ export default function TargetUserDetail() {
 
   // Filter deals based on selected filters
   const filteredDeals = useMemo(() => {
-    const userDeals = userData?.deals?.map(mapUserDealDetail) ?? [];
+    const userDeals =
+      userData?.deals?.map((deal) =>
+        'commission' in deal ? mapUserDealDetail(deal as UserDealDetail) : mapSummaryToWonDeal(deal as DealSummary)
+      ) ?? [];
     const sourceDeals = dashboardDeals.length > 0 ? dashboardDeals : userDeals;
     if (!sourceDeals.length) return [];
     let deals = sourceDeals;
