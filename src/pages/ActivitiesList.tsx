@@ -40,6 +40,7 @@ export default function ActivitiesList(): JSX.Element {
   const loadCountsAbortControllerRef = useRef<AbortController | null>(null);
   const currentPageRef = useRef(0);
   const hasMoreRef = useRef(true);
+  const countsSetFromApiRef = useRef(false); // Track if counts were set from API to prevent overwriting
 
   const [data, setData] = useState<PageResponse<Activity> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -63,11 +64,48 @@ export default function ActivitiesList(): JSX.Element {
   
   const [filters, setFilters] = useState<ActivityFilters>(getInitialFilters());
   const filtersRef = useRef<ActivityFilters>(filters);
+const PERSIST_KEY = 'activities:list-state';
   
   // Keep filtersRef in sync with filters state
   useEffect(() => {
     filtersRef.current = filters;
   }, [filters]);
+
+// Restore persisted state on mount
+useEffect(() => {
+  try {
+    const stored = localStorage.getItem(PERSIST_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.category) setCategory(parsed.category);
+      if (parsed.tab) setTab(parsed.tab);
+      if (parsed.filters) setFilters(parsed.filters);
+    }
+  } catch (e) {
+    console.warn('Failed to restore persisted activities state', e);
+  }
+}, []);
+
+// Persist state while on this page
+useEffect(() => {
+  try {
+    const payload = JSON.stringify({
+      category,
+      tab,
+      filters: filtersRef.current,
+    });
+    localStorage.setItem(PERSIST_KEY, payload);
+  } catch (e) {
+    console.warn('Failed to persist activities state', e);
+  }
+}, [category, tab, filters]);
+
+// Clear persisted state when unmounting (navigating away)
+useEffect(() => {
+  return () => {
+    localStorage.removeItem(PERSIST_KEY);
+  };
+}, []);
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [isTabDropdownOpen, setIsTabDropdownOpen] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -94,7 +132,8 @@ export default function ActivitiesList(): JSX.Element {
   const [selectedActivities, setSelectedActivities] = useState<Set<number>>(new Set());
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
   const [rowMenu, setRowMenu] = useState<{ activity: Activity; x: number; y: number } | null>(null);
-  const [overdueCount, setOverdueCount] = useState(0);
+  const [callOverdueCount, setCallOverdueCount] = useState(0);
+  const [meetingOverdueCount, setMeetingOverdueCount] = useState(0);
   const [callAssignedCount, setCallAssignedCount] = useState(0);
   const [callTakenCount, setCallTakenCount] = useState(0);
   const [meetingAssignedCount, setMeetingAssignedCount] = useState(0);
@@ -123,8 +162,14 @@ export default function ActivitiesList(): JSX.Element {
   const [baseManagerOptions, setBaseManagerOptions] = useState<User[]>([]);
   // For ADMIN, CATEGORY_MANAGER, SALES, and PRESALES: support multi-select (array), for others: single select (string)
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | string[]>('');
+  const selectedCategoryFilterRef = useRef<string | string[]>('');
   const [selectedOrganizationFilter, setSelectedOrganizationFilter] = useState<string | number[]>('');
   const [selectedManagerFilter, setSelectedManagerFilter] = useState<string | number[]>('');
+  
+  // Keep selectedCategoryFilterRef in sync with selectedCategoryFilter state
+  useEffect(() => {
+    selectedCategoryFilterRef.current = selectedCategoryFilter;
+  }, [selectedCategoryFilter]);
   const [showCategoryMultiSelect, setShowCategoryMultiSelect] = useState(false);
   const [showOrgMultiSelect, setShowOrgMultiSelect] = useState(false);
   const [showUserMultiSelect, setShowUserMultiSelect] = useState(false);
@@ -814,13 +859,16 @@ export default function ActivitiesList(): JSX.Element {
     // also forward the first selected value to the backend so that it can
     // reduce the result set server‑side. We still keep the client‑side
     // filtering in shouldShow for safety and for multi‑select behaviour.
-    const selectedCategories = Array.isArray(selectedCategoryFilter)
-      ? selectedCategoryFilter
-      : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
+    // Use ref to get the latest value to avoid stale closure issues
+    const currentSelectedCategoryFilter = selectedCategoryFilterRef.current;
+    const selectedCategories = Array.isArray(currentSelectedCategoryFilter)
+      ? currentSelectedCategoryFilter
+      : (currentSelectedCategoryFilter ? [currentSelectedCategoryFilter] : []);
     if (selectedCategories.length > 0) {
       // Send comma‑separated list so backend can treat this as an IN‑filter
       // (e.g. "PHOTOGRAPHY,MAKEUP"), while still working for a single value.
       const joinedCategories = selectedCategories.join(',');
+      console.log('[ActivitiesList] loadActivities - Adding serviceCategory to API call:', joinedCategories);
       // Send both `serviceCategory` and `organizationCategory` so that whichever
       // parameter name the backend expects will be honoured. Both carry the
       // same PHOTOGRAPHY / MAKEUP / PLANNING_DECOR codes.
@@ -924,34 +972,34 @@ export default function ActivitiesList(): JSX.Element {
             dealsApi.list()
               .then((allDeals) => {
                 if (abortController.signal.aborted) return;
-                
-                const newDealsMap = new Map<number, string>();
-                allDeals.forEach(deal => {
-                  if (deal.id) {
-                    newDealsMap.set(deal.id, deal.name);
-                  }
-                });
-                setDealsMap(newDealsMap);
+
+              const newDealsMap = new Map<number, string>();
+              allDeals.forEach(deal => {
+                if (deal.id) {
+                  newDealsMap.set(deal.id, deal.name);
+                }
+              });
+              setDealsMap(newDealsMap);
 
                 // Update activities with deal names
                 setData((prevData) => {
                   if (!prevData) return prevData;
                   const updatedContent = prevData.content.map(activity => {
-                    if (activity.dealId && !activity.dealName) {
-                      const dealName = newDealsMap.get(activity.dealId);
-                      if (dealName) {
-                        return { ...activity, dealName };
-                      }
-                    }
-                    return activity;
-                  });
+                if (activity.dealId && !activity.dealName) {
+                  const dealName = newDealsMap.get(activity.dealId);
+                  if (dealName) {
+                    return { ...activity, dealName };
+                  }
+                }
+                return activity;
+              });
                   return { ...prevData, content: updatedContent };
                 });
               })
               .catch((err) => {
-                if (!abortController.signal.aborted) {
-                  console.error('Failed to load deals for activity names:', err);
-                }
+              if (!abortController.signal.aborted) {
+                console.error('Failed to load deals for activity names:', err);
+              }
               });
           }
 
@@ -978,7 +1026,7 @@ export default function ActivitiesList(): JSX.Element {
               }
             } else {
               // Replace data (initial load or filter change)
-              setData(response);
+            setData(response);
             }
             // Update hasMore based on whether there are more pages AND whether we already loaded all items
             const hasMorePages = response.number < response.totalPages - 1;
@@ -1044,10 +1092,13 @@ export default function ActivitiesList(): JSX.Element {
       dateFrom: normalizedFilters.dateFrom,
       dateTo: normalizedFilters.dateTo,
       category: normalizedFilters.category,
+      serviceCategory: normalizedFilters.serviceCategory,
+      organizationCategory: normalizedFilters.organizationCategory,
       tab: tab,
       sort: normalizedFilters.sort,
       page: normalizedFilters.page,
-      size: normalizedFilters.size
+      size: normalizedFilters.size,
+      allFilters: normalizedFilters
     });
 
       activitiesApi
@@ -1065,66 +1116,92 @@ export default function ActivitiesList(): JSX.Element {
           dealsApi.list()
             .then((allDeals) => {
               if (abortController.signal.aborted) return;
-              
-              const newDealsMap = new Map<number, string>();
-              allDeals.forEach(deal => {
-                if (deal.id) {
-                  newDealsMap.set(deal.id, deal.name);
-                }
-              });
-              setDealsMap(newDealsMap);
-
-              // Update activities with deal names
+            
+            const newDealsMap = new Map<number, string>();
+            allDeals.forEach(deal => {
+              if (deal.id) {
+                newDealsMap.set(deal.id, deal.name);
+              }
+            });
+            setDealsMap(newDealsMap);
+            
+            // Update activities with deal names
               setData((prevData) => {
                 if (!prevData) return prevData;
                 const updatedContent = prevData.content.map(activity => {
-                  if (activity.dealId && !activity.dealName) {
-                    const dealName = newDealsMap.get(activity.dealId);
-                    if (dealName) {
-                      return { ...activity, dealName };
-                    }
-                  }
-                  return activity;
-                });
+              if (activity.dealId && !activity.dealName) {
+                const dealName = newDealsMap.get(activity.dealId);
+                if (dealName) {
+                  return { ...activity, dealName };
+                }
+              }
+              return activity;
+            });
                 return { ...prevData, content: updatedContent };
               });
             })
             .catch((err) => {
-              if (!abortController.signal.aborted) {
-                console.error('Failed to load deals for activity names:', err);
-              }
+            if (!abortController.signal.aborted) {
+              console.error('Failed to load deals for activity names:', err);
+            }
             });
         }
         return response;
       })
       .then((response) => {
         if (response && !abortController.signal.aborted) {
+          // Use ref to get the latest value to avoid stale closure issues
+          const currentSelectedCategoryFilter = selectedCategoryFilterRef.current;
+          const selectedCategories = Array.isArray(currentSelectedCategoryFilter) 
+            ? currentSelectedCategoryFilter 
+            : (currentSelectedCategoryFilter ? [currentSelectedCategoryFilter] : []);
+          
           console.log('[ActivitiesList] API Response:', {
             totalElements: response.totalElements,
             contentLength: response.content?.length || 0,
             page: response.number,
             totalPages: response.totalPages,
             append: append,
+            serviceCategoryFilter: selectedCategories.length > 0 ? selectedCategories : 'none',
             firstActivity: response.content?.[0] ? {
               id: response.content[0].id,
               subject: response.content[0].subject,
+              organization: response.content[0].organization,
               date: response.content[0].date,
               dueDate: response.content[0].dueDate
             } : null,
-            sampleDates: response.content?.slice(0, 5).map(a => ({
+            sampleActivities: response.content?.slice(0, 5).map(a => ({
               id: a.id,
               subject: a.subject,
+              organization: a.organization,
               date: a.date,
               dueDate: a.dueDate
             })) || []
           });
           
+          // Log service categories for activities in response
+          if (response.content && response.content.length > 0) {
+            console.log('[ActivitiesList] Service categories for activities in response:', 
+              response.content.slice(0, 10).map(a => ({
+                id: a.id,
+                organization: a.organization,
+                serviceCategory: getServiceCategoryForActivity(a.id)
+              }))
+            );
+          }
+          
           setData((prevData) => {
             // Check if filters are applied
             const currentFilters = filtersRef.current;
+            // Use ref to get the latest value to avoid stale closure issues
+            const currentSelectedCategoryFilter = selectedCategoryFilterRef.current;
+            const selectedCategories = Array.isArray(currentSelectedCategoryFilter) 
+              ? currentSelectedCategoryFilter 
+              : (currentSelectedCategoryFilter ? [currentSelectedCategoryFilter] : []);
+            const hasServiceCategoryFilter = selectedCategories.length > 0;
             const hasFilters = !!(currentFilters?.dateFrom || currentFilters?.dateTo || 
                                  currentFilters?.assignedUserId || currentFilters?.organizationId ||
-                                 (selectedCategoryFilter && (Array.isArray(selectedCategoryFilter) ? selectedCategoryFilter.length > 0 : selectedCategoryFilter)) ||
+                                 hasServiceCategoryFilter ||
                                  (selectedOrganizationFilter && (Array.isArray(selectedOrganizationFilter) ? selectedOrganizationFilter.length > 0 : selectedOrganizationFilter)) ||
                                  (selectedManagerFilter && (Array.isArray(selectedManagerFilter) ? selectedManagerFilter.length > 0 : selectedManagerFilter)));
             
@@ -1145,9 +1222,12 @@ export default function ActivitiesList(): JSX.Element {
                 hasMoreRef.current = false;
               }
               
-              // If no filters, use totalElements from API for total count (final counts from backend)
-              // For pending/completed, also use summary endpoint to get final counts
-              if (!hasFilters) {
+              // CRITICAL: Never set counts if service category filter is active
+              // Counts must come from loadCounts API with serviceCategory parameter
+              if (hasServiceCategoryFilter) {
+                console.log('[ActivitiesList] loadActivities (append mode) - Skipping ALL count updates because service category filter is active. Counts come from loadCounts API.');
+                // Don't set any counts here - they come from the service category effect
+              } else if (!hasFilters) {
                 // No filters - use API totals (final counts from backend)
                 // Don't set activityTotalCount here - wait for loadCounts to complete
                 // This prevents showing wrong counts from partial data
@@ -1158,6 +1238,16 @@ export default function ActivitiesList(): JSX.Element {
                   ? { ...currentFilters, dateFrom: undefined, dateTo: undefined }
                   : currentFilters;
                 loadCounts(summaryFiltersForAll).then((summary) => {
+                  // Double-check service category filter wasn't activated during the async call
+                  const currentSelectedCategoryFilter = selectedCategoryFilterRef.current;
+                  const selectedCategories = Array.isArray(currentSelectedCategoryFilter) 
+                    ? currentSelectedCategoryFilter 
+                    : (currentSelectedCategoryFilter ? [currentSelectedCategoryFilter] : []);
+                  if (selectedCategories.length > 0) {
+                    console.log('[ActivitiesList] loadActivities (append) - Service category filter activated during async call, skipping count update');
+                    return;
+                  }
+                  
                   if (summary) {
                     // Only update if summary has valid values (not 0 or undefined)
                     if (summary.activityPendingCount !== undefined && summary.activityPendingCount !== null) {
@@ -1179,6 +1269,16 @@ export default function ActivitiesList(): JSX.Element {
                     setActivityTotalCount(total);
                   }
                 }).catch(() => {
+                  // Double-check service category filter wasn't activated during the async call
+                  const currentSelectedCategoryFilter = selectedCategoryFilterRef.current;
+                  const selectedCategories = Array.isArray(currentSelectedCategoryFilter) 
+                    ? currentSelectedCategoryFilter 
+                    : (currentSelectedCategoryFilter ? [currentSelectedCategoryFilter] : []);
+                  if (selectedCategories.length > 0) {
+                    console.log('[ActivitiesList] loadActivities (append) - Service category filter activated during async call, skipping count update');
+                    return;
+                  }
+                  
                   // Fallback: use response.totalElements if summary fails
                   const total = response.totalElements ?? 0;
                   setActivityTotalCount(total);
@@ -1188,7 +1288,7 @@ export default function ActivitiesList(): JSX.Element {
                   setActivityCompletedCount(allActivities.filter((a) => a.done).length);
                 });
               } else {
-                // Filters applied - calculate from accumulated data
+                // Filters applied (but NOT service category filter - already handled above)
                 const allActivities = accumulatedData.content ?? [];
                 const total = response.totalElements ?? allActivities.length;
                 const pending = allActivities.filter((a) => !a.done).length;
@@ -1202,8 +1302,20 @@ export default function ActivitiesList(): JSX.Element {
               return accumulatedData;
             } else {
               // Replace data (initial load or filter change)
-              // If no filters, use totalElements from API for total count
-              if (!hasFilters) {
+              console.log('[ActivitiesList] Setting new data (replace mode):', {
+                contentLength: response.content?.length || 0,
+                totalElements: response.totalElements,
+                hasServiceCategoryFilter: hasServiceCategoryFilter,
+                selectedCategories: selectedCategories,
+                sampleOrganizations: response.content?.slice(0, 5).map(a => a.organization) || []
+              });
+              
+              // CRITICAL: Never set counts if service category filter is active
+              // Counts must come from loadCounts API with serviceCategory parameter
+              if (hasServiceCategoryFilter) {
+                console.log('[ActivitiesList] loadActivities (replace mode) - Skipping ALL count updates because service category filter is active. Counts come from loadCounts API.');
+                // Don't set any counts here - they come from the service category effect
+              } else if (!hasFilters) {
                 // No filters - use API totals (final counts from backend)
                 // Don't set activityTotalCount here - wait for loadCounts to complete
                 // This prevents showing wrong counts from partial data
@@ -1214,6 +1326,16 @@ export default function ActivitiesList(): JSX.Element {
                   ? { ...currentFilters, dateFrom: undefined, dateTo: undefined }
                   : currentFilters;
                 loadCounts(summaryFiltersForAll).then((summary) => {
+                  // Double-check service category filter wasn't activated during the async call
+                  const currentSelectedCategoryFilter = selectedCategoryFilterRef.current;
+                  const selectedCategories = Array.isArray(currentSelectedCategoryFilter) 
+                    ? currentSelectedCategoryFilter 
+                    : (currentSelectedCategoryFilter ? [currentSelectedCategoryFilter] : []);
+                  if (selectedCategories.length > 0) {
+                    console.log('[ActivitiesList] loadActivities (replace) - Service category filter activated during async call, skipping count update');
+                    return;
+                  }
+                  
                   if (summary) {
                     // Set total count from summary if available, otherwise use response.totalElements
                     if (summary.activityTotalCount !== undefined && summary.activityTotalCount !== null) {
@@ -1228,6 +1350,16 @@ export default function ActivitiesList(): JSX.Element {
                     setActivityTotalCount(total);
                   }
                 }).catch(() => {
+                  // Double-check service category filter wasn't activated during the async call
+                  const currentSelectedCategoryFilter = selectedCategoryFilterRef.current;
+                  const selectedCategories = Array.isArray(currentSelectedCategoryFilter) 
+                    ? currentSelectedCategoryFilter 
+                    : (currentSelectedCategoryFilter ? [currentSelectedCategoryFilter] : []);
+                  if (selectedCategories.length > 0) {
+                    console.log('[ActivitiesList] loadActivities (replace) - Service category filter activated during async call, skipping count update');
+                    return;
+                  }
+                  
                   // Fallback: use response.totalElements if summary fails
                   const total = response.totalElements ?? 0;
                   setActivityTotalCount(total);
@@ -1237,7 +1369,7 @@ export default function ActivitiesList(): JSX.Element {
                   setActivityCompletedCount(activities.filter((a) => a.done).length);
                 });
               } else {
-                // Filters applied - calculate from response
+                // Filters applied (but NOT service category filter - already handled above)
           const activities = response.content ?? [];
           const total = response.totalElements ?? activities.length;
           const pending = activities.filter((a) => !a.done).length;
@@ -1330,7 +1462,7 @@ export default function ActivitiesList(): JSX.Element {
   }, [category]); // Remove filters from dependencies - use filtersRef instead
 
   const loadCounts = useCallback(
-    async (currentFilters?: ActivityFilters): Promise<ActivitiesSummary | null> => {
+    async (currentFilters?: ActivityFilters, includeServiceCategory?: boolean): Promise<ActivitiesSummary | null> => {
       // Cancel any pending loadCounts request
       if (loadCountsAbortControllerRef.current) {
         loadCountsAbortControllerRef.current.abort();
@@ -1353,8 +1485,33 @@ export default function ActivitiesList(): JSX.Element {
           if (currentFilters.done !== undefined) summaryFilters.done = currentFilters.done;
         }
 
+        // Include service category filter if requested and available
+        if (includeServiceCategory) {
+          // Use ref to get the latest value to avoid stale closure issues
+          const currentSelectedCategoryFilter = selectedCategoryFilterRef.current;
+          const selectedCategories = Array.isArray(currentSelectedCategoryFilter) 
+            ? currentSelectedCategoryFilter 
+            : (currentSelectedCategoryFilter ? [currentSelectedCategoryFilter] : []);
+          if (selectedCategories.length > 0) {
+            const joinedCategories = selectedCategories.join(',');
+            console.log('[ActivitiesList] loadCounts - Adding serviceCategory to API call:', joinedCategories);
+            summaryFilters.serviceCategory = joinedCategories;
+            summaryFilters.organizationCategory = joinedCategories;
+          }
+        }
+
         // Let the backend compute all aggregates in a single /summary call
-        const summary = await activitiesApi.summary(summaryFilters, { signal: abortController.signal });
+        // Choose summary endpoint based on active tab/category
+        let summaryPromise: Promise<ActivitiesSummary>;
+        if (category === 'Call') {
+          summaryPromise = activitiesApi.summaryCall({ ...summaryFilters, category: 'CALL' }, { signal: abortController.signal });
+        } else if (category === 'Meeting scheduler') {
+          summaryPromise = activitiesApi.summaryMeeting({ ...summaryFilters, category: 'MEETING_SCHEDULER' }, { signal: abortController.signal });
+        } else {
+          summaryPromise = activitiesApi.summary(summaryFilters, { signal: abortController.signal });
+        }
+
+        const summary = await summaryPromise;
 
         if (abortController.signal.aborted) {
           return null;
@@ -1362,34 +1519,79 @@ export default function ActivitiesList(): JSX.Element {
 
         // Use summary endpoint values directly - all calculations are done on the backend
         // The backend should return accurate counts based on the filters provided
-        setCallAssignedCount(summary.callAssignedCount ?? 0);
-        setCallTakenCount(summary.callTakenCount ?? 0);
-        setMeetingAssignedCount(summary.meetingAssignedCount ?? 0);
-        setMeetingDoneCount(summary.meetingDoneCount ?? 0);
-        setOverdueCount(summary.overdueCount ?? 0);
-        setTotalCallDurationMinutes(summary.totalCallDurationMinutes ?? 0);
+        // When serviceCategory filter is active, ALWAYS use API response values
+        console.log('[ActivitiesList] loadCounts - Setting counts from API response:', {
+          includeServiceCategory,
+          serviceCategory: summaryFilters.serviceCategory,
+          summary,
+          filters: summaryFilters
+        });
 
-        // Also set activity counts from summary endpoint to ensure consistency
-        // This prevents showing wrong counts from partial data
-        if (summary.activityPendingCount !== undefined && summary.activityPendingCount !== null) {
-          setActivityPendingCount(summary.activityPendingCount);
-        }
-        if (summary.activityCompletedCount !== undefined && summary.activityCompletedCount !== null) {
-          setActivityCompletedCount(summary.activityCompletedCount);
-        }
-        if (summary.activityTotalCount !== undefined && summary.activityTotalCount !== null) {
-          setActivityTotalCount(summary.activityTotalCount);
+        // Set ALL counts from API response - backend has calculated them correctly
+        // Always set these values when we get a response from the API
+        const newActivityTotal = summary.activityTotalCount ?? 0;
+        const newActivityPending = summary.activityPendingCount ?? 0;
+        const newActivityCompleted = summary.activityCompletedCount ?? 0;
+        const newCallAssigned = summary.callAssignedCount ?? 0;
+        const newCallTaken = summary.callTakenCount ?? 0;
+        const newMeetingAssigned = summary.meetingAssignedCount ?? 0;
+        const newMeetingDone = summary.meetingDoneCount ?? 0;
+        const newCallOverdue = summary.callOverdueCount ?? 0;
+        const newMeetingOverdue = summary.meetingOverdueCount ?? 0;
+        const newCallDuration = summary.totalCallDurationMinutes ?? 0;
+
+        console.log('[ActivitiesList] loadCounts - Setting state values:', {
+          activityTotalCount: newActivityTotal,
+          activityPendingCount: newActivityPending,
+          activityCompletedCount: newActivityCompleted,
+          callAssignedCount: newCallAssigned,
+          meetingAssignedCount: newMeetingAssigned
+        });
+
+        // Set counts from API response - these are the source of truth when serviceCategory filter is active
+        console.log('[ActivitiesList] loadCounts - Actually setting state with values:', {
+          activityTotalCount: newActivityTotal,
+          activityPendingCount: newActivityPending,
+          activityCompletedCount: newActivityCompleted,
+          callAssignedCount: newCallAssigned,
+          meetingAssignedCount: newMeetingAssigned,
+          includeServiceCategory
+        });
+        
+        // Mark that counts are being set from API (especially when serviceCategory filter is active)
+        if (includeServiceCategory) {
+          countsSetFromApiRef.current = true;
+          console.log('[ActivitiesList] loadCounts - Marking countsSetFromApiRef = true because serviceCategory filter is active');
         }
         
-        // Special handling for Meeting scheduler tab - hide call counts
-          const isMeetingTab = category === 'Meeting scheduler';
-          if (isMeetingTab) {
-            // On Meeting tab, force call cards to 0 so the user does not see
-            // a non‑zero call count with an empty Meeting list.
-            setCallAssignedCount(0);
-            setCallTakenCount(0);
-            setTotalCallDurationMinutes(0);
-          }
+        // Set counts from API - these are the source of truth
+        console.log('[ActivitiesList] loadCounts - About to set state with API values:', {
+          activityTotalCount: newActivityTotal,
+          activityPendingCount: newActivityPending,
+          activityCompletedCount: newActivityCompleted,
+          callAssignedCount: newCallAssigned,
+          meetingAssignedCount: newMeetingAssigned
+        });
+        
+        setActivityTotalCount(newActivityTotal);
+        setActivityPendingCount(newActivityPending);
+        setActivityCompletedCount(newActivityCompleted);
+        setCallAssignedCount(newCallAssigned);
+        setCallTakenCount(newCallTaken);
+        setMeetingAssignedCount(newMeetingAssigned);
+        setMeetingDoneCount(newMeetingDone);
+        setCallOverdueCount(newCallOverdue);
+        setMeetingOverdueCount(newMeetingOverdue);
+        setTotalCallDurationMinutes(newCallDuration);
+        
+        // Keep the flag set for a longer time to prevent overwrites
+        if (includeServiceCategory) {
+          // Keep the flag set for 5 seconds to prevent any race conditions
+          setTimeout(() => {
+            countsSetFromApiRef.current = false;
+            console.log('[ActivitiesList] loadCounts - Resetting countsSetFromApiRef = false after 5 seconds');
+          }, 5000);
+        }
 
         // Return summary for use in activity counts
         return summary;
@@ -1405,7 +1607,7 @@ export default function ActivitiesList(): JSX.Element {
         }
       }
     },
-    [category, tab],
+    [category, tab, selectedCategoryFilter],
   );
 
   // Keep summary cards in sync with the currently loaded list data for the active category.
@@ -1439,23 +1641,52 @@ export default function ActivitiesList(): JSX.Element {
       return;
     }
 
-    // When a service category filter is active, counts are already recomputed
-    // in the service‑category effect below; don't override those here.
-    const selectedCategories = Array.isArray(selectedCategoryFilter) 
-      ? selectedCategoryFilter 
-      : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
+    // When a service category filter is active, counts come from the backend API
+    // (called by the service category effect below). DO NOT override those here.
+    // Use ref to get the latest value to avoid stale closure issues
+    const currentSelectedCategoryFilter = selectedCategoryFilterRef.current;
+    const selectedCategories = Array.isArray(currentSelectedCategoryFilter) 
+      ? currentSelectedCategoryFilter 
+      : (currentSelectedCategoryFilter ? [currentSelectedCategoryFilter] : []);
     if (selectedCategories.length > 0) {
-      return;
+      console.log('[ActivitiesList] Skipping count calculation - service category filter is active, counts come from API. Current counts:', {
+        activityTotalCount,
+        activityPendingCount,
+        activityCompletedCount,
+        countsSetFromApi: countsSetFromApiRef.current
+      });
+      return; // CRITICAL: Don't overwrite counts that came from API
+    }
+    
+    // Also skip if counts were recently set from API (to prevent race conditions)
+    if (countsSetFromApiRef.current) {
+      console.log('[ActivitiesList] Skipping count calculation - counts were set from API, preventing overwrite. Current counts:', {
+        activityTotalCount,
+        activityPendingCount,
+        activityCompletedCount
+      });
+      return; // Don't reset the flag here - it's reset in loadCounts after 5 seconds
     }
 
-    // Only recalculate when user filters are applied
+    // Only recalculate when user filters are applied (but NOT service category filter)
     // Don't recalculate activityTotalCount from loaded data - it should come from API response.totalElements
     // This prevents showing wrong counts from partial data (only 20 items loaded initially)
     const visible = data.content.filter((a) => shouldShow(a));
     
     // Debug logging to track filtered vs total activities
+    console.log('[ActivitiesList] Activity filtering check:', {
+      totalLoaded: data.content.length,
+      visibleAfterFilter: visible.length,
+      filteredOut: data.content.length - visible.length,
+      category: category,
+      totalElements: data.totalElements,
+      activityTotalCount: activityTotalCount,
+      hasMore: hasMore,
+      currentPage: currentPageRef.current
+    });
+    
     if (data.content.length !== visible.length) {
-      console.log('[ActivitiesList] Activity filtering:', {
+      console.log('[ActivitiesList] Activities filtered out by shouldShow:', {
         totalLoaded: data.content.length,
         visibleAfterFilter: visible.length,
         filteredOut: data.content.length - visible.length,
@@ -1465,6 +1696,15 @@ export default function ActivitiesList(): JSX.Element {
     }
 
     if (category === 'Activity') {
+      // CRITICAL: Double-check that service category filter is not active before setting counts
+      const selectedCategoriesCheck = Array.isArray(selectedCategoryFilter) 
+        ? selectedCategoryFilter 
+        : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
+      if (selectedCategoriesCheck.length > 0) {
+        console.log('[ActivitiesList] CRITICAL: Attempted to set counts but service category filter is active - BLOCKED');
+        return; // Don't set counts if service category filter is active
+      }
+      
       // Don't set activityTotalCount here - it should come from API response.totalElements
       // Only set pending/completed counts when user filters are applied
       setActivityPendingCount(visible.filter((a) => !a.done).length);
@@ -1472,119 +1712,70 @@ export default function ActivitiesList(): JSX.Element {
     }
   }, [data, category, selectedCategoryFilter, selectedOrganizationFilter, selectedManagerFilter]);
 
-  // When a service category filter is active, override counts by fetching activities
-  // for the relevant type(s) and mapping them to the service category locally. We
-  // avoid fetching all three categories when only one or two are needed for the
-  // currently selected tab.
+  // When a service category filter is active, call the backend API with serviceCategory parameter
+  // The backend should use JOIN query to filter by organization category and return accurate counts
+  // This works for all categories: Activity, Call, and Meeting scheduler
   useEffect(() => {
     const selectedCategories = Array.isArray(selectedCategoryFilter) 
       ? selectedCategoryFilter 
       : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
     
-    if (selectedCategories.length === 0) return;
+    if (selectedCategories.length === 0) {
+      return;
+    }
 
-    let isCancelled = false;
-
-    const buildBaseFilters = (): ActivityFilters => {
-      const normalized = normalizeDateFilters(filters);
-      const payload: ActivityFilters = { ...normalized };
-      // Always include organizationId and assignedUserId if they're set
-      // Note: Backend now scopes activities by assigned user (SALES/PRESALES/CATEGORY_MANAGER see only assigned activities)
-      // organizationId can still be sent to further filter results, but visibility is based on assignment
-      if (filters.organizationId) payload.organizationId = filters.organizationId;
-      if (filters.assignedUserId) payload.assignedUserId = filters.assignedUserId;
-      if (filters.done !== undefined) payload.done = filters.done;
-      return payload;
-    };
-
-    const fetchActivitiesForCategory = async (categoryCode: string) => {
-      const pageSize = 200;
-      let page = 0;
-      let totalPages = 1;
-      const collected: Activity[] = [];
-      const baseFilters = buildBaseFilters();
-      while (page < totalPages) {
-        if (isCancelled) break;
-        const response = await activitiesApi.list({
-          ...baseFilters,
-          category: categoryCode,
-          page,
-          size: pageSize,
+    // Immediately call the API with serviceCategory parameter for fast response
+    // This will call the appropriate summary endpoint based on category:
+    // - Activity tab: GET /api/activities/summary?serviceCategory=Photography
+    // - Call tab: GET /api/activities/summary/call?serviceCategory=Photography
+    // - Meeting tab: GET /api/activities/summary/meeting?serviceCategory=Photography
+    console.log('[ActivitiesList] Service category filter active, calling loadCounts with serviceCategory:', selectedCategories, 'category:', category, 'filters:', filters);
+    
+    // Call loadCounts with includeServiceCategory=true to get counts from backend API
+    // loadCounts will automatically use the correct endpoint based on the current category
+    loadCounts(filters, true).then((summary) => {
+      if (summary) {
+        console.log('[ActivitiesList] Service category filter - API response received, counts should be set:', {
+          category: category,
+          activityTotalCount: summary.activityTotalCount,
+          activityPendingCount: summary.activityPendingCount,
+          activityCompletedCount: summary.activityCompletedCount,
+          callAssignedCount: summary.callAssignedCount,
+          callTakenCount: summary.callTakenCount,
+          meetingAssignedCount: summary.meetingAssignedCount,
+          meetingDoneCount: summary.meetingDoneCount
         });
-        if (isCancelled) break;
-        collected.push(...(response.content || []));
-        totalPages = response.totalPages ?? 1;
-        page += 1;
+      } else {
+        console.warn('[ActivitiesList] Service category filter - API returned null/undefined');
       }
-      return collected;
-    };
-
-    const recalc = async () => {
-      try {
-        // Decide which backend categories we actually need to look at based on
-        // the active tab. This keeps network usage low while still keeping the
-        // visible summary cards accurate.
-        const categoriesToFetch: string[] =
-          category === 'Activity'
-            ? ['ACTIVITY']
-            : category === 'Call'
-              ? ['CALL', 'MEETING_SCHEDULER']
-              : ['MEETING_SCHEDULER', 'CALL'];
-
-        const results = await Promise.all(
-          categoriesToFetch.map((code) => fetchActivitiesForCategory(code)),
-        );
-
-        const getItems = (code: string): Activity[] => {
-          const index = categoriesToFetch.indexOf(code);
-          return index === -1 ? [] : results[index];
-        };
-
-        const activityItems = getItems('ACTIVITY');
-        const callItems = getItems('CALL');
-        const meetingItems = getItems('MEETING_SCHEDULER');
-
-        if (isCancelled) return;
-
-        // Filter by any of the selected service categories
-        const filterByServiceCategory = (list: Activity[]) =>
-          list.filter((a) => {
-            const activityCategory = getServiceCategoryForActivity(a.id);
-            return selectedCategories.includes(activityCategory);
-          });
-
-        const matchingActivities = filterByServiceCategory(activityItems);
-        if (activityItems.length > 0) {
-          setActivityTotalCount(matchingActivities.length);
-          setActivityPendingCount(matchingActivities.filter((a) => !a.done).length);
-          setActivityCompletedCount(matchingActivities.filter((a) => a.done).length);
-        }
-
-        const matchingCalls = filterByServiceCategory(callItems);
-        if (callItems.length > 0) {
-          setCallAssignedCount(matchingCalls.length);
-          setCallTakenCount(matchingCalls.filter((a) => a.done).length);
-        }
-
-        const matchingMeetings = filterByServiceCategory(meetingItems);
-        if (meetingItems.length > 0) {
-          setMeetingAssignedCount(matchingMeetings.length);
-          setMeetingDoneCount(matchingMeetings.filter((a) => a.done).length);
-        }
-      } catch (error) {
-        if (!isCancelled) {
-          console.warn('Failed to recalculate service category counts', error);
-        }
-      }
-    };
-
-    void recalc();
-
-    return () => {
-      isCancelled = true;
-    };
+    }).catch((error) => {
+      console.error('[ActivitiesList] Service category filter - Failed to load counts:', error);
+    });
+    
+    // CRITICAL: Also call loadActivities to get the filtered list of activities
+    // The backend should filter activities by serviceCategory using JOIN query
+    console.log('[ActivitiesList] Service category filter active, calling loadActivities with serviceCategory:', selectedCategories);
+    const currentFilters = filtersRef.current;
+    loadActivities(currentFilters, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategoryFilter, filtersKey, getServiceCategoryForActivity, category]);
+  }, [selectedCategoryFilter, filtersKey, category, loadCounts, loadActivities]);
+
+  // When organization filter changes, immediately update counts for fast response
+  // Note: If service category filter is also active, don't call loadCounts here
+  // because service category counts are calculated from loaded data (summary API doesn't support it)
+  useEffect(() => {
+    const selectedCategories = Array.isArray(selectedCategoryFilter) 
+      ? selectedCategoryFilter 
+      : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
+    
+    // If service category filter is active, skip this - counts are handled by service category effect
+    if (selectedCategories.length > 0) return;
+    
+    // Immediately load counts when organization filter changes for fast response
+    // This runs independently of loadActivities to provide instant feedback
+    void loadCounts(filters, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.organizationId, filtersKey, selectedCategoryFilter, loadCounts]);
 
   // When service category filter is cleared, reload backend counts to include all categories again.
   // This ensures counts are recalculated when category filter is removed, respecting current org/user/date/done filters
@@ -1645,15 +1836,33 @@ export default function ActivitiesList(): JSX.Element {
     }
   }, [searchParams, category, tab]);
 
+
   useEffect(() => {
     // Use filtersRef to get the latest filters value, ensuring we always use current state
     const currentFilters = filtersRef.current;
+    
+    // Check if service category filter is active
+    const selectedCategories = Array.isArray(selectedCategoryFilter) 
+      ? selectedCategoryFilter 
+      : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
+    const hasServiceCategoryFilter = selectedCategories.length > 0;
+    
+    // Always call loadActivities when filters/category change
+    // This includes when service category filter changes (selectedCategoryFilter is in dependencies)
+    console.log('[ActivitiesList] Main effect - Calling loadActivities', {
+      category,
+      filtersKey,
+      hasServiceCategoryFilter,
+      selectedCategories: selectedCategories.length > 0 ? selectedCategories : 'none'
+    });
     loadActivities(currentFilters, false); // Reset to page 0 when filters/category change
+    
     // loadCounts is called from within loadActivities when no filters are selected
     // For filters applied case, we need to call it separately with a small delay
     // to avoid cancelling the loadActivities request
+    // IMPORTANT: Skip loadCounts if service category filter is active (counts are calculated client-side)
     const hasUserFilters = !!(currentFilters?.assignedUserId || currentFilters?.organizationId);
-    if (hasUserFilters) {
+    if (hasUserFilters && !hasServiceCategoryFilter) {
       // Small delay to ensure loadActivities completes first
       setTimeout(() => {
         loadCounts(currentFilters);
@@ -1661,7 +1870,7 @@ export default function ActivitiesList(): JSX.Element {
     }
     // Clear selections when filters or category change
     setSelectedActivities(new Set());
-  }, [category, filtersKey, loadActivities, loadCounts]);
+  }, [category, filtersKey, selectedCategoryFilter, loadActivities, loadCounts]);
 
   // Check if all activities are loaded and auto-load if not
   useEffect(() => {
@@ -2535,9 +2744,9 @@ export default function ActivitiesList(): JSX.Element {
     }
   };
 
-  const completeToggleDone = async (id: number, value: boolean) => {
+  const completeToggleDone = async (id: number, value: boolean, durationMinutes?: number) => {
     try {
-      await activitiesApi.markDone(id, value);
+      await activitiesApi.markDone(id, value, durationMinutes);
       setData((prev) =>
         prev
           ? {
@@ -2597,7 +2806,8 @@ export default function ActivitiesList(): JSX.Element {
       const updatedActivity = await activitiesApi.update(pendingDoneActivity.id, {
         startTime: startTimeFormatted,
         endTime: endTimeFormatted,
-      });
+        duration_minutes: durationMinutes,
+      } as any);
       if (updatedActivity) {
         setData((prev) =>
           prev
@@ -2615,7 +2825,8 @@ export default function ActivitiesList(): JSX.Element {
         ? duration
         : formatMinutesToHHMM(durationMinutes);
       setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
-      await completeToggleDone(pendingDoneActivity.id, pendingDoneValue);
+      // Pass duration_minutes to markDone API call
+      await completeToggleDone(pendingDoneActivity.id, pendingDoneValue, durationMinutes);
       handlePendingDoneCancel();
     } catch (error: any) {
       console.error('Failed to save call duration:', error);
@@ -2887,15 +3098,34 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
     // We trust the backend to return only the activities the user should see
 
     // Service category filtering (PHOTOGRAPHY, MAKEUP, PLANNING_DECOR)
-    // Note: This is separate from activity visibility scoping (which backend handles by assignment)
-    // This filters activities by service category for display purposes
-    const selectedCategories = Array.isArray(selectedCategoryFilter) 
-      ? selectedCategoryFilter 
-      : (selectedCategoryFilter ? [selectedCategoryFilter] : []);
+    // NOTE: When serviceCategory is sent to the backend API, the backend should filter the results.
+    // We still do client-side filtering as a safety net, but if the backend is working correctly,
+    // this should rarely filter out activities (only if there's a mismatch in category mapping).
+    // Use ref to get the latest value to avoid stale closure issues
+    const currentSelectedCategoryFilter = selectedCategoryFilterRef.current;
+    const selectedCategories = Array.isArray(currentSelectedCategoryFilter) 
+      ? currentSelectedCategoryFilter 
+      : (currentSelectedCategoryFilter ? [currentSelectedCategoryFilter] : []);
     
     if (selectedCategories.length > 0) {
       const activityServiceCategory = getServiceCategoryForActivity(a.id);
-      if (!selectedCategories.includes(activityServiceCategory)) {
+      // Normalize both for comparison (case-insensitive)
+      const normalizedActivityCategory = activityServiceCategory?.toUpperCase() || '';
+      const normalizedSelectedCategories = selectedCategories.map(c => c?.toUpperCase() || '');
+      
+      if (!normalizedSelectedCategories.includes(normalizedActivityCategory)) {
+        console.log('[ActivitiesList] shouldShow - Filtering out activity by service category:', {
+          activityId: a.id,
+          activityServiceCategory: activityServiceCategory,
+          normalizedActivityCategory: normalizedActivityCategory,
+          selectedCategories: selectedCategories,
+          normalizedSelectedCategories: normalizedSelectedCategories,
+          organization: a.organization
+        });
+        return false;
+      }
+    }
+
     // When a user is selected from "All Users" dropdown, show activities from all their organizations
     if (filters.assignedUserId && selectedManagerFilter) {
       const selectedUserId = Number(selectedManagerFilter);
@@ -2962,8 +3192,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
       }
     }
 
-    // For category managers, be more lenient: if activity belongs to their scoped organizations,
-    // show it even if service category doesn't match exactly (backend already scoped it)
+    // For category managers, ensure activities belong to their scoped organizations
         if (isCategoryManager) {
           const activityOrgName = a.organization?.toLowerCase() || '';
           const belongsToScopedOrg = baseOrganizationOptions.some(
@@ -2971,12 +3200,6 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           );
           if (!belongsToScopedOrg) {
             return false;
-          }
-          // If it belongs to scoped org, continue to show it (don't filter by service category)
-        } else {
-          // For admin and others, strictly filter by service category
-          return false;
-        }
       }
     }
     // organizationId / assignedUserId are now sent to backend;
@@ -3426,13 +3649,17 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           { value: callAssignedCount, label: 'Total\nAssign\u00A0Call', action: 'callAll' as SummaryCardAction, tone: 'blue' },
           { value: meetingAssignedCount, label: 'Total\nMeeting\u00A0Scheduled', action: 'meetingAll' as SummaryCardAction, tone: 'blue' },
         ]
-      : [
+      : category === 'Call'
+        ? [
           { value: callAssignedCount, label: 'Total\nAssign\u00A0Call', action: 'callAll' as SummaryCardAction, tone: 'blue' },
           { value: callTakenCount, label: 'CALL TAKEN', action: 'callDone' as SummaryCardAction, tone: 'green' },
+            { value: callOverdueCount, label: 'CALL OVERDUE', action: 'overdue' as SummaryCardAction, tone: 'red' },
+            { value: formatDurationDisplay(totalCallDurationMinutes), label: 'Total\nCall\u00A0Duration', action: 'callAll' as SummaryCardAction, tone: 'yellow' },
+          ]
+        : [
           { value: meetingAssignedCount, label: 'Total\nMeeting\u00A0Scheduled', action: 'meetingAll' as SummaryCardAction, tone: 'blue' },
           { value: meetingDoneCount, label: 'MEETING DONE', action: 'meetingDone' as SummaryCardAction, tone: 'green' },
-          { value: formatDurationDisplay(totalCallDurationMinutes), label: 'Total\nCall\u00A0Duration', action: 'callAll' as SummaryCardAction, tone: 'yellow' },
-          { value: overdueCount, label: 'OVERDUE', action: 'overdue' as SummaryCardAction, tone: 'red' },
+            { value: meetingOverdueCount, label: 'MEETING OVERDUE', action: 'overdue' as SummaryCardAction, tone: 'red' },
         ];
 
   return (
@@ -4133,7 +4360,26 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           <div style={{ fontSize: '14px', color: '#6b7280' }}>Loading more activities...</div>
           </div>
       )}
-      {!hasMore && data && data.content.length > 0 && (
+      {data && data.content.length > 0 && (() => {
+        const visibleActivities = data.content.filter(shouldShow);
+        const visibleCount = visibleActivities.length;
+        const totalInData = data.content.length;
+        const totalExpected = activityTotalCount || data.totalElements || 0;
+        const filteredOut = totalInData - visibleCount;
+        const notLoaded = totalExpected - totalInData;
+        
+        console.log('[ActivitiesList] Footer display:', {
+          visibleCount: visibleCount,
+          totalInData: totalInData,
+          totalExpected: totalExpected,
+          activityTotalCount: activityTotalCount,
+          dataTotalElements: data.totalElements,
+          hasMore: hasMore,
+          filteredOut: filteredOut,
+          notLoaded: notLoaded
+        });
+        
+        return (
             <div style={{
           display: 'flex',
           justifyContent: 'center',
@@ -4143,10 +4389,21 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           backgroundColor: '#f9fafb'
         }}>
           <div style={{ fontSize: '14px', color: '#6b7280' }}>
-            Showing all {data.content.length} of {data.totalElements} activities
+              Showing {visibleCount} of {totalExpected} {totalExpected === 1 ? 'activity' : 'activities'}
+              {notLoaded > 0 && hasMore && (
+                <span style={{ marginLeft: '8px', color: '#9ca3af' }}>
+                  ({notLoaded} more to load)
+                </span>
+              )}
+              {filteredOut > 0 && (
+                <span style={{ marginLeft: '8px', color: '#f59e0b' }}>
+                  ({filteredOut} filtered out)
+                </span>
+              )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {rowMenu && (
         <div
