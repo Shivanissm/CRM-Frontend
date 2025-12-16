@@ -1645,6 +1645,68 @@ export default function ActivitiesList(): JSX.Element {
     }
   }, [searchParams, category, tab]);
 
+  // Handle filters from URL parameters (dateFrom, dateTo, organizationId, assignedUserId, tab, done)
+  useEffect(() => {
+    const dateFromParam = searchParams.get('dateFrom');
+    const dateToParam = searchParams.get('dateTo');
+    const organizationIdParam = searchParams.get('organizationId');
+    const assignedUserIdParam = searchParams.get('assignedUserId');
+    const tabParam = searchParams.get('tab');
+    const doneParam = searchParams.get('done');
+    
+    // Only apply URL params if they exist and haven't been manually set
+    // This allows URL params to override initial filters when navigating from dashboard
+    if (dateFromParam || dateToParam || organizationIdParam || assignedUserIdParam || tabParam || doneParam) {
+      setFilters((prevFilters) => {
+        const newFilters = { ...prevFilters };
+        
+        if (dateFromParam) {
+          newFilters.dateFrom = dateFromParam;
+        }
+        if (dateToParam) {
+          newFilters.dateTo = dateToParam;
+        }
+        if (organizationIdParam) {
+          // Handle comma-separated organization IDs
+          const orgIds = organizationIdParam.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+          if (orgIds.length > 0) {
+            // Support multiple organization IDs for pre-sales users and multi-select scenarios
+            newFilters.organizationId = orgIds.length === 1 ? orgIds[0] : orgIds;
+          }
+        }
+        if (assignedUserIdParam) {
+          // Handle comma-separated user IDs
+          const userIds = assignedUserIdParam.split(',').map(id => parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+          if (userIds.length > 0) {
+            // For now, use the first user ID. Multi-select support can be added later if needed
+            newFilters.assignedUserId = userIds[0];
+          }
+        }
+        if (doneParam !== null) {
+          // Handle done filter (true/false string)
+          if (doneParam === 'true') {
+            newFilters.done = true;
+          } else if (doneParam === 'false') {
+            newFilters.done = false;
+          }
+        }
+        
+        return newFilters;
+      });
+      
+      // Set tab based on URL parameter or default to "All" for date ranges
+      if (tabParam) {
+        const validTabs: TabOption[] = ['All', 'To‑do', 'Overdue', 'Today', 'Tomorrow', 'This week', 'Next week', 'This month', 'Prev month', 'This year', 'Select period', 'Select Date'];
+        if (validTabs.includes(tabParam as TabOption)) {
+          setTab(tabParam as TabOption);
+        }
+      } else if (dateFromParam || dateToParam) {
+        // Set tab to "All" to show activities across the date range if no specific tab is provided
+        setTab('All');
+      }
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     // Use filtersRef to get the latest filters value, ensuring we always use current state
     const currentFilters = filtersRef.current;
@@ -2204,6 +2266,12 @@ export default function ActivitiesList(): JSX.Element {
       return;
     }
 
+    // Check if date filters came from URL parameters - if so, preserve them
+    // This prevents overriding dates when navigating from dashboard with date filters
+    const dateFromParam = searchParams.get('dateFrom');
+    const dateToParam = searchParams.get('dateTo');
+    const hasUrlDateParams = !!(dateFromParam && dateToParam);
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -2230,67 +2298,82 @@ export default function ActivitiesList(): JSX.Element {
       newFilters.sort = 'dueDate,desc';
     }
     
-    // Clear date filters and done status (they'll be set based on tab)
-    delete newFilters.dateFrom;
-    delete newFilters.dateTo;
-    delete newFilters.done;
-
-    if (tab === 'Today') {
-      const todayStr = formatDateDDMMYYYY(today);
-      newFilters.dateFrom = todayStr;
-      newFilters.dateTo = todayStr;
-    } else if (tab === 'Tomorrow') {
-      const tomorrowStr = formatDateDDMMYYYY(tomorrow);
-      newFilters.dateFrom = tomorrowStr;
-      newFilters.dateTo = tomorrowStr;
-    } else if (tab === 'This week') {
-      const weekStartStr = formatDateDDMMYYYY(weekStart);
-      const weekEndStr = formatDateDDMMYYYY(weekEnd);
-      newFilters.dateFrom = weekStartStr;
-      newFilters.dateTo = weekEndStr;
-    } else if (tab === 'Next week') {
-      const nextWeekStartStr = formatDateDDMMYYYY(nextWeekStart);
-      const nextWeekEndStr = formatDateDDMMYYYY(nextWeekEnd);
-      newFilters.dateFrom = nextWeekStartStr;
-      newFilters.dateTo = nextWeekEndStr;
-    } else if (tab === 'This month') {
-      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-      const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      const monthStartStr = formatDateDDMMYYYY(monthStart);
-      const monthEndStr = formatDateDDMMYYYY(monthEnd);
-      newFilters.dateFrom = monthStartStr;
-      newFilters.dateTo = monthEndStr;
-    } else if (tab === 'Prev month') {
-      const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-      const prevMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
-      const prevMonthStartStr = formatDateDDMMYYYY(prevMonthStart);
-      const prevMonthEndStr = formatDateDDMMYYYY(prevMonthEnd);
-      newFilters.dateFrom = prevMonthStartStr;
-      newFilters.dateTo = prevMonthEndStr;
-    } else if (tab === 'This year') {
-      const yearStart = new Date(today.getFullYear(), 0, 1);
-      const yearEnd = new Date(today.getFullYear(), 11, 31);
-      const yearStartStr = formatDateDDMMYYYY(yearStart);
-      const yearEndStr = formatDateDDMMYYYY(yearEnd);
-      newFilters.dateFrom = yearStartStr;
-      newFilters.dateTo = yearEndStr;
-    } else if (tab === 'All') {
-      // Clear date filters for "All", but preserve other filters
-      newFilters = { 
-        ...filters,
-        page: 0, 
-        size: 10 
-      };
-      // Preserve sort if it exists, otherwise set default sort by dueDate desc
-      if (!newFilters.sort) {
-        newFilters.sort = 'dueDate,desc';
-      }
+    // If dates came from URL params, preserve them instead of recalculating
+    if (hasUrlDateParams && filters.dateFrom && filters.dateTo) {
+      // Keep the existing dateFrom and dateTo from URL params
+      newFilters.dateFrom = filters.dateFrom;
+      newFilters.dateTo = filters.dateTo;
+      // Don't override dates based on tab when they came from URL
+    } else {
+      // Clear date filters and done status (they'll be set based on tab)
       delete newFilters.dateFrom;
       delete newFilters.dateTo;
-      delete newFilters.done;
-    } else if (tab === 'To‑do') {
-      // To-do: not done activities, preserve other filters
-      newFilters.done = false;
+      
+      // Set dates based on tab only if they didn't come from URL params
+      if (tab === 'Today') {
+        const todayStr = formatDateDDMMYYYY(today);
+        newFilters.dateFrom = todayStr;
+        newFilters.dateTo = todayStr;
+      } else if (tab === 'Tomorrow') {
+        const tomorrowStr = formatDateDDMMYYYY(tomorrow);
+        newFilters.dateFrom = tomorrowStr;
+        newFilters.dateTo = tomorrowStr;
+      } else if (tab === 'This week') {
+        const weekStartStr = formatDateDDMMYYYY(weekStart);
+        const weekEndStr = formatDateDDMMYYYY(weekEnd);
+        newFilters.dateFrom = weekStartStr;
+        newFilters.dateTo = weekEndStr;
+      } else if (tab === 'Next week') {
+        const nextWeekStartStr = formatDateDDMMYYYY(nextWeekStart);
+        const nextWeekEndStr = formatDateDDMMYYYY(nextWeekEnd);
+        newFilters.dateFrom = nextWeekStartStr;
+        newFilters.dateTo = nextWeekEndStr;
+      } else if (tab === 'This month') {
+        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        const monthStartStr = formatDateDDMMYYYY(monthStart);
+        const monthEndStr = formatDateDDMMYYYY(monthEnd);
+        newFilters.dateFrom = monthStartStr;
+        newFilters.dateTo = monthEndStr;
+      } else if (tab === 'Prev month') {
+        const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const prevMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+        const prevMonthStartStr = formatDateDDMMYYYY(prevMonthStart);
+        const prevMonthEndStr = formatDateDDMMYYYY(prevMonthEnd);
+        newFilters.dateFrom = prevMonthStartStr;
+        newFilters.dateTo = prevMonthEndStr;
+      } else if (tab === 'This year') {
+        const yearStart = new Date(today.getFullYear(), 0, 1);
+        const yearEnd = new Date(today.getFullYear(), 11, 31);
+        const yearStartStr = formatDateDDMMYYYY(yearStart);
+        const yearEndStr = formatDateDDMMYYYY(yearEnd);
+        newFilters.dateFrom = yearStartStr;
+        newFilters.dateTo = yearEndStr;
+      } else if (tab === 'All') {
+        // Clear date filters for "All", but preserve other filters
+        newFilters = { 
+          ...filters,
+          page: 0, 
+          size: 10 
+        };
+        // Preserve sort if it exists, otherwise set default sort by dueDate desc
+        if (!newFilters.sort) {
+          newFilters.sort = 'dueDate,desc';
+        }
+        delete newFilters.dateFrom;
+        delete newFilters.dateTo;
+        delete newFilters.done;
+      } else if (tab === 'To‑do') {
+        // To-do: not done activities, preserve other filters
+        newFilters.done = false;
+      }
+    }
+    
+    // Handle done filter for tabs that need it (unless dates came from URL)
+    if (!hasUrlDateParams) {
+      if (tab === 'To‑do') {
+        newFilters.done = false;
+      }
     }
 
     setFilters(newFilters);
