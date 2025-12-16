@@ -59,7 +59,7 @@ export default function ResetPassword() {
         <header className="auth-flow-header">
           <h1 className="auth-flow-title">Reset your password</h1>
           <p className="auth-flow-subtitle">
-            {token ? 'Choose a new password to get back into Brideside CRM.' : 'Reset link is invalid or missing.'}
+            {token ? 'Choose a new password to get back into The Brideside.' : 'Reset link is invalid or missing.'}
           </p>
         </header>
 

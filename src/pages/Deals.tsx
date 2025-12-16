@@ -92,6 +92,16 @@ const DEAL_SUB_SOURCE_OPTIONS: Array<{ value: DealSubSource; label: string }> = 
   { value: 'Email', label: 'Email' },
 ];
 
+// Helper function to map stage names for display
+// Maps "Meeting Done" to "Contract Shared" for display purposes
+const getDisplayStageName = (stageName: string | null | undefined): string => {
+  if (!stageName) return '';
+  if (stageName.toLowerCase().trim() === 'meeting done') {
+    return 'Contract Shared';
+  }
+  return stageName;
+};
+
 // Unused - kept for potential future use
 // const statusColors: Record<DealStatus, string> = {
 //   WON: '#10b981',
@@ -969,11 +979,53 @@ const Deals = () => {
   const loadDeals = useCallback(async (preserveDealId?: number | null) => {
     setLoading(true);
     try {
-      // Always load all deals for kanban board view with sorting
-      const data = await dealsApi.list({
+      // Build filter parameters for API call
+      const apiParams: Parameters<typeof dealsApi.list>[0] = {
         sort: sortField,
         direction: sortDirection,
-      });
+      };
+      
+      // Add pipeline filter if selected
+      if (selectedPipelineId) {
+        apiParams.pipelineId = selectedPipelineId;
+      }
+      
+      // Add status filter
+      if (filterStatus !== 'all') {
+        apiParams.status = filterStatus;
+      }
+      
+      // Add organization filter
+      if (filterOrganization !== null) {
+        apiParams.organizationId = filterOrganization;
+      }
+      
+      // Add category filter (convert category label to categoryId if needed)
+      if (filterCategory !== null) {
+        const categoryOption = categoryOptions.find(cat => cat.id === filterCategory);
+        if (categoryOption?.id) {
+          apiParams.categoryId = Number(categoryOption.id);
+        }
+      }
+      
+      // Add manager filter
+      if (filterManager !== null) {
+        apiParams.managerId = filterManager;
+      }
+      
+      // Add date range filter
+      if (dateRange.start && dateRange.end) {
+        apiParams.dateFrom = dateRange.start;
+        apiParams.dateTo = dateRange.end;
+      }
+      
+      // Add search query filter
+      if (searchQuery.trim()) {
+        apiParams.search = searchQuery.trim();
+      }
+      
+      // Load deals with filters applied
+      const data = await dealsApi.list(apiParams);
       setDeals(data);
       setSelectedDealIds((prev) => {
         if (prev.size === 0) return prev;
@@ -1006,13 +1058,22 @@ const Deals = () => {
     } finally {
       setLoading(false);
     }
-  }, [sortField, sortDirection, loadActivities]);
+  }, [sortField, sortDirection, selectedPipelineId, filterStatus, filterOrganization, filterCategory, filterManager, dateRange, searchQuery, categoryOptions, loadActivities]);
 
   // Initial load
   useEffect(() => {
     loadDeals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reload deals when filters change
+  useEffect(() => {
+    if (categoryOptions.length > 0 || filterCategory === null) {
+      // Only reload if categoryOptions are loaded (or no category filter is set)
+      loadDeals();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPipelineId, filterStatus, filterOrganization, filterCategory, filterManager, dateRange, searchQuery]);
 
   const hasHandledOpenModal = useRef(false);
   
@@ -2606,24 +2667,22 @@ const Deals = () => {
     return pipelines.find(p => p.id === selectedPipelineId) || null;
   }, [pipelines, selectedPipelineId]);
 
-  // Count deals in selected pipeline and status
+  // Count deals in selected pipeline with all filters applied
   const dealsInSelectedPipeline = useMemo(() => {
     if (!selectedPipelineId) return 0;
-    return deals.filter(deal => {
-      const pipelineMatch = deal.pipelineId === selectedPipelineId;
-      const statusMatch = filterStatus === 'all' || deal.status === filterStatus;
-      return pipelineMatch && statusMatch;
+    // Use filteredDeals which already has all filters applied, then filter by pipeline
+    return filteredDeals.filter(deal => {
+      return deal.pipelineId === selectedPipelineId;
     }).length;
-  }, [deals, selectedPipelineId, filterStatus]);
+  }, [filteredDeals, selectedPipelineId]);
 
-  // Calculate financial summary for selected pipeline and status
+  // Calculate financial summary for selected pipeline with all filters applied
   const financialSummary = useMemo(() => {
     if (!selectedPipelineId) return { totalValue: 0, weightedValue: 0, dealCount: 0 };
     
-    const relevantDeals = deals.filter(deal => {
-      const pipelineMatch = deal.pipelineId === selectedPipelineId;
-      const statusMatch = filterStatus === 'all' || deal.status === filterStatus;
-      return pipelineMatch && statusMatch;
+    // Use filteredDeals which already has all filters applied, then filter by pipeline
+    const relevantDeals = filteredDeals.filter(deal => {
+      return deal.pipelineId === selectedPipelineId;
     });
 
     // Create a map of stageId -> probability for quick lookup
@@ -2656,7 +2715,7 @@ const Deals = () => {
     const dealCount = relevantDeals.length;
 
     return { totalValue, weightedValue, dealCount };
-  }, [deals, selectedPipelineId, filterStatus, selectedPipeline]);
+  }, [filteredDeals, selectedPipelineId, selectedPipeline]);
 
   // Get stages for selected pipeline, sorted by order
   const pipelineStages = useMemo(() => {
@@ -4472,7 +4531,7 @@ const Deals = () => {
                   return (
                     <div key={stage.id} className={`kanban-column ${isDiversionStage ? 'diversion-stage' : ''}`}>
                       <div className="kanban-column-header">
-                        <h3 className="kanban-column-title">{stage.name}</h3>
+                        <h3 className="kanban-column-title">{getDisplayStageName(stage.name)}</h3>
                         <div className="kanban-column-summary">
                           {formatCurrency(totals.total)} • {totals.count} deals
                         </div>
@@ -5119,7 +5178,7 @@ const Deals = () => {
                       </option>
                       {selectedDealStages.map((stage) => (
                         <option key={stage.id} value={stage.id}>
-                          {stage.name}
+                          {getDisplayStageName(stage.name)}
                         </option>
                       ))}
                     </select>
@@ -5408,7 +5467,7 @@ const Deals = () => {
                     </option>
                     {stageOptionsForForm.map((stage) => (
                       <option key={stage.id} value={stage.id}>
-                        {stage.name}
+                        {getDisplayStageName(stage.name)}
                       </option>
                     ))}
                   </select>

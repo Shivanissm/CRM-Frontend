@@ -70,6 +70,14 @@ export type SortDirection = 'asc' | 'desc';
 export interface DealListParams {
   sort?: DealSortField;
   direction?: SortDirection;
+  pipelineId?: number;
+  status?: DealStatus | 'all';
+  organizationId?: number;
+  categoryId?: number;
+  managerId?: number;
+  dateFrom?: string; // YYYY-MM-DD format
+  dateTo?: string; // YYYY-MM-DD format
+  search?: string;
 }
 
 export const dealsApi = {
@@ -77,6 +85,30 @@ export const dealsApi = {
     const queryParams: Record<string, string> = {};
     if (params?.sort) {
       queryParams.sort = `${params.sort},${params.direction || 'asc'}`;
+    }
+    if (params?.pipelineId !== undefined) {
+      queryParams.pipelineId = String(params.pipelineId);
+    }
+    if (params?.status && params.status !== 'all') {
+      queryParams.status = params.status;
+    }
+    if (params?.organizationId !== undefined) {
+      queryParams.organizationId = String(params.organizationId);
+    }
+    if (params?.categoryId !== undefined) {
+      queryParams.categoryId = String(params.categoryId);
+    }
+    if (params?.managerId !== undefined) {
+      queryParams.managerId = String(params.managerId);
+    }
+    if (params?.dateFrom) {
+      queryParams.dateFrom = params.dateFrom;
+    }
+    if (params?.dateTo) {
+      queryParams.dateTo = params.dateTo;
+    }
+    if (params?.search) {
+      queryParams.search = params.search;
     }
     const response = await api.get('', { params: queryParams });
     return unwrap<Deal[]>(response.data);

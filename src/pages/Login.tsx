@@ -112,7 +112,7 @@ export default function Login() {
       <div className="login-hero">
         <div className="login-overlay" />
         <div className="login-hero-content">
-          <h1>Brideside CRM</h1>
+          <h1>The Brideside</h1>
           <p>Manage your leads, events, and teams with a single beautiful workspace.</p>
         </div>
       </div>
@@ -121,7 +121,7 @@ export default function Login() {
         <div className="login-card-header">
           <span className="login-badge">Welcome back</span>
           <h2>Sign in to continue</h2>
-          <p>Use your Brideside CRM credentials to access the dashboard.</p>
+          <p>Use your The Brideside credentials to access the dashboard.</p>
         </div>
 
         <form className="login-form" onSubmit={handleLogin}>
