@@ -1,13 +1,20 @@
-import type { Deal } from '../types/deal';
+import type { Deal, EventDateDetail } from '../types/deal';
 
 /**
- * Gets all event dates from a deal, supporting both legacy (eventDate) and new (eventDates) formats.
+ * Gets all event dates from a deal, supporting both legacy (eventDate) and new (eventDates / eventDateDetails) formats.
  * Returns an array of date strings in ISO format (YYYY-MM-DD).
  */
 export function getAllEventDates(deal: Deal | null | undefined): string[] {
   if (!deal) return [];
   
-  // Prefer eventDates if available
+  // Prefer eventDateDetails if available
+  if (deal.eventDateDetails && Array.isArray(deal.eventDateDetails) && deal.eventDateDetails.length > 0) {
+    return deal.eventDateDetails
+      .map((detail) => detail?.date)
+      .filter((date): date is string => typeof date === 'string' && date.trim() !== '');
+  }
+  
+  // Otherwise prefer eventDates if available
   if (deal.eventDates && Array.isArray(deal.eventDates) && deal.eventDates.length > 0) {
     return deal.eventDates.filter((date): date is string => typeof date === 'string' && date.trim() !== '');
   }
@@ -48,40 +55,27 @@ export function eventDatesToEventDate(eventDates: string[] | null | undefined): 
 }
 
 /**
- * Normalizes event dates for API requests.
- * If eventDates is provided, it takes precedence.
- * If only eventDate is provided, it converts to eventDates format.
- * Returns an object with eventDates (and optionally eventDate for backward compatibility).
+ * Gets normalized event date details from a deal, prioritizing eventDateDetails
+ * and falling back to eventDates + eventType or eventDate + eventType.
  */
-export function normalizeEventDatesForRequest(
-  eventDate?: string | null,
-  eventDates?: string[] | null
-): { eventDates?: string[] | null; eventDate?: string | null } {
-  // If eventDates is provided and not empty, use it
-  if (eventDates && Array.isArray(eventDates) && eventDates.length > 0) {
-    const validDates = eventDates.filter((date): date is string => typeof date === 'string' && date.trim() !== '');
-    if (validDates.length > 0) {
-      return {
-        eventDates: validDates,
-        // Also include first date as eventDate for backward compatibility
-        eventDate: validDates[0],
-      };
-    }
+export function getEventDateDetailsFromDeal(deal: Deal | null | undefined): EventDateDetail[] {
+  if (!deal) return [];
+
+  if (Array.isArray(deal.eventDateDetails) && deal.eventDateDetails.length > 0) {
+    return deal.eventDateDetails
+      .filter((detail): detail is EventDateDetail => !!detail && typeof detail.date === 'string' && detail.date.trim() !== '');
   }
-  
-  // If only eventDate is provided, convert to eventDates
-  if (eventDate) {
-    return {
-      eventDates: [eventDate],
-      eventDate: eventDate,
-    };
-  }
-  
-  // No dates provided
-  return {
-    eventDates: null,
-    eventDate: null,
-  };
+
+  const dates = deal.eventDates && Array.isArray(deal.eventDates) && deal.eventDates.length > 0
+    ? deal.eventDates
+    : (deal.eventDate ? [deal.eventDate] : []);
+
+  return dates
+    .filter((date): date is string => typeof date === 'string' && date.trim() !== '')
+    .map((date) => ({
+      date,
+      eventType: deal.eventType || null,
+    }));
 }
 
 
