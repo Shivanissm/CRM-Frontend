@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import './RoleDashboards.css';
-import { activitiesApi, type Activity, type ActivityFilters } from '../services/activities';
+import { activitiesApi, type Activity } from '../services/activities';
 import { targetsApi } from '../services/targets';
 import { dealsApi } from '../services/deals';
 import { organizationsApi } from '../services/organizations';
@@ -569,7 +569,7 @@ function PieChart({
 }) {
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
   const hasData = total > 0;
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const [_hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [hoveredSlice, setHoveredSlice] = useState<PieSlice | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
   const pieRef = useRef<HTMLDivElement>(null);
@@ -621,9 +621,6 @@ function PieChart({
         setHoveredSlice(slice);
         setHoveredKey(slice.key);
         // Position tooltip near the slice
-        const sliceMidAngle = (currentAngle + nextAngle) / 2;
-        const tooltipAngle = (sliceMidAngle - 90) * (Math.PI / 180);
-        const tooltipDistance = radius * 0.7;
         setTooltipPosition({
           x: e.clientX - rect.left,
           y: e.clientY - rect.top,
@@ -1235,7 +1232,7 @@ export default function PreSalesDashboard() {
 
   const [activities, setActivities] = useState<Activity[]>([]);
   const [targetAmount, setTargetAmount] = useState(0);
-  const [targetsByUser, setTargetsByUser] = useState<Record<number, number>>({});
+  const [, setTargetsByUser] = useState<Record<number, number>>({});
 
   const [deals, setDeals] = useState<Deal[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -2343,15 +2340,6 @@ export default function PreSalesDashboard() {
     return subSources.map((sub) => ({ key: sub, label: sub }));
   }, []);
 
-  const dealSubSourceLegend = useMemo(
-    () =>
-      ['Instagram', 'Whatsapp', 'Landing Page', 'Email'].map((label) => ({
-        label,
-        color: dealSubSourceColors[label] || '#cbd5e1',
-      })),
-    [],
-  );
-
   const dealStageById = useMemo(() => {
     const stageMap = new Map<number, string>();
     pipelines.forEach((pipeline) => {
@@ -2554,43 +2542,6 @@ export default function PreSalesDashboard() {
   ]);
 
   // Pre-sales peers: target vs achieved (won deals) comparison
-  const presalesComparison = useMemo(() => {
-    const presalesUsers = allUsers.filter((u: any) => {
-      const role = (u.role || '').toUpperCase();
-      const presalesRoleCodes = ['PRESALES', 'PRE_SALES', 'PRE-SALES'];
-      return presalesRoleCodes.includes(role);
-    });
-
-    const categories: BarCategory[] = presalesUsers.map((u) => ({
-      key: String(u.id),
-      label: u.firstName || u.email || `User #${u.id}`,
-    }));
-
-    const targetSeries: Series = {
-      key: 'target',
-      label: 'Target',
-      color: '#f59e0b',
-      values: {},
-    };
-    const achievedSeries: Series = {
-      key: 'achieved',
-      label: 'Achieved',
-      color: '#0ea5e9',
-      values: {},
-    };
-
-    presalesUsers.forEach((u) => {
-      const userId = u.id;
-      targetSeries.values[String(userId)] = targetsByUser[userId] || 0;
-      const achieved = filteredDeals.filter(
-        (deal) => deal.ownerId === userId && deal.status === 'WON',
-      ).length;
-      achievedSeries.values[String(userId)] = achieved;
-    });
-
-    return { categories, series: [targetSeries, achievedSeries] };
-  }, [allUsers, filteredDeals, targetsByUser]);
-
   const lostReasonDeals = useMemo(() => {
     // For lost reason, ignore date range so we always show available lost data
     return deals.filter((deal) => {

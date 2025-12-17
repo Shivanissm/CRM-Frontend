@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { dealsApi } from '../services/deals';
 import { organizationsApi } from '../services/organizations';
 import { pipelinesApi } from '../services/pipelines';
@@ -65,8 +65,7 @@ const isWithinRange = (date: Date | null, start: Date, end: Date): boolean => {
 };
 
 export default function DealStatusReport() {
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,7 +73,7 @@ export default function DealStatusReport() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
+  const [, setUsers] = useState<{ id: number; name: string }[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [persons, setPersons] = useState<Person[]>([]);
 
@@ -495,13 +494,6 @@ export default function DealStatusReport() {
     return org?.name || '-';
   };
 
-  // Get user name
-  const getUserName = (userId?: number | null): string => {
-    if (!userId) return '-';
-    const user = users.find((u) => u.id === userId);
-    return user?.name || '-';
-  };
-
   const filteredOrgs = useMemo(() => {
     if (!orgSearch.trim()) return organizations;
     const q = orgSearch.toLowerCase();
@@ -586,13 +578,6 @@ export default function DealStatusReport() {
     } else {
       setDateTo('');
     }
-  };
-
-  const formatStatus = (status: string) => {
-    if (status === 'IN_PROGRESS') return 'Open';
-    if (status === 'WON') return 'Won';
-    if (status === 'LOST') return 'Lost';
-    return status;
   };
 
   if (loading) {
@@ -990,7 +975,7 @@ export default function DealStatusReport() {
                       {(selectedStatus.length > 0
                         ? dealStatusCategories.filter(cat => selectedStatus.includes(cat.key))
                         : dealStatusCategories
-                      ).map((cat, idx) => {
+                      ).map((cat) => {
                         const totalForCat = simpleBarData[cat.key] || 0;
                         const isSelected = selectedStatus.includes(cat.key);
                         const shouldShowBar = totalForCat > 0 && maxTotal > 0;

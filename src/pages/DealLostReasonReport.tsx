@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { dealsApi } from '../services/deals';
 import { organizationsApi } from '../services/organizations';
 import { pipelinesApi } from '../services/pipelines';
@@ -63,8 +63,7 @@ const isWithinRange = (date: Date | null, start: Date, end: Date): boolean => {
 };
 
 export default function DealLostReasonReport() {
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,7 +71,7 @@ export default function DealLostReasonReport() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
+  const [, setUsers] = useState<{ id: number; name: string }[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [persons, setPersons] = useState<Person[]>([]);
 
@@ -378,7 +377,7 @@ export default function DealLostReasonReport() {
   }, [accessiblePipelineIds, isPresalesUser, deals, selectedOrgIds, selectedReason, accessibleOrgSet]);
 
   // Build chart data - always show all 7 lost reasons (normalized labels)
-  const lostReasonCategories: BarCategory[] = useMemo(() => {
+  const lostReasonCategories: { key: string; label: string }[] = useMemo(() => {
     const reasons = [
       'Slot Not Open',
       'Not Interested',
@@ -465,26 +464,6 @@ export default function DealLostReasonReport() {
     return map;
   }, [orgEntries]);
 
-  // For bar charts - count by reason and organization (not used for simple bars but kept for compatibility)
-  const reasonSeries = useMemo(() => {
-    return orgEntries.map((entry) => {
-      const values: Record<string, number> = {};
-      lostReasonCategories.forEach((cat) => {
-        values[cat.key] = filteredDeals.filter((deal) => {
-          const orgMatch = deal.organizationId === entry.id;
-          const reasonMatch = ((deal.lostReason || 'Not available').trim() || 'Not available') === cat.key;
-          return orgMatch && reasonMatch && deal.status === 'LOST';
-        }).length;
-      });
-      return {
-        key: String(entry.id),
-        label: entry.name,
-        color: colorByOrg.get(entry.id) || '#2563eb',
-        values,
-      };
-    });
-  }, [orgEntries, lostReasonCategories, filteredDeals, colorByOrg]);
-
   const totals = useMemo(
     () =>
       lostReasonCategories.map((cat) => simpleBarData[cat.key] || 0),
@@ -540,13 +519,6 @@ export default function DealLostReasonReport() {
     if (!orgId) return '-';
     const org = organizations.find((o) => o.id === orgId);
     return org?.name || '-';
-  };
-
-  // Get user name
-  const getUserName = (userId?: number | null): string => {
-    if (!userId) return '-';
-    const user = users.find((u) => u.id === userId);
-    return user?.name || '-';
   };
 
   const filteredOrgs = useMemo(() => {
@@ -981,7 +953,7 @@ export default function DealLostReasonReport() {
                       {(selectedReason.length > 0
                         ? lostReasonCategories.filter(cat => selectedReason.includes(cat.key))
                         : lostReasonCategories
-                      ).map((cat, idx) => {
+                      ).map((cat) => {
                         const totalForCat = simpleBarData[cat.key] || 0;
                         const isSelected = selectedReason.includes(cat.key);
                         const shouldShowBar = totalForCat > 0 && maxTotal > 0;

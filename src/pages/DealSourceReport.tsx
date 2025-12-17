@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { dealsApi } from '../services/deals';
 import { organizationsApi } from '../services/organizations';
 import { pipelinesApi } from '../services/pipelines';
@@ -65,8 +65,7 @@ const isWithinRange = (date: Date | null, start: Date, end: Date): boolean => {
 };
 
 export default function DealSourceReport() {
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,7 +73,7 @@ export default function DealSourceReport() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
+  const [, setUsers] = useState<{ id: number; name: string }[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [persons, setPersons] = useState<Person[]>([]);
 
@@ -496,13 +495,6 @@ export default function DealSourceReport() {
     if (!orgId) return '-';
     const org = organizations.find((o) => o.id === orgId);
     return org?.name || '-';
-  };
-
-  // Get user name
-  const getUserName = (userId?: number | null): string => {
-    if (!userId) return '-';
-    const user = users.find((u) => u.id === userId);
-    return user?.name || '-';
   };
 
   const filteredOrgs = useMemo(() => {
