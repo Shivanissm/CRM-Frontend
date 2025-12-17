@@ -78,4 +78,35 @@ export function getEventDateDetailsFromDeal(deal: Deal | null | undefined): Even
     }));
 }
 
+/**
+ * Normalizes event dates for API requests.
+ * Returns an object with eventDate and eventDates fields for the request payload.
+ */
+export function normalizeEventDatesForRequest(
+  eventDate: string | null,
+  eventDates: string[] | null
+): { eventDate: string | null; eventDates: string[] | null } {
+  // If eventDates array is provided and has values, use it
+  if (eventDates && eventDates.length > 0) {
+    const filteredDates = eventDates.filter((d) => d && d.trim() !== '');
+    return {
+      eventDate: filteredDates[0] || null,
+      eventDates: filteredDates.length > 0 ? filteredDates : null,
+    };
+  }
+
+  // Fall back to single eventDate
+  if (eventDate && eventDate.trim() !== '') {
+    return {
+      eventDate,
+      eventDates: [eventDate],
+    };
+  }
+
+  return {
+    eventDate: null,
+    eventDates: null,
+  };
+}
+
 
