@@ -13,7 +13,7 @@ import { calendarApi } from '../services/calendar';
 import type { Deal } from '../types/deal';
 import type { Organization } from '../types/organization';
 import type { VendorCalendarEvent } from '../types/calendar';
-import { getAllEventDates } from '../utils/dealDates';
+import { getAllEventDates, getEventDateDetailsFromDeal } from '../utils/dealDates';
 
 const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -891,17 +891,34 @@ export default function CalendarPage() {
                         label: hasMultipleDates ? 'Dates' : 'Date',
                         value: dateDisplay,
                       },
-                      { label: 'Organization', value: selectedEntry.deal.organization?.name ?? 'Unassigned' },
-                      { label: 'Owner', value: selectedEntry.deal.ownerLabel },
-                      {
-                        label: 'Status',
-                        value: capitalize(selectedEntry.deal.status),
-                      },
-                      { label: 'Event type', value: selectedEntry.deal.eventType },
-                      { label: 'Venue', value: selectedEntry.deal.venue },
-                      { label: 'Calendar', value: selectedEntry.deal.organization?.googleCalendarId },
-                      { label: 'Google event ID', value: selectedEntry.deal.googleCalendarEventId },
-                    ]
+                    { label: 'Organization', value: selectedEntry.deal.organization?.name ?? 'Unassigned' },
+                    { label: 'Owner', value: selectedEntry.deal.ownerLabel },
+                    {
+                      label: 'Status',
+                      value: capitalize(selectedEntry.deal.status),
+                    },
+                    {
+                      label: 'Event types',
+                      value: (() => {
+                        const details = getEventDateDetailsFromDeal(selectedEntry.deal);
+                        if (!details.length) return selectedEntry.deal.eventType || null;
+                        // Show "23 Dec 2025 – wedding, 02 Jan 2026 – engagement"
+                        return details
+                          .map((detail) => {
+                            const date = detail.date;
+                            const [y, m, d] = (date || '').split('-');
+                            const displayDate = (y && m && d) ? `${d}/${m}/${y}` : date;
+                            return detail.eventType
+                              ? `${displayDate} – ${detail.eventType}`
+                              : displayDate;
+                          })
+                          .join(', ');
+                      })(),
+                    },
+                    { label: 'Venue', value: selectedEntry.deal.venue },
+                    { label: 'Calendar', value: selectedEntry.deal.organization?.googleCalendarId },
+                    { label: 'Google event ID', value: selectedEntry.deal.googleCalendarEventId },
+                  ]
                       .filter((item) => item.value)
                       .map((item) => (
                         <li key={item.label}>

@@ -78,7 +78,7 @@ export default function AcceptInvitation() {
     <div className="auth-flow-page">
       <div className="auth-flow-card">
         <header className="auth-flow-header">
-          <h1 className="auth-flow-title">Welcome to Brideside CRM</h1>
+          <h1 className="auth-flow-title">Welcome to The Brideside</h1>
           <p className="auth-flow-subtitle">
             {verifying
               ? 'Verifying your invitation…'

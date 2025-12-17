@@ -26,6 +26,7 @@ import DealSubSourceReport from './pages/DealSubSourceReport';
 import DealStatusReport from './pages/DealStatusReport';
 import DealLostReasonReport from './pages/DealLostReasonReport';
 import DealDurationReport from './pages/DealDurationReport';
+import PreSalesTargetUserDetail from './pages/PreSalesTargetUserDetail';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const location = useLocation();
@@ -91,6 +92,7 @@ function App() {
           <Route path="/reports/deal-status" element={<DealStatusReport />} />
           <Route path="/reports/deal-lost-reason" element={<DealLostReasonReport />} />
           <Route path="/reports/deal-duration" element={<DealDurationReport />} />
+          <Route path="/targets/pre-sales/:userId" element={<PreSalesTargetUserDetail />} />
           
           {/* Catch all for protected routes - redirect to deals if route not found */}
           <Route path="*" element={<Navigate to="/deals" replace />} />

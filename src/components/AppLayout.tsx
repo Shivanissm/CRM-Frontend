@@ -46,6 +46,8 @@ export default function AppLayout() {
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [tooltipState, setTooltipState] = useState<{ label: string; x: number; y: number } | null>(null);
+  const [userTooltipState, setUserTooltipState] = useState<{ name: string; role: string; x: number; y: number } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchWrapperRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -285,9 +287,13 @@ export default function AppLayout() {
         <div 
           className="app-shell-brand" 
           onClick={() => navigate('/deals')}
+          title="The Brideside"
         >
-          <span className="app-shell-logo">CRM</span>
-          <span className="app-shell-title">Brideside</span>
+          <img 
+            src="https://bridesideimages.blob.core.windows.net/tbs-website-images/heyueye.png" 
+            alt="The Brideside Logo" 
+            className="app-shell-logo"
+          />
         </div>
         <nav className="app-shell-nav">
           {navItems.map((item) => (
@@ -298,15 +304,67 @@ export default function AppLayout() {
               className={({ isActive }) =>
                 `app-shell-link${isActive ? ' active' : ''}`
               }
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const centerY = rect.top + (rect.height / 2);
+                const rightX = rect.right + 12;
+                setTooltipState({ label: item.label, x: rightX, y: centerY });
+              }}
+              onMouseLeave={() => {
+                setTooltipState(null);
+              }}
             >
               {item.icon && <span className="app-shell-link-icon">{item.icon}</span>}
-              <span>{item.label}</span>
             </NavLink>
           ))}
         </nav>
+        {tooltipState && createPortal(
+          <div
+            className="app-shell-nav-tooltip-portal"
+            style={{
+              position: 'fixed',
+              top: `${tooltipState.y}px`,
+              left: `${tooltipState.x}px`,
+              transform: 'translateY(-50%)',
+              zIndex: 999999,
+            }}
+          >
+            {tooltipState.label}
+          </div>,
+          document.body
+        )}
+        {userTooltipState && createPortal(
+          <div
+            className="app-shell-user-tooltip-portal"
+            style={{
+              position: 'fixed',
+              top: `${userTooltipState.y}px`,
+              left: `${userTooltipState.x}px`,
+              transform: 'translateY(-50%)',
+              zIndex: 999999,
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: '2px' }}>{userTooltipState.name}</div>
+            <div style={{ fontSize: '12px', opacity: 0.8 }}>{userTooltipState.role}</div>
+          </div>,
+          document.body
+        )}
         <div className="app-shell-footer">
           {user && (
-            <div className="app-shell-user">
+            <div 
+              className="app-shell-user"
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'User';
+                const userRole = user.role ?? 'Member';
+                const centerY = rect.top + (rect.height / 2);
+                const rightX = rect.right + 12;
+                setUserTooltipState({ name: userName, role: userRole, x: rightX, y: centerY });
+              }}
+              onMouseLeave={() => {
+                setUserTooltipState(null);
+              }}
+            >
               <div className="app-shell-avatar">
                 {(user.firstName?.[0] ?? user.email?.[0] ?? '?').toUpperCase()}
               </div>
@@ -318,8 +376,40 @@ export default function AppLayout() {
               </div>
             </div>
           )}
-          <button className="app-shell-logout" onClick={handleLogout}>
-            Logout
+          <button 
+            className="app-shell-logout" 
+            onClick={handleLogout}
+            onMouseEnter={(e) => {
+              const textEl = e.currentTarget.querySelector('.app-shell-logout-tooltip') as HTMLElement;
+              if (textEl) {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const tooltipTop = rect.top + (rect.height / 2);
+                const tooltipLeft = rect.right + 12;
+                textEl.style.cssText = `
+                  display: block !important;
+                  position: fixed !important;
+                  top: ${tooltipTop}px !important;
+                  left: ${tooltipLeft}px !important;
+                  transform: translateY(-50%) !important;
+                  z-index: 999999 !important;
+                  margin: 0 !important;
+                  padding: 8px 12px !important;
+                `;
+              }
+            }}
+            onMouseLeave={(e) => {
+              const textEl = e.currentTarget.querySelector('.app-shell-logout-tooltip') as HTMLElement;
+              if (textEl) {
+                textEl.style.display = 'none';
+              }
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+              <polyline points="16 17 21 12 16 7"></polyline>
+              <line x1="21" y1="12" x2="9" y2="12"></line>
+            </svg>
+            <span className="app-shell-logout-tooltip">Logout</span>
           </button>
         </div>
       </aside>
@@ -334,7 +424,7 @@ export default function AppLayout() {
                 ref={searchInputRef}
                 type="text"
                 className="app-shell-search-input-field"
-                placeholder="Search Brideside"
+                placeholder="Search The Brideside"
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);

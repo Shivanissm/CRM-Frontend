@@ -4,7 +4,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import './Deals.css';
 import { dealsApi, type DealSortField, type SortDirection } from '../services/deals';
 import type { Deal, DealStatus, DealSource, DealSubSource, DealCreateRequest } from '../types/deal';
-import { normalizeEventDatesForRequest } from '../utils/dealDates';
 import type { OrganizationCategory } from '../types/organization';
 import { organizationsApi } from '../services/organizations';
 import type { Organization } from '../types/organization';
@@ -42,6 +41,8 @@ interface DealFormState {
   value: string;
   status: DealStatus;
   personName: string; // Changed from personId to personName for input field
+  personPhone: string; // For searching / displaying selected person's phone
+  personInstagramId: string; // For searching / displaying selected person's Instagram
   personId: string; // Keep for internal use when person is found
   pipelineId: string;
   stageId: string;
@@ -54,6 +55,7 @@ interface DealFormState {
   venue: string;
   eventDate: string;
   eventDates: string[];
+  eventDateTypes: string[];
   referencedDealId: string; // For diverted deals
 }
 
@@ -62,6 +64,8 @@ const initialFormState: DealFormState = {
   value: '',
   status: 'IN_PROGRESS',
   personName: '',
+  personPhone: '',
+  personInstagramId: '',
   personId: '',
   pipelineId: '',
   stageId: '',
@@ -74,6 +78,7 @@ const initialFormState: DealFormState = {
   venue: '',
   eventDate: '',
   eventDates: [],
+  eventDateTypes: [],
   referencedDealId: '',
 };
 
@@ -91,6 +96,16 @@ const DEAL_SUB_SOURCE_OPTIONS: Array<{ value: DealSubSource; label: string }> = 
   { value: 'Landing Page', label: 'Landing Page' },
   { value: 'Email', label: 'Email' },
 ];
+
+// Helper function to map stage names for display
+// Maps "Meeting Done" to "Contract Shared" for display purposes
+const getDisplayStageName = (stageName: string | null | undefined): string => {
+  if (!stageName) return '';
+  if (stageName.toLowerCase().trim() === 'meeting done') {
+    return 'Contract Shared';
+  }
+  return stageName;
+};
 
 // Unused - kept for potential future use
 // const statusColors: Record<DealStatus, string> = {
@@ -969,11 +984,53 @@ const Deals = () => {
   const loadDeals = useCallback(async (preserveDealId?: number | null) => {
     setLoading(true);
     try {
-      // Always load all deals for kanban board view with sorting
-      const data = await dealsApi.list({
+      // Build filter parameters for API call
+      const apiParams: Parameters<typeof dealsApi.list>[0] = {
         sort: sortField,
         direction: sortDirection,
-      });
+      };
+      
+      // Add pipeline filter if selected
+      if (selectedPipelineId) {
+        apiParams.pipelineId = selectedPipelineId;
+      }
+      
+      // Add status filter
+      if (filterStatus !== 'all') {
+        apiParams.status = filterStatus;
+      }
+      
+      // Add organization filter
+      if (filterOrganization !== null) {
+        apiParams.organizationId = filterOrganization;
+      }
+      
+      // Add category filter (convert category label to categoryId if needed)
+      if (filterCategory !== null) {
+        const categoryOption = categoryOptions.find(cat => cat.id === filterCategory);
+        if (categoryOption?.id) {
+          apiParams.categoryId = Number(categoryOption.id);
+        }
+      }
+      
+      // Add manager filter
+      if (filterManager !== null) {
+        apiParams.managerId = filterManager;
+      }
+      
+      // Add date range filter
+      if (dateRange.start && dateRange.end) {
+        apiParams.dateFrom = dateRange.start;
+        apiParams.dateTo = dateRange.end;
+      }
+      
+      // Add search query filter
+      if (searchQuery.trim()) {
+        apiParams.search = searchQuery.trim();
+      }
+      
+      // Load deals with filters applied
+      const data = await dealsApi.list(apiParams);
       setDeals(data);
       setSelectedDealIds((prev) => {
         if (prev.size === 0) return prev;
@@ -1006,13 +1063,22 @@ const Deals = () => {
     } finally {
       setLoading(false);
     }
-  }, [sortField, sortDirection, loadActivities]);
+  }, [sortField, sortDirection, selectedPipelineId, filterStatus, filterOrganization, filterCategory, filterManager, dateRange, searchQuery, categoryOptions, loadActivities]);
 
   // Initial load
   useEffect(() => {
     loadDeals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reload deals when filters change
+  useEffect(() => {
+    if (categoryOptions.length > 0 || filterCategory === null) {
+      // Only reload if categoryOptions are loaded (or no category filter is set)
+      loadDeals();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPipelineId, filterStatus, filterOrganization, filterCategory, filterManager, dateRange, searchQuery]);
 
   const hasHandledOpenModal = useRef(false);
   
@@ -2606,24 +2672,22 @@ const Deals = () => {
     return pipelines.find(p => p.id === selectedPipelineId) || null;
   }, [pipelines, selectedPipelineId]);
 
-  // Count deals in selected pipeline and status
+  // Count deals in selected pipeline with all filters applied
   const dealsInSelectedPipeline = useMemo(() => {
     if (!selectedPipelineId) return 0;
-    return deals.filter(deal => {
-      const pipelineMatch = deal.pipelineId === selectedPipelineId;
-      const statusMatch = filterStatus === 'all' || deal.status === filterStatus;
-      return pipelineMatch && statusMatch;
+    // Use filteredDeals which already has all filters applied, then filter by pipeline
+    return filteredDeals.filter(deal => {
+      return deal.pipelineId === selectedPipelineId;
     }).length;
-  }, [deals, selectedPipelineId, filterStatus]);
+  }, [filteredDeals, selectedPipelineId]);
 
-  // Calculate financial summary for selected pipeline and status
+  // Calculate financial summary for selected pipeline with all filters applied
   const financialSummary = useMemo(() => {
     if (!selectedPipelineId) return { totalValue: 0, weightedValue: 0, dealCount: 0 };
     
-    const relevantDeals = deals.filter(deal => {
-      const pipelineMatch = deal.pipelineId === selectedPipelineId;
-      const statusMatch = filterStatus === 'all' || deal.status === filterStatus;
-      return pipelineMatch && statusMatch;
+    // Use filteredDeals which already has all filters applied, then filter by pipeline
+    const relevantDeals = filteredDeals.filter(deal => {
+      return deal.pipelineId === selectedPipelineId;
     });
 
     // Create a map of stageId -> probability for quick lookup
@@ -2656,7 +2720,7 @@ const Deals = () => {
     const dealCount = relevantDeals.length;
 
     return { totalValue, weightedValue, dealCount };
-  }, [deals, selectedPipelineId, filterStatus, selectedPipeline]);
+  }, [filteredDeals, selectedPipelineId, selectedPipeline]);
 
   // Get stages for selected pipeline, sorted by order
   const pipelineStages = useMemo(() => {
@@ -2943,23 +3007,52 @@ const Deals = () => {
         }
       }
       
-      // If personName is being changed, filter persons for autocomplete
-      // Search by name, phone, instagramId, or email (exact or partial match)
-      if (name === 'personName') {
-        if (value.trim().length > 0) {
-          const searchValue = value.toLowerCase().trim();
-          const filtered = persons.filter(p => {
-            const nameMatch = p.name.toLowerCase().includes(searchValue);
-            const phoneMatch = p.phone?.toLowerCase().includes(searchValue) || p.phone?.replace(/\s+/g, '').includes(searchValue.replace(/\s+/g, ''));
-            const instagramMatch = p.instagramId?.toLowerCase().includes(searchValue);
-            const emailMatch = p.email?.toLowerCase().includes(searchValue);
-            return nameMatch || phoneMatch || instagramMatch || emailMatch;
-          });
-          setFilteredPersons(filtered);
-          setShowPersonSuggestions(true); // Always show suggestions to allow "Create new person" option
-        } else {
+      // If any of the person-identifying fields are being changed, filter persons for autocomplete
+      // We support searching by name, phone, instagramId, or email using three separate inputs:
+      //  - personName
+      //  - personPhone
+      //  - personInstagramId
+      if (name === 'personName' || name === 'personPhone' || name === 'personInstagramId') {
+        const nameQuery = (name === 'personName' ? value : newData.personName || '').toLowerCase().trim();
+        const phoneQueryRaw = (name === 'personPhone' ? value : newData.personPhone || '');
+        const phoneQuery = phoneQueryRaw.toLowerCase().replace(/\s+/g, '');
+        const instaQuery = (name === 'personInstagramId' ? value : newData.personInstagramId || '').toLowerCase().trim();
+
+        // If all three fields are empty, clear suggestions
+        if (!nameQuery && !phoneQuery && !instaQuery) {
           setFilteredPersons([]);
           setShowPersonSuggestions(false);
+        } else {
+          const filtered = persons.filter(p => {
+            const personName = p.name?.toLowerCase() ?? '';
+            const personPhoneRaw = p.phone ?? '';
+            const personPhone = personPhoneRaw.toLowerCase().replace(/\s+/g, '');
+            const personInstagram = p.instagramId?.toLowerCase() ?? '';
+            const personEmail = p.email?.toLowerCase() ?? '';
+
+            // For each non-empty query, require a match; empty queries are ignored
+            if (nameQuery && !personName.includes(nameQuery)) return false;
+            if (phoneQuery && !(personPhone.includes(phoneQuery) || personPhoneRaw.toLowerCase().includes(phoneQueryRaw.toLowerCase()))) return false;
+            if (instaQuery && !personInstagram.includes(instaQuery)) return false;
+
+            // Also allow matching by email when only name is provided to keep existing behavior
+            if (!nameQuery && !phoneQuery && instaQuery) {
+              // already checked insta above, nothing extra
+              return true;
+            }
+
+            if (nameQuery && !phoneQuery && !instaQuery) {
+              // name-only search should consider email like before
+              const nameMatches = personName.includes(nameQuery);
+              const emailMatches = personEmail.includes(nameQuery);
+              return nameMatches || emailMatches;
+            }
+
+            return true;
+          });
+
+          setFilteredPersons(filtered);
+          setShowPersonSuggestions(true); // Always show suggestions to allow "Create new person" option
         }
       }
       
@@ -3158,6 +3251,18 @@ const Deals = () => {
     console.log(`Stage ID: ${stageId} ${stageId ? '(AUTO-ASSIGNED)' : '(NOT SET!)'}`);
     console.log(`Organization ID: ${organizationId}`);
 
+    // Build event dates + per-date event types for backend
+    const rawEventDates = formData.eventDates && formData.eventDates.length > 0
+      ? formData.eventDates
+      : [];
+
+    const validEventRows = rawEventDates
+      .map((date, index) => ({
+        date: (date || '').trim(),
+        eventType: (formData.eventDateTypes && formData.eventDateTypes[index]) || formData.eventType || '',
+      }))
+      .filter(row => row.date !== '');
+
     const payload: any = {
       name: formData.name.trim(),
       status: formData.status,
@@ -3170,14 +3275,17 @@ const Deals = () => {
       source: formData.source ? (formData.source as DealSource) : undefined,
       subSource: (formData.source === 'Direct' && formData.subSource) ? (formData.subSource as DealSubSource) : undefined,
       referencedDealId: formData.referencedDealId ? Number(formData.referencedDealId) : undefined,
-      eventType: formData.eventType ? formData.eventType : undefined,
+      // Legacy / global event type (backend still reads this as a fallback)
+      eventType: formData.eventType ? formData.eventType : (validEventRows[0]?.eventType || undefined),
       venue: formData.venue ? formData.venue : undefined,
-      ...normalizeEventDatesForRequest(
-        formData.eventDate || null,
-        formData.eventDates && formData.eventDates.length > 0 
-          ? formData.eventDates.filter(date => date && date.trim() !== '')
-          : null
-      ),
+      // New multi-date + per-date event types
+      eventDates: validEventRows.length > 0 ? validEventRows.map(r => r.date) : null,
+      eventDateDetails: validEventRows.length > 0
+        ? validEventRows.map(r => ({
+            date: r.date,
+            eventType: r.eventType && r.eventType.trim() ? r.eventType.trim() : null,
+          }))
+        : null,
     };
 
     // For diverted deals, omit the value field - backend automatically sets it to 0
@@ -4472,7 +4580,7 @@ const Deals = () => {
                   return (
                     <div key={stage.id} className={`kanban-column ${isDiversionStage ? 'diversion-stage' : ''}`}>
                       <div className="kanban-column-header">
-                        <h3 className="kanban-column-title">{stage.name}</h3>
+                        <h3 className="kanban-column-title">{getDisplayStageName(stage.name)}</h3>
                         <div className="kanban-column-summary">
                           {formatCurrency(totals.total)} • {totals.count} deals
                         </div>
@@ -5119,7 +5227,7 @@ const Deals = () => {
                       </option>
                       {selectedDealStages.map((stage) => (
                         <option key={stage.id} value={stage.id}>
-                          {stage.name}
+                          {getDisplayStageName(stage.name)}
                         </option>
                       ))}
                     </select>
@@ -5253,7 +5361,11 @@ const Deals = () => {
                       value={formData.personName}
                       onChange={handleInputChange}
                       onFocus={() => {
-                        if (formData.personName && filteredPersons.length > 0) {
+                        const hasAnyPersonQuery =
+                          (formData.personName && formData.personName.trim().length > 0) ||
+                          (formData.personPhone && formData.personPhone.trim().length > 0) ||
+                          (formData.personInstagramId && formData.personInstagramId.trim().length > 0);
+                        if (hasAnyPersonQuery && filteredPersons.length > 0) {
                           setShowPersonSuggestions(true);
                         }
                       }}
@@ -5261,7 +5373,29 @@ const Deals = () => {
                       disabled={isSubmitting}
                       placeholder="Enter contact person name"
                     />
-                    {showPersonSuggestions && formData.personName.trim().length > 0 && (
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                      <input
+                        type="text"
+                        name="personPhone"
+                        className="form-input"
+                        style={{ flex: 1 }}
+                        value={formData.personPhone}
+                        onChange={handleInputChange}
+                        disabled={isSubmitting}
+                        placeholder="Enter phone number (optional)"
+                      />
+                      <input
+                        type="text"
+                        name="personInstagramId"
+                        className="form-input"
+                        style={{ flex: 1 }}
+                        value={formData.personInstagramId}
+                        onChange={handleInputChange}
+                        disabled={isSubmitting}
+                        placeholder="Enter Instagram ID (optional)"
+                      />
+                    </div>
+                    {showPersonSuggestions && (
                       <div
                         ref={personSuggestionsRef}
                         className="form-person-suggestions"
@@ -5273,7 +5407,13 @@ const Deals = () => {
                             key={person.id}
                             className="form-person-suggestion-item"
                             onClick={() => {
-                                  setFormData(prev => ({ ...prev, personName: person.name, personId: String(person.id) }));
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    personName: person.name,
+                                    personId: String(person.id),
+                                    personPhone: person.phone || '',
+                                    personInstagramId: person.instagramId || ''
+                                  }));
                               setShowPersonSuggestions(false);
                             }}
                           >
@@ -5294,12 +5434,28 @@ const Deals = () => {
                         )}
                           </>
                         )}
-                        {/* Show "Create new person" option if entered value doesn't exactly match any person's name */}
+                        {/* Show "Create new person" option if the entered person details don't exactly match an existing person */}
                         {(() => {
-                          const enteredValue = formData.personName.trim().toLowerCase();
-                          const exactNameMatch = persons.some(p => p.name.toLowerCase().trim() === enteredValue);
-                          // Show "Create new person" if no exact name match
-                          if (!exactNameMatch && enteredValue.length > 0) {
+                          const enteredName = formData.personName.trim();
+                          const enteredPhone = formData.personPhone.trim();
+                          const enteredInstagram = formData.personInstagramId.trim();
+
+                          const hasAnyEntered =
+                            enteredName.length > 0 ||
+                            enteredPhone.length > 0 ||
+                            enteredInstagram.length > 0;
+
+                          // Consider we have an "exact" person if all non-empty fields match
+                          const hasExactMatch = persons.some((p) => {
+                            if (enteredName && p.name.trim().toLowerCase() !== enteredName.toLowerCase()) return false;
+                            if (enteredPhone && (p.phone || '').trim() !== enteredPhone) return false;
+                            if (enteredInstagram && (p.instagramId || '').trim().toLowerCase() !== enteredInstagram.toLowerCase()) return false;
+                            return hasAnyEntered;
+                          });
+
+                          // Show "Create new person" if something is entered and there's no exact match
+                          if (hasAnyEntered && !hasExactMatch) {
+                            const displayLabel = enteredName || enteredPhone || enteredInstagram;
                             return (
                               <div
                                 className="form-person-suggestion-item"
@@ -5312,12 +5468,15 @@ const Deals = () => {
                                   cursor: 'pointer'
                                 }}
                                 onClick={() => {
-                                  setNewPersonName(formData.personName.trim());
+                                  // Pre-fill only the name field; phone / insta can be entered in the add person modal
+                                  setNewPersonName(enteredName);
                                   setIsAddPersonModalOpen(true);
                                   setShowPersonSuggestions(false);
                                 }}
                               >
-                                + Create new person: &quot;{formData.personName.trim()}&quot;
+                                {displayLabel
+                                  ? `+ Create new person: "${displayLabel}"`
+                                  : '+ Create new person'}
                               </div>
                             );
                           }
@@ -5408,7 +5567,7 @@ const Deals = () => {
                     </option>
                     {stageOptionsForForm.map((stage) => (
                       <option key={stage.id} value={stage.id}>
-                        {stage.name}
+                        {getDisplayStageName(stage.name)}
                       </option>
                     ))}
                   </select>
@@ -5594,29 +5753,49 @@ const Deals = () => {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {((formData.eventDates && formData.eventDates.length > 0) ? formData.eventDates : ['']).map((date, index) => (
                       <div key={index} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <input
-                    type="date"
-                    className="form-input"
+                        <input
+                          type="date"
+                          className="form-input"
                           value={date || ''}
                           onChange={(e) => {
                             const newDates = [...(formData.eventDates || [])];
                             newDates[index] = e.target.value;
-                            setFormData((prev) => ({ ...prev, eventDates: newDates }));
+                            // Ensure eventDateTypes has at least the same length
+                            const newTypes = [...(formData.eventDateTypes || [])];
+                            if (!newTypes[index]) {
+                              newTypes[index] = formData.eventType || '';
+                            }
+                            setFormData((prev) => ({ ...prev, eventDates: newDates, eventDateTypes: newTypes }));
                           }}
-                    disabled={isSubmitting}
+                          disabled={isSubmitting}
                           style={{ cursor: 'pointer', flex: 1 }}
-                    onClick={(e) => {
-                      if (!isSubmitting) {
-                        (e.target as HTMLInputElement).showPicker?.();
-                      }
-                    }}
-                  />
+                          onClick={(e) => {
+                            if (!isSubmitting) {
+                              (e.target as HTMLInputElement).showPicker?.();
+                            }
+                          }}
+                        />
+                        <input
+                          type="text"
+                          className="form-input"
+                          style={{ flex: 1, minWidth: '180px' }}
+                          placeholder="Event Type (e.g. Wedding, Reception)"
+                          value={(formData.eventDateTypes && formData.eventDateTypes[index]) || ''}
+                          onChange={(e) => {
+                            const newTypes = [...(formData.eventDateTypes || [])];
+                            newTypes[index] = e.target.value;
+                            setFormData((prev) => ({ ...prev, eventDateTypes: newTypes }));
+                          }}
+                          disabled={isSubmitting}
+                        />
                         <button
                           type="button"
                           onClick={() => {
                             const newDates = [...(formData.eventDates || [])];
                             newDates.splice(index, 1);
-                            setFormData((prev) => ({ ...prev, eventDates: newDates }));
+                            const newTypes = [...(formData.eventDateTypes || [])];
+                            newTypes.splice(index, 1);
+                            setFormData((prev) => ({ ...prev, eventDates: newDates, eventDateTypes: newTypes }));
                           }}
                           disabled={isSubmitting}
                           style={{
@@ -5638,7 +5817,8 @@ const Deals = () => {
                       type="button"
                       onClick={() => {
                         const newDates = [...(formData.eventDates || []), ''];
-                        setFormData((prev) => ({ ...prev, eventDates: newDates }));
+                        const newTypes = [...(formData.eventDateTypes || []), formData.eventType || ''];
+                        setFormData((prev) => ({ ...prev, eventDates: newDates, eventDateTypes: newTypes }));
                       }}
                       disabled={isSubmitting}
                       style={{
@@ -5657,21 +5837,8 @@ const Deals = () => {
                     </button>
                   </div>
                   <span className="calendar-sync-hint subtle">
-                    Use YYYY-MM-DD format. Google Calendar will create separate events for each date.
+                    Use YYYY-MM-DD format. Google Calendar will create separate events for each date. You can set a specific event type for each date.
                   </span>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Event Type</label>
-                  <input
-                    type="text"
-                    name="eventType"
-                    className="form-input"
-                    value={formData.eventType}
-                    onChange={handleInputChange}
-                    placeholder="Wedding photography, Bridal makeup or photography, makeup"
-                    disabled={isSubmitting}
-                  />
                 </div>
               </div>
 

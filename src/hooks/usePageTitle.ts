@@ -3,25 +3,25 @@ import { useLocation } from 'react-router-dom';
 
 // Map routes to page titles
 const routeTitleMap: Record<string, string> = {
-  '/login': 'Login - TBSCRM',
-  '/accept-invitation': 'Accept Invitation - TBSCRM',
-  '/reset-password': 'Reset Password - TBSCRM',
-  '/persons': 'Persons - TBSCRM',
-  '/activities': 'Activities - TBSCRM',
-  '/pipelines': 'Pipelines - TBSCRM',
-  '/teams': 'Teams - TBSCRM',
-  '/calendar': 'Calendar - TBSCRM',
-  '/organizations': 'Organizations - TBSCRM',
-  '/deals': 'Deals - TBSCRM',
-  '/users': 'Users - TBSCRM',
-  '/targets': 'Targets - TBSCRM',
-  '/dashboard/sales': 'Sales Dashboard - TBSCRM',
-  '/dashboard/category-manager': 'Category Manager Dashboard - TBSCRM',
-  '/dashboard/pre-sales': 'Pre-Sales Dashboard - TBSCRM',
+  '/login': 'Login - The Brideside',
+  '/accept-invitation': 'Accept Invitation - The Brideside',
+  '/reset-password': 'Reset Password - The Brideside',
+  '/persons': 'Persons - The Brideside',
+  '/activities': 'Activities - The Brideside',
+  '/pipelines': 'Pipelines - The Brideside',
+  '/teams': 'Teams - The Brideside',
+  '/calendar': 'Calendar - The Brideside',
+  '/organizations': 'Organizations - The Brideside',
+  '/deals': 'Deals - The Brideside',
+  '/users': 'Users - The Brideside',
+  '/targets': 'Targets - The Brideside',
+  '/dashboard/sales': 'Sales Dashboard - The Brideside',
+  '/dashboard/category-manager': 'Category Manager Dashboard - The Brideside',
+  '/dashboard/pre-sales': 'Pre-Sales Dashboard - The Brideside',
 };
 
 // Default title
-const DEFAULT_TITLE = 'TBSCRM';
+const DEFAULT_TITLE = 'The Brideside';
 
 /**
  * Hook to set page title based on current route
@@ -37,11 +37,11 @@ export function usePageTitle() {
     let title: string | undefined;
 
     if (pathname.startsWith('/persons/') && pathname !== '/persons') {
-      title = 'Person Details - TBSCRM';
+      title = 'Person Details - The Brideside';
     } else if (pathname.startsWith('/deals/') && pathname !== '/deals') {
-      title = 'Deal Details - TBSCRM';
+      title = 'Deal Details - The Brideside';
     } else if (pathname.startsWith('/targets/users/')) {
-      title = 'Target User Details - TBSCRM';
+      title = 'Target User Details - The Brideside';
     } else {
       // Use exact match or default
       title = routeTitleMap[pathname] || DEFAULT_TITLE;

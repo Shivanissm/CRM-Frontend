@@ -34,8 +34,17 @@ api.interceptors.request.use((config) => {
   }
   // Debug logging for API requests
   if (config.params) {
-    console.log('[Activities API] Request URL:', config.url);
+    const fullUrl = config.baseURL + (config.url || '');
+    console.log('[Activities API] Full Request URL:', fullUrl);
+    console.log('[Activities API] Request URL (relative):', config.url || '(baseURL)');
+    console.log('[Activities API] Base URL:', config.baseURL);
     console.log('[Activities API] Request Params:', config.params);
+    if (config.params.serviceCategory || config.params.organizationCategory) {
+      console.log('[Activities API] Service Category Filters:', {
+        serviceCategory: config.params.serviceCategory,
+        organizationCategory: config.params.organizationCategory
+      });
+    }
     if (config.params.dateFrom || config.params.dateTo) {
       console.log('[Activities API] Date Filters:', {
         dateFrom: config.params.dateFrom,
@@ -49,11 +58,33 @@ api.interceptors.request.use((config) => {
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Debug logging for successful responses
+    if (response.config.params) {
+      const isListRequest = !response.config.url || response.config.url === '';
+      if (isListRequest) {
+        console.log('[Activities API] List Response:', {
+          url: response.config.baseURL + (response.config.url || ''),
+          status: response.status,
+          totalElements: response.data?.totalElements,
+          contentLength: response.data?.content?.length || 0,
+          hasServiceCategory: !!(response.config.params?.serviceCategory || response.config.params?.organizationCategory)
+        });
+      }
+    }
+    return response;
+  },
   (error) => {
     if (error?.response?.status === 401 || error?.response?.status === 403) {
       console.warn(`Unauthorized (${error?.response?.status}) when calling activities API. Logging out.`);
       logoutAndRedirect();
+    } else if (error?.response) {
+      console.error('[Activities API] Error Response:', {
+        url: error.config?.baseURL + (error.config?.url || ''),
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data
+      });
     }
     return Promise.reject(error);
   },
@@ -138,6 +169,8 @@ export interface ActivitiesSummary {
   meetingAssignedCount?: number;
   meetingDoneCount?: number;
   overdueCount?: number;
+  callOverdueCount?: number;
+  meetingOverdueCount?: number;
   activityTotalCount?: number;
   activityPendingCount?: number;
   activityCompletedCount?: number;
@@ -151,11 +184,22 @@ export const activitiesApi = {
   // Aggregated counts for summary cards/badges.
   summary: (params: ActivityFilters, options?: { signal?: AbortSignal }) =>
     api.get<ActivitiesSummary>('/summary', { params, signal: options?.signal }).then(r => r.data),
+  // Call-only summary
+  summaryCall: (params: ActivityFilters, options?: { signal?: AbortSignal }) =>
+    api.get<ActivitiesSummary>('/summary/call', { params, signal: options?.signal }).then(r => r.data),
+  // Meeting-only summary
+  summaryMeeting: (params: ActivityFilters, options?: { signal?: AbortSignal }) =>
+    api.get<ActivitiesSummary>('/summary/meeting', { params, signal: options?.signal }).then(r => r.data),
   create: (activity: ActivityRequest) => api.post<Activity>('', activity).then(r => r.data),
   update: (id: number, activity: ActivityRequest) => api.put<Activity>(`/${id}`, activity).then(r => r.data),
   delete: (id: number) => api.delete(`/${id}`).then(() => {}),
-  markDone: (id: number, value: boolean) =>
-    api.post<Activity>(`/${id}/done`, undefined, { params: { value } }).then(r => r.data),
+  markDone: (id: number, value: boolean, durationMinutes?: number) => {
+    const params: Record<string, any> = { value };
+    if (durationMinutes !== undefined && durationMinutes !== null) {
+      params.duration_minutes = durationMinutes;
+    }
+    return api.post<Activity>(`/${id}/done`, undefined, { params }).then(r => r.data);
+  },
   uploadScreenshot: async (id: number, file: File): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
