@@ -4,6 +4,11 @@ export type DealSource = 'Direct' | 'Divert' | 'Reference' | 'Planner';
 
 export type DealSubSource = 'Instagram' | 'Whatsapp' | 'Landing Page' | 'Email';
 
+export interface EventDateDetail {
+  date: string;
+  eventType?: string | null;
+}
+
 export interface Deal {
   id: number;
   name: string;
@@ -30,6 +35,7 @@ export interface Deal {
   venueAsked?: boolean | null;
   eventDate?: string | null;
   eventDates?: string[] | null;
+  eventDateDetails?: EventDateDetail[] | null;
   label?: string | null;
   source?: DealSource | null;
   subSource?: DealSubSource | null;
@@ -64,6 +70,7 @@ export interface DealCreateRequest {
   venueAsked?: boolean | null;
   eventDate?: string | null;
   eventDates?: string[] | null;
+  eventDateDetails?: EventDateDetail[] | null;
   label?: string | null;
   source?: DealSource | null;
   subSource?: DealSubSource | null;
@@ -103,6 +110,7 @@ export interface DealUpdateRequest {
   venueAsked?: boolean | null;
   eventDate?: string | null;
   eventDates?: string[] | null;
+  eventDateDetails?: EventDateDetail[] | null;
   label?: string | null;
   source?: DealSource | null;
   subSource?: DealSubSource | null;
