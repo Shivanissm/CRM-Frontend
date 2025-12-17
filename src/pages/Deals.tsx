@@ -20,6 +20,84 @@ import DealValueModal from '../components/DealValueModal';
 import PipelineModal from '../components/PipelineModal';
 import ReorderPipelinesModal from '../components/ReorderPipelinesModal';
 import Loader from '../components/Loader';
+import axios from 'axios';
+import { getStoredToken } from '../utils/authToken';
+import { withApiBase } from '../config/api';
+
+// ==================== Label Types & Constants ====================
+
+interface DealLabel {
+  id: number;
+  name: string;
+  color: string;
+  organizationId?: number | null;
+  pipelineId?: number | null;
+  isGlobal?: boolean;
+}
+
+const LABEL_COLORS = [
+  { name: 'Blue', value: '#93c5fd' },
+  { name: 'Green', value: '#86efac' },
+  { name: 'Yellow', value: '#fde047' },
+  { name: 'Red', value: '#fca5a5' },
+  { name: 'Purple', value: '#c4b5fd' },
+  { name: 'Gray', value: '#d1d5db' },
+  { name: 'Orange', value: '#fdba74' },
+  { name: 'Cyan', value: '#a5f3fc' },
+] as const;
+
+// No default labels - labels are organization-specific
+
+// Helper function to get contrasting text color
+const getLabelTextColor = (hexColor: string): string => {
+  const hex = hexColor.replace('#', '');
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? '#374151' : '#ffffff';
+};
+
+// Helper function to get border color
+const getLabelBorderColor = (hexColor: string): string => {
+  const hex = hexColor.replace('#', '');
+  const r = Math.max(0, parseInt(hex.substring(0, 2), 16) - 40);
+  const g = Math.max(0, parseInt(hex.substring(2, 4), 16) - 40);
+  const b = Math.max(0, parseInt(hex.substring(4, 6), 16) - 40);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+};
+
+// Labels API
+const labelsApi = {
+  list: async (organizationId?: number): Promise<DealLabel[]> => {
+    try {
+      const token = getStoredToken();
+      const response = await axios.get(withApiBase('/api/labels'), {
+        params: organizationId ? { organizationId } : {},
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = response.data;
+      if (data && typeof data === 'object' && 'data' in data) {
+        return data.data as DealLabel[];
+      }
+      return data as DealLabel[];
+    } catch (err) {
+      console.error('Failed to fetch labels:', err);
+      return []; // Return empty array - labels are organization-specific
+    }
+  },
+  create: async (payload: { name: string; color: string; organizationId?: number; isGlobal?: boolean }): Promise<DealLabel> => {
+    const token = getStoredToken();
+    const response = await axios.post(withApiBase('/api/labels'), payload, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const data = response.data;
+    if (data && typeof data === 'object' && 'data' in data) {
+      return data.data as DealLabel;
+    }
+    return data as DealLabel;
+  },
+};
 import type { PipelineRequest, PipelineUpdateRequest } from '../types/pipeline';
 import { usersApi } from '../services/users';
 import type { User } from '../types/user';
@@ -241,6 +319,19 @@ const Deals = () => {
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [categoriesFetched, setCategoriesFetched] = useState(false);
+  // Label picker state
+  const [labelOptions, setLabelOptions] = useState<DealLabel[]>([]);
+  const [labelLoading, setLabelLoading] = useState(false);
+  const [labelDropdownOpen, setLabelDropdownOpen] = useState(false);
+  const [labelSearchQuery, setLabelSearchQuery] = useState('');
+  const [showNewLabelModal, setShowNewLabelModal] = useState(false);
+  const [newLabelName, setNewLabelName] = useState('');
+  const [newLabelColor, setNewLabelColor] = useState<string>(LABEL_COLORS[5].value);
+  const [creatingLabel, setCreatingLabel] = useState(false);
+  const [createLabelError, setCreateLabelError] = useState<string | null>(null);
+  const labelContainerRef = useRef<HTMLDivElement>(null);
+  const labelDropdownRef = useRef<HTMLDivElement>(null);
+  const labelSearchInputRef = useRef<HTMLInputElement>(null);
   const [_hoveredDealId, setHoveredDealId] = useState<number | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number; organizationName: string | null; personName: string | null } | null>(null);
   const [hoveredButtonDealId, setHoveredButtonDealId] = useState<number | null>(null);
@@ -1215,6 +1306,104 @@ const Deals = () => {
       setCategoryError(message);
     } finally {
       setCategoryLoading(false);
+    }
+  };
+
+  // Fetch labels for label picker based on organization
+  const fetchLabels = useCallback(async (organizationId?: number) => {
+    if (!organizationId) {
+      setLabelOptions([]);
+      return;
+    }
+    setLabelLoading(true);
+    try {
+      const labels = await labelsApi.list(organizationId);
+      setLabelOptions(labels || []);
+    } catch (err) {
+      console.error('Failed to fetch labels:', err);
+      setLabelOptions([]);
+    } finally {
+      setLabelLoading(false);
+    }
+  }, []);
+
+  // Track previous organization ID to detect changes
+  const prevOrgIdRef = useRef<string | undefined>(undefined);
+
+  // Fetch labels when organization changes in form
+  useEffect(() => {
+    const currentOrgId = formData.organizationId;
+    const prevOrgId = prevOrgIdRef.current;
+    
+    if (currentOrgId) {
+      void fetchLabels(Number(currentOrgId));
+      // Clear label only if organization actually changed (not on initial load)
+      if (prevOrgId !== undefined && prevOrgId !== currentOrgId) {
+        setFormData(prev => ({ ...prev, label: '' }));
+      }
+    } else {
+      setLabelOptions([]);
+    }
+    
+    prevOrgIdRef.current = currentOrgId;
+  }, [formData.organizationId, fetchLabels]);
+
+  // Close label dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: globalThis.MouseEvent) => {
+      if (
+        labelContainerRef.current &&
+        !labelContainerRef.current.contains(e.target as Node) &&
+        labelDropdownRef.current &&
+        !labelDropdownRef.current.contains(e.target as Node)
+      ) {
+        setLabelDropdownOpen(false);
+        setLabelSearchQuery('');
+      }
+    };
+    if (labelDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [labelDropdownOpen]);
+
+  // Focus label search input when dropdown opens
+  useEffect(() => {
+    if (labelDropdownOpen && labelSearchInputRef.current) {
+      setTimeout(() => labelSearchInputRef.current?.focus(), 100);
+    }
+  }, [labelDropdownOpen]);
+
+  // Handle create new label
+  const handleCreateLabel = async () => {
+    if (!newLabelName.trim()) {
+      setCreateLabelError('Label name is required');
+      return;
+    }
+    if (!formData.organizationId) {
+      setCreateLabelError('Please select an organization first');
+      return;
+    }
+    setCreatingLabel(true);
+    setCreateLabelError(null);
+    try {
+      const newLabel = await labelsApi.create({
+        name: newLabelName.trim().toUpperCase(),
+        color: newLabelColor,
+        organizationId: Number(formData.organizationId),
+        isGlobal: false,
+      });
+      setLabelOptions((prev) => [...prev, newLabel]);
+      setFormData((prev) => ({ ...prev, label: newLabel.name }));
+      setShowNewLabelModal(false);
+      setNewLabelName('');
+      setNewLabelColor(LABEL_COLORS[5].value);
+      setLabelDropdownOpen(false);
+    } catch (err: any) {
+      console.error('Failed to create label:', err);
+      setCreateLabelError(err?.response?.data?.message || 'Failed to create label');
+    } finally {
+      setCreatingLabel(false);
     }
   };
 
@@ -4656,6 +4845,10 @@ const Deals = () => {
                                   navigate(`/deals/${deal.id}`);
                                 }}
                               >
+                                {/* Deal Source Indicator Line */}
+                                {deal.source && (
+                                  <div className={`kanban-card-source-indicator source-${deal.source.toLowerCase()}`} />
+                                )}
                                 <div className="kanban-card-header">
                                   <div className="kanban-card-content">
                                     <div className="kanban-card-name">{deal.name || `Deal #${deal.id}`}</div>
@@ -4859,6 +5052,10 @@ const Deals = () => {
                                   navigate(`/deals/${deal.id}`);
                                 }}
                               >
+                                {/* Deal Source Indicator Line */}
+                                {deal.source && (
+                                  <div className={`kanban-card-source-indicator source-${deal.source.toLowerCase()}`} />
+                                )}
                                 <div className="kanban-card-header">
                                   <div className="kanban-card-content">
                                     <div className="kanban-card-name">{deal.name || `Deal #${deal.id}`}</div>
@@ -5619,20 +5816,118 @@ const Deals = () => {
 
                 <div className="form-group">
                   <label className="form-label">Label</label>
-                  <select
-                    name="label"
-                    className="form-input"
-                    value={formData.label}
-                    onChange={handleInputChange}
-                    disabled={isSubmitting}
-                  >
-                    <option value="">Select Label</option>
-                    <option value="DIRECT">DIRECT</option>
-                    <option value="DIVERT">DIVERT</option>
-                    <option value="DESTINATION">DESTINATION</option>
-                    <option value="PARTY MAKEUP">PARTY MAKEUP</option>
-                    <option value="PRE WEDDING">PRE WEDDING</option>
-                  </select>
+                  <div className="label-picker-container" ref={labelContainerRef}>
+                    <button
+                      type="button"
+                      className={`label-picker-trigger ${labelDropdownOpen ? 'open' : ''} ${isSubmitting || !formData.organizationId ? 'disabled' : ''}`}
+                      onClick={() => !isSubmitting && formData.organizationId && setLabelDropdownOpen(!labelDropdownOpen)}
+                      disabled={isSubmitting || !formData.organizationId}
+                    >
+                      {formData.label ? (
+                        <span
+                          className="label-picker-badge"
+                          style={{
+                            backgroundColor: labelOptions.find(l => l.name === formData.label)?.color || '#d1d5db',
+                            color: getLabelTextColor(labelOptions.find(l => l.name === formData.label)?.color || '#d1d5db'),
+                            borderColor: getLabelBorderColor(labelOptions.find(l => l.name === formData.label)?.color || '#d1d5db'),
+                          }}
+                        >
+                          {formData.label}
+                        </span>
+                      ) : !formData.organizationId ? (
+                        <span className="label-picker-placeholder">Select organization first</span>
+                      ) : labelLoading ? (
+                        <span className="label-picker-placeholder">Loading...</span>
+                      ) : labelOptions.length === 0 ? (
+                        <span className="label-picker-placeholder">No label set</span>
+                      ) : (
+                        <span className="label-picker-placeholder">Select Label</span>
+                      )}
+                      <svg className={`label-picker-chevron ${labelDropdownOpen ? 'open' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <polyline points="6,9 12,15 18,9" />
+                      </svg>
+                    </button>
+
+                    {labelDropdownOpen && createPortal(
+                      <div
+                        ref={labelDropdownRef}
+                        className="label-picker-dropdown"
+                        style={{
+                          top: labelContainerRef.current ? labelContainerRef.current.getBoundingClientRect().bottom + 4 : 0,
+                          left: labelContainerRef.current ? labelContainerRef.current.getBoundingClientRect().left : 0,
+                          minWidth: labelContainerRef.current ? labelContainerRef.current.getBoundingClientRect().width : 200,
+                        }}
+                      >
+                        <div className="label-picker-search-container">
+                          <svg className="label-picker-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                          </svg>
+                          <input
+                            ref={labelSearchInputRef}
+                            type="text"
+                            className="label-picker-search-input"
+                            placeholder="Search for labels"
+                            value={labelSearchQuery}
+                            onChange={(e) => setLabelSearchQuery(e.target.value)}
+                          />
+                        </div>
+                        <div className="label-picker-list">
+                          {labelLoading ? (
+                            <div className="label-picker-loading">Loading labels...</div>
+                          ) : !formData.organizationId ? (
+                            <div className="label-picker-empty">Please select an organization first</div>
+                          ) : labelOptions.length === 0 ? (
+                            <div className="label-picker-empty">No label set for this organization</div>
+                          ) : labelOptions.filter((label) => label.name.toLowerCase().includes(labelSearchQuery.toLowerCase())).length === 0 ? (
+                            <div className="label-picker-empty">No labels found</div>
+                          ) : (
+                            labelOptions
+                              .filter((label) => label.name.toLowerCase().includes(labelSearchQuery.toLowerCase()))
+                              .map((label) => (
+                                <button
+                                  key={label.id}
+                                  type="button"
+                                  className={`label-picker-option ${formData.label === label.name ? 'selected' : ''}`}
+                                  onClick={() => {
+                                    setFormData((prev) => ({ ...prev, label: label.name }));
+                                    setLabelDropdownOpen(false);
+                                    setLabelSearchQuery('');
+                                  }}
+                                >
+                                  <span
+                                    className="label-picker-badge"
+                                    style={{
+                                      backgroundColor: label.color,
+                                      color: getLabelTextColor(label.color),
+                                      borderColor: getLabelBorderColor(label.color),
+                                    }}
+                                  >
+                                    {label.name}
+                                  </span>
+                                </button>
+                              ))
+                          )}
+                        </div>
+                        <div className="label-picker-divider" />
+                        <button
+                          type="button"
+                          className="label-picker-add-btn"
+                          onClick={() => {
+                            setShowNewLabelModal(true);
+                            setLabelDropdownOpen(false);
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                          </svg>
+                          Add label
+                        </button>
+                      </div>,
+                      document.body
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -6343,6 +6638,90 @@ const Deals = () => {
           mode="create"
           person={newPersonName ? { name: newPersonName, id: 0, organizationId: null, ownerId: null, createdAt: '', updatedAt: '' } as Person : null}
         />
+      )}
+
+      {/* New Label Modal */}
+      {showNewLabelModal && createPortal(
+        <div className="label-modal-overlay" onClick={() => setShowNewLabelModal(false)}>
+          <div className="label-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="label-modal-title">New label</h3>
+
+            <div className="label-modal-field">
+              <label className="label-modal-label">Label name</label>
+              <input
+                type="text"
+                className="label-modal-input"
+                placeholder="Label name"
+                value={newLabelName}
+                onChange={(e) => setNewLabelName(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div className="label-modal-field">
+              <label className="label-modal-label">Label color</label>
+              <div className="label-modal-colors">
+                {LABEL_COLORS.map((color) => (
+                  <button
+                    key={color.value}
+                    type="button"
+                    className={`label-modal-color-btn ${newLabelColor === color.value ? 'selected' : ''}`}
+                    style={{ backgroundColor: color.value }}
+                    onClick={() => setNewLabelColor(color.value)}
+                    title={color.name}
+                  >
+                    {newLabelColor === color.value && (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={getLabelTextColor(color.value)} strokeWidth="3">
+                        <polyline points="20,6 9,17 4,12" />
+                      </svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="label-modal-field">
+              <label className="label-modal-label">Preview</label>
+              <span
+                className="label-picker-badge"
+                style={{
+                  backgroundColor: newLabelColor,
+                  color: getLabelTextColor(newLabelColor),
+                  borderColor: getLabelBorderColor(newLabelColor),
+                }}
+              >
+                {newLabelName.toUpperCase() || 'LABEL NAME'}
+              </span>
+            </div>
+
+            {createLabelError && <div className="label-modal-error">{createLabelError}</div>}
+
+            <div className="label-modal-actions">
+              <button
+                type="button"
+                className="label-modal-btn label-modal-btn-cancel"
+                onClick={() => {
+                  setShowNewLabelModal(false);
+                  setNewLabelName('');
+                  setNewLabelColor(LABEL_COLORS[5].value);
+                  setCreateLabelError(null);
+                }}
+                disabled={creatingLabel}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="label-modal-btn label-modal-btn-save"
+                onClick={handleCreateLabel}
+                disabled={creatingLabel || !newLabelName.trim()}
+              >
+                {creatingLabel ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Delete Confirmation Modal */}
