@@ -21,6 +21,11 @@ import CategoryManagerDashboard from './pages/CategoryManagerDashboard';
 import PreSalesDashboard from './pages/PreSalesDashboard';
 import Targets from './pages/Targets';
 import TargetUserDetail from './pages/TargetUserDetail';
+import DealSourceReport from './pages/DealSourceReport';
+import DealSubSourceReport from './pages/DealSubSourceReport';
+import DealStatusReport from './pages/DealStatusReport';
+import DealLostReasonReport from './pages/DealLostReasonReport';
+import DealDurationReport from './pages/DealDurationReport';
 import PreSalesTargetUserDetail from './pages/PreSalesTargetUserDetail';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -82,6 +87,11 @@ function App() {
           <Route path="/users" element={<Users />} />
           <Route path="/targets" element={<Targets />} />
           <Route path="/targets/users/:userId" element={<TargetUserDetail />} />
+          <Route path="/reports/deal-source" element={<DealSourceReport />} />
+          <Route path="/reports/deal-sub-source" element={<DealSubSourceReport />} />
+          <Route path="/reports/deal-status" element={<DealStatusReport />} />
+          <Route path="/reports/deal-lost-reason" element={<DealLostReasonReport />} />
+          <Route path="/reports/deal-duration" element={<DealDurationReport />} />
           <Route path="/targets/pre-sales/:userId" element={<PreSalesTargetUserDetail />} />
           
           {/* Catch all for protected routes - redirect to deals if route not found */}
