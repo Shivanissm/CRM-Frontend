@@ -121,7 +121,7 @@
 }
 
 .role-dashboard-cta.secondary {
-  background: #0f766e;
+  background: #48D1CC;
   box-shadow: 0 18px 35px rgba(15, 118, 110, 0.22);
 }
 
@@ -198,9 +198,9 @@
 }
 
 .activity-chart-toggle button.active {
-  background: #15803d; /* match heading green */
+  background: #2E9E99; /* match heading green */
   color: #ecfdf3;
-  box-shadow: 0 6px 14px rgba(21, 128, 61, 0.35);
+  box-shadow: 0 6px 14px rgba(46, 158, 153, 0.35);
 }
 
 .activity-chart-toggle button:hover:not(.active) {
@@ -286,7 +286,7 @@
 }
 
 .target-donut-dot-achieved {
-  background: #0f766e;
+  background: #48D1CC;
 }
 
 .target-donut-dot-target {
@@ -326,7 +326,7 @@
 }
 
 .legend-dot-done {
-  background: #22c55e;
+  background: #48D1CC;
 }
 
 .legend-dot-pending {
@@ -366,7 +366,7 @@
 }
 
 .activity-chart-bar-done {
-  background: linear-gradient(to top, #22c55e, #16a34a);
+  background: linear-gradient(to top, #48D1CC, #36B5B0);
 }
 
 .activity-chart-bar-label {
@@ -1584,8 +1584,8 @@
 }
 
 .deal-status-won {
-  background: #d1fae5;
-  color: #065f46;
+  background: #d4f5f3;
+  color: #1a6360;
 }
 
 .deal-status-lost {

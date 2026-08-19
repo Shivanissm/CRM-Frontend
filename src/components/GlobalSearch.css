@@ -299,13 +299,13 @@
 }
 
 .global-search-result-status.won {
-  background: #d1fae5;
-  color: #065f46;
+  background: #d4f5f3;
+  color: #1a6360;
 }
 
 .global-search-result-status.done {
-  background: #d1fae5;
-  color: #065f46;
+  background: #d4f5f3;
+  color: #1a6360;
 }
 
 .global-search-result-status.pending {

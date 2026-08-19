@@ -15,12 +15,12 @@
   margin: 0;
   font-size: 26px;
   font-weight: 700;
-  color: #1f3a2d;
+  color: #1f6360;
 }
 
 .organizations-header p {
   margin: 6px 0 0;
-  color: #4a5d50;
+  color: #4a7573;
   font-size: 14px;
 }
 
@@ -34,15 +34,15 @@
 .organizations-search input {
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid #cdebd8;
+  border: 1px solid #b8ebe9;
   min-width: 220px;
   font-size: 14px;
 }
 
 .organizations-search input:focus {
   outline: none;
-  border-color: #28a745;
-  box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.16);
+  border-color: #48D1CC;
+  box-shadow: 0 0 0 2px rgba(72, 209, 204, 0.16);
 }
 
 .organizations-add,
@@ -51,9 +51,9 @@
   border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
-  border: 1px solid #cdebd8;
+  border: 1px solid #b8ebe9;
   background: #ffffff;
-  color: #245c37;
+  color: #2e8f8b;
   cursor: pointer;
   transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -61,8 +61,8 @@
 .organizations-add:hover,
 .organizations-refresh:hover:not(:disabled) {
   background: #f6fff9;
-  color: #1f6f3e;
-  box-shadow: 0 2px 6px rgba(36, 92, 55, 0.12);
+  color: #1a6360;
+  box-shadow: 0 2px 6px rgba(46, 143, 139, 0.12);
 }
 
 .organizations-refresh:disabled {
@@ -82,7 +82,7 @@
 .organizations-loading {
   padding: 36px 12px;
   text-align: center;
-  color: #4a5d50;
+  color: #4a7573;
 }
 
 .organizations-empty {
@@ -105,12 +105,12 @@
 .organizations-empty-card h2 {
   margin: 0 0 12px;
   font-size: 20px;
-  color: #1f3a2d;
+  color: #1f6360;
 }
 
 .organizations-empty-card p {
   margin: 0;
-  color: #4a5d50;
+  color: #4a7573;
   line-height: 1.6;
 }
 
@@ -138,17 +138,17 @@
   gap: 6px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(16, 185, 129, 0.1);
-  color: #047857;
+  background: rgba(72, 209, 204, 0.1);
+  color: #2E9E99;
   font-size: 13px;
   font-weight: 600;
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  border: 1px solid rgba(72, 209, 204, 0.25);
 }
 
 .organizations-table th {
   background: #f3fbf6;
   font-weight: 700;
-  color: #1f3a2d;
+  color: #1f6360;
 }
 
 .organizations-table tr:last-child td {
@@ -165,9 +165,9 @@
 .organizations-row-btn {
   padding: 6px 12px;
   border-radius: 8px;
-  border: 1px solid #cdebd8;
+  border: 1px solid #b8ebe9;
   background: #ffffff;
-  color: #245c37;
+  color: #2e8f8b;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -176,8 +176,8 @@
 
 .organizations-row-btn:hover:not(:disabled) {
   background: #f6fff9;
-  color: #1f6f3e;
-  box-shadow: 0 2px 6px rgba(36, 92, 55, 0.12);
+  color: #1a6360;
+  box-shadow: 0 2px 6px rgba(46, 143, 139, 0.12);
 }
 
 .organizations-row-btn:disabled {

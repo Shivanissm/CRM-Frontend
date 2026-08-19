@@ -58,7 +58,7 @@
   align-items: center;
   gap: 4px;
   padding: 8px 16px;
-  background: #4caf50;
+  background: #48D1CC;
   color: white;
   border: none;
   border-radius: 4px;
@@ -69,7 +69,7 @@
 }
 
 .person-deal-button:hover:not(:disabled) {
-  background: #45a049;
+  background: #36B5B0;
 }
 
 .person-deal-button:disabled {
@@ -229,14 +229,14 @@
 }
 
 .person-section-save-btn {
-  background: #4caf50;
-  border-color: #4caf50;
+  background: #48D1CC;
+  border-color: #48D1CC;
   color: white;
 }
 
 .person-section-save-btn:hover {
-  background: #45a049;
-  border-color: #45a049;
+  background: #36B5B0;
+  border-color: #36B5B0;
 }
 
 .person-section-cancel-btn {
@@ -354,7 +354,7 @@
 }
 
 .person-field-input:focus {
-  border-color: #4caf50;
+  border-color: #48D1CC;
   border-width: 2px;
   box-shadow: 0 0 0 1px rgba(76, 175, 80, 0.1);
 }
@@ -683,7 +683,7 @@
 
 .person-deal-item:hover {
   background: #f0f0f0;
-  border-color: #4caf50;
+  border-color: #48D1CC;
   box-shadow: 0 2px 8px rgba(76, 175, 80, 0.15);
 }
 
@@ -1233,7 +1233,7 @@
   padding: 8px 16px;
   border: none;
   border-radius: 4px;
-  background: #4caf50;
+  background: #48D1CC;
   color: white;
   font-size: 14px;
   font-weight: 500;
@@ -1242,7 +1242,7 @@
 }
 
 .person-modal-save:hover:not(:disabled) {
-  background: #45a049;
+  background: #36B5B0;
 }
 
 .person-modal-save:disabled {
@@ -1338,7 +1338,7 @@
 
 .person-api-test-stat.success {
   background: #e8f5e9;
-  border: 1px solid #4caf50;
+  border: 1px solid #48D1CC;
 }
 
 .person-api-test-stat.error {
@@ -1384,7 +1384,7 @@
 }
 
 .person-api-test-endpoint.exists {
-  border-left: 4px solid #4caf50;
+  border-left: 4px solid #48D1CC;
 }
 
 .person-api-test-endpoint.missing {
@@ -1488,7 +1488,7 @@
 
 .deal-activity-item.deal-activity-today {
   background: #e8f5e9;
-  border-color: #4caf50;
+  border-color: #48D1CC;
   border-width: 2px;
 }
 
@@ -1522,8 +1522,8 @@
 }
 
 .deal-activity-checkbox input[type="checkbox"]:checked {
-  background: #28a745;
-  border-color: #28a745;
+  background: #48D1CC;
+  border-color: #48D1CC;
 }
 
 .deal-activity-checkbox input[type="checkbox"]:checked::after {
@@ -1730,7 +1730,7 @@
 
 .deal-history-item.deal-activity-today {
   background: #e8f5e9;
-  border-color: #4caf50;
+  border-color: #48D1CC;
   border-width: 2px;
 }
 
@@ -1785,8 +1785,8 @@
 }
 
 .deal-history-checkbox input[type="checkbox"]:checked {
-  background: #28a745;
-  border-color: #28a745;
+  background: #48D1CC;
+  border-color: #48D1CC;
 }
 
 .deal-history-checkbox input[type="checkbox"]:checked::after {
@@ -1813,7 +1813,7 @@
 }
 
 .deal-history-checkmark {
-  color: #4caf50;
+  color: #48D1CC;
   font-weight: bold;
   font-size: 16px;
 }
@@ -2057,7 +2057,7 @@
 }
 
 .person-detail-toast-ok-btn {
-  background: #10B981;
+  background: #48D1CC;
   color: white;
   border: none;
   padding: 8px 20px;
@@ -2069,16 +2069,16 @@
 }
 
 .person-detail-toast-ok-btn:hover {
-  background: #059669;
+  background: #36B5B0;
 }
 
 .person-detail-toast-ok-btn:active {
-  background: #047857;
+  background: #2E9E99;
   transform: scale(0.98);
 }
 
 .person-detail-toast-success {
-  border-left-color: #10B981;
+  border-left-color: #48D1CC;
 }
 
 .person-detail-toast-success .person-detail-toast-icon-wrapper {

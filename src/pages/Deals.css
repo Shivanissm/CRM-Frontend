@@ -147,7 +147,7 @@
 
 .deals-add-btn {
   padding: 8px 16px;
-  background: #10b981;
+  background: #48D1CC;
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -162,7 +162,7 @@
 }
 
 .deals-add-btn:hover {
-  background: #059669;
+  background: #36B5B0;
 }
 
 .deals-pin-filters {
@@ -793,7 +793,7 @@
 
 .deals-add-btn {
   padding: 10px 20px;
-  background: #10b981;
+  background: #48D1CC;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -805,7 +805,7 @@
 }
 
 .deals-add-btn:hover {
-  background: #059669;
+  background: #36B5B0;
 }
 
 .deals-content {
@@ -968,7 +968,7 @@
 }
 
 .kanban-card-source-indicator.source-reference {
-  background: #22c55e; /* Green for Reference */
+  background: #48D1CC; /* Green for Reference */
 }
 
 .kanban-card-source-indicator.source-planner {
@@ -993,7 +993,7 @@
 
 .kanban-card.status-won {
   background: #dcfce7;
-  border-color: #22c55e;
+  border-color: #48D1CC;
 }
 
 .kanban-card.status-lost {
@@ -1020,7 +1020,7 @@
 }
 
 .kanban-card-status-badge.status-won {
-  background: #22c55e;
+  background: #48D1CC;
   color: #fff;
 }
 
@@ -1133,12 +1133,12 @@
 
 .kanban-card-action-btn.has-today-activities {
   background: #D1FAE5;
-  border: 1.5px solid #10B981;
+  border: 1.5px solid #48D1CC;
 }
 
 .kanban-card-action-btn.has-today-activities:hover {
   background: #A7F3D0;
-  border-color: #059669;
+  border-color: #36B5B0;
   transform: scale(1.05);
 }
 
@@ -1504,23 +1504,23 @@
 .kanban-won-zone {
   left: calc(24px + (100% - 48px - 16px) / 3 + 8px);
   background: #dcfce7;
-  border-color: #22c55e;
-  color: #16a34a;
+  border-color: #48D1CC;
+  color: #36B5B0;
 }
 
 .kanban-won-zone.drag-over {
   background: #bbf7d0;
-  border-color: #16a34a;
+  border-color: #36B5B0;
   box-shadow: 0 8px 20px rgba(34, 197, 94, 0.35);
   transform: translateY(-2px) scale(1.05);
 }
 
 .kanban-won-zone svg {
-  color: #16a34a;
+  color: #36B5B0;
 }
 
 .kanban-won-zone .kanban-status-zone-text {
-  color: #16a34a;
+  color: #36B5B0;
 }
 
 /* LOST Zone - Rightmost */
@@ -1843,12 +1843,12 @@
 
 .modal-btn-submit {
   border: none;
-  background: #10b981;
+  background: #48D1CC;
   color: #fff;
 }
 
 .modal-btn-submit:hover {
-  background: #059669;
+  background: #36B5B0;
 }
 
 .calendar-sync-hint {
@@ -1859,7 +1859,7 @@
 }
 
 .calendar-sync-hint.active {
-  color: #047857;
+  color: #2E9E99;
   font-weight: 500;
 }
 
@@ -1889,9 +1889,9 @@
 }
 
 .calendar-sync-pill.active {
-  border-color: rgba(16, 185, 129, 0.6);
-  background: rgba(16, 185, 129, 0.18);
-  color: #047857;
+  border-color: rgba(72, 209, 204, 0.6);
+  background: rgba(72, 209, 204, 0.18);
+  color: #2E9E99;
 }
 
 .calendar-sync-pill.muted {
@@ -2304,7 +2304,7 @@
 }
 
 .deal-detail-status-badge.status-won {
-  background: #22c55e;
+  background: #48D1CC;
   color: #fff;
 }
 
@@ -2336,12 +2336,12 @@
 }
 
 .deal-detail-status-btn-won {
-  background: #22c55e;
+  background: #48D1CC;
   color: #fff;
 }
 
 .deal-detail-status-btn-won:hover:not(:disabled) {
-  background: #16a34a;
+  background: #36B5B0;
 }
 
 .deal-detail-status-btn-lost {
@@ -3581,13 +3581,13 @@
 }
 
 .label-modal-btn-save {
-  background: #10b981;
+  background: #48D1CC;
   border: none;
   color: #fff;
 }
 
 .label-modal-btn-save:hover:not(:disabled) {
-  background: #059669;
+  background: #36B5B0;
 }
 
 .label-modal-btn:disabled {

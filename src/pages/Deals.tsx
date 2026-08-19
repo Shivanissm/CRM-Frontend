@@ -187,7 +187,7 @@ const getDisplayStageName = (stageName: string | null | undefined): string => {
 
 // Unused - kept for potential future use
 // const statusColors: Record<DealStatus, string> = {
-//   WON: '#10b981',
+//   WON: '#48D1CC',
 //   LOST: '#ef4444',
 //   IN_PROGRESS: '#8b5cf6',
 // };
@@ -6118,7 +6118,7 @@ const Deals = () => {
                       disabled={isSubmitting}
                       style={{
                         padding: '6px 12px',
-                        backgroundColor: '#10b981',
+                        backgroundColor: '#48D1CC',
                         color: 'white',
                         border: 'none',
                         borderRadius: '4px',
@@ -6266,7 +6266,7 @@ const Deals = () => {
                           >
                             {topActivity.done ? (
                               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <circle cx="8" cy="8" r="7" fill="#10B981" stroke="#10B981" strokeWidth="1.5"/>
+                                <circle cx="8" cy="8" r="7" fill="#48D1CC" stroke="#48D1CC" strokeWidth="1.5"/>
                                 <path d="M5 8L7 10L11 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                               </svg>
                             ) : (
@@ -7430,7 +7430,7 @@ const Deals = () => {
             {/* Header */}
             <div
               style={{
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                background: 'linear-gradient(135deg, #48D1CC 0%, #36B5B0 100%)',
                 padding: '20px 24px',
                 borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
               }}
@@ -7529,14 +7529,14 @@ const Deals = () => {
                   fontSize: '14px',
                   fontWeight: 500,
                   color: '#ffffff',
-                  backgroundColor: '#10b981',
+                  backgroundColor: '#48D1CC',
                   border: 'none',
                   borderRadius: '8px',
                   cursor: 'pointer',
                   transition: 'background-color 0.2s'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#059669'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#36B5B0'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#48D1CC'}
               >
                 OK
               </button>

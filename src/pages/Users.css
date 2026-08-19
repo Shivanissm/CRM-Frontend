@@ -136,7 +136,7 @@
   justify-content: space-between;
   gap: 12px;
   background: #dcfce7;
-  color: #166534;
+  color: #2E9E99;
   padding: 12px 16px;
   border-radius: 12px;
 }
@@ -358,11 +358,11 @@
 
 .users-status.active {
   background: #dcfce7;
-  color: #166534;
+  color: #2E9E99;
 }
 
 .users-status.active::before {
-  background: #16a34a;
+  background: #36B5B0;
 }
 
 .users-status.inactive {
@@ -614,7 +614,7 @@
 .org-title::after { display: none; }
 .title-badge { display: inline-block; background: #9ca3af; color: #fff; border-radius: 9999px; padding: 2px 8px; font-weight: 800; font-size: 11px; margin-left: 6px; }
 .admin-col .org-title .title-badge { background: #3b82f6; }
-.cm-col .org-title .title-badge { background: #10b981; }
+.cm-col .org-title .title-badge { background: #48D1CC; }
 .sales-col .column-title .title-badge { background: #800000; }
 .presales-col .column-title .title-badge { background: #c026d3; }
 .avatar-stack { display: flex; flex-direction: column; gap: 12px; align-items: center; position: relative; }
@@ -644,9 +644,9 @@
 .cm-circle { width: 44px; height: 44px; border-radius: 50%; background: #ffffff; border: 1px solid #e5e7eb; box-shadow: 0 0 0 2px rgba(229,231,235,0.9); display: flex; align-items: center; justify-content: center; padding: 1px; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; position: relative; }
 .cm-circle::after { display: none !important; }
 .cm-circle:hover { transform: translateY(-1px); box-shadow: 0 0 0 3px rgba(229,231,235,1); }
-.cm-circle.active { box-shadow: 0 0 0 3px rgba(16,185,129,0.25); border-color: #10b981; }
+.cm-circle.active { box-shadow: 0 0 0 3px rgba(72, 209, 204,0.25); border-color: #48D1CC; }
 .cm-circle-inner { width: 100%; height: 100%; border-radius: 50%; border: 1px solid #e5e7eb; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; padding: 1px; gap: 0; transition: border-color .12s ease; }
-.cm-circle:hover .cm-circle-inner, .cm-circle.active .cm-circle-inner { border-color: #10b981; }
+.cm-circle:hover .cm-circle-inner, .cm-circle.active .cm-circle-inner { border-color: #48D1CC; }
 .cm-avatar { width: 20px; height: 20px; border-radius: 50%; background: transparent; color: #94a3b8; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 11px; }
 .cm-name { display: none; }
 
@@ -779,7 +779,7 @@
 .board-detail-actions { display: flex; gap: 10px; }
 .board-detail-actions button { width: 28px; height: 28px; border-radius: 6px; border: 1px solid #fbd5bd; background: #fff7ed; cursor: pointer; }
 
-.board-invite { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; background: #d1fae5; color: #065f46; border: 2px solid #10b981; border-radius: 16px; padding: 10px 18px; font-weight: 700; z-index: 100; }
+.board-invite { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; background: #d4f5f3; color: #1a6360; border: 2px solid #48D1CC; border-radius: 16px; padding: 10px 18px; font-weight: 700; z-index: 100; }
 .sales-with-pre { display: flex; flex-direction: column; gap: 8px; position: relative; margin-left: 16px; padding-left: 16px; border-left: none; }
 .sales-with-pre::before { content: none; }
 .pre-sales-under { margin-left: 32px; display: flex; flex-direction: column; gap: 8px; position: relative; padding-left: 16px; border-left: none; }
@@ -1010,7 +1010,7 @@
 
 .btn-add-user {
   padding: 10px 20px;
-  background-color: #10b981;
+  background-color: #48D1CC;
   color: #ffffff;
   border: none;
   border-radius: 8px;
@@ -1022,7 +1022,7 @@
 }
 
 .btn-add-user:hover {
-  background-color: #059669; /* darker green */
+  background-color: #36B5B0; /* darker green */
 }
 
 .users-main-content {
@@ -1380,7 +1380,7 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background-color: #10b981;
+  background-color: #48D1CC;
   flex-shrink: 0;
 }
 
@@ -1799,7 +1799,7 @@
 
 .tree-summary-chip.green {
   background: #e7f9f2;
-  color: #0f766e;
+  color: #48D1CC;
 }
 .tree-summary-chip.green .chip-count {
   background: rgba(15, 118, 110, 0.18);
@@ -1905,8 +1905,8 @@
 }
 
 .tree-node.active {
-  border-color: #10b981;
-  box-shadow: 0 10px 20px rgba(16, 185, 129, 0.2);
+  border-color: #48D1CC;
+  box-shadow: 0 10px 20px rgba(72, 209, 204, 0.2);
 }
 
 .tree-node-initials {
@@ -2026,7 +2026,7 @@
   border: none;
   border-radius: 999px;
   padding: 12px 24px;
-  background: #10b981;
+  background: #48D1CC;
   color: #fff;
   font-weight: 700;
   cursor: pointer;
@@ -2034,7 +2034,7 @@
 }
 
 .tree-invite:hover {
-  box-shadow: 0 12px 24px rgba(16, 185, 129, 0.25);
+  box-shadow: 0 12px 24px rgba(72, 209, 204, 0.25);
   transform: translateY(-1px);
 }
 
@@ -2269,7 +2269,7 @@
 }
 
 .users-toast-ok-btn {
-  background: #10B981;
+  background: #48D1CC;
   color: white;
   border: none;
   padding: 8px 20px;
@@ -2281,11 +2281,11 @@
 }
 
 .users-toast-ok-btn:hover {
-  background: #059669;
+  background: #36B5B0;
 }
 
 .users-toast-ok-btn:active {
-  background: #047857;
+  background: #2E9E99;
   transform: scale(0.98);
 }
 

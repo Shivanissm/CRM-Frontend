@@ -23,9 +23,11 @@ const ROLE_LABELS: Record<AllowedRole, string> = {
 const ROLE_OPTIONS: Array<{ value: AllowedRole; label: string; requiresManager: boolean }> = [
   { value: 'ADMIN', label: ROLE_LABELS.ADMIN, requiresManager: false },
   { value: 'CATEGORY_MANAGER', label: ROLE_LABELS.CATEGORY_MANAGER, requiresManager: false },
-  { value: 'SALES', label: ROLE_LABELS.SALES, requiresManager: true },
+  { value: 'SALES', label: ROLE_LABELS.SALES, requiresManager: false },
   { value: 'PRESALES', label: ROLE_LABELS.PRESALES, requiresManager: true },
 ];
+
+const INVITE_ROLE_OPTIONS = ROLE_OPTIONS.filter((option) => option.value !== 'CATEGORY_MANAGER');
 
 const INVITE_FORM_INITIAL: {
   firstName: string;
@@ -37,7 +39,7 @@ const INVITE_FORM_INITIAL: {
   firstName: '',
   lastName: '',
   email: '',
-  role: ROLE_OPTIONS[0]?.value ?? 'CATEGORY_MANAGER',
+  role: INVITE_ROLE_OPTIONS[0]?.value ?? 'ADMIN',
   managerId: '',
 };
 
@@ -165,15 +167,6 @@ export default function Users() {
 
 const managerOptions = useMemo(() => {
   switch (inviteForm.role) {
-    case 'SALES':
-      return users
-        .filter((user) => user.active && user.role === 'CATEGORY_MANAGER')
-        .slice()
-        .sort((a, b) => {
-          const nameA = `${a.firstName ?? ''} ${a.lastName ?? ''}`.trim().toLowerCase();
-          const nameB = `${b.firstName ?? ''} ${b.lastName ?? ''}`.trim().toLowerCase();
-          return nameA.localeCompare(nameB);
-        });
     case 'PRESALES':
       return users
         .filter((user) => user.active && user.role === 'SALES')
@@ -189,7 +182,7 @@ const managerOptions = useMemo(() => {
 }, [users, inviteForm.role]);
 
   const requiresManager = useMemo(
-    () => ROLE_OPTIONS.find((option) => option.value === inviteForm.role)?.requiresManager ?? false,
+    () => INVITE_ROLE_OPTIONS.find((option) => option.value === inviteForm.role)?.requiresManager ?? false,
     [inviteForm.role],
   );
 
@@ -924,7 +917,7 @@ const filteredUsers = useMemo(() => {
                   onChange={(event) => handleInviteFieldChange('role', event.target.value)}
                   disabled={inviteLoading}
                 >
-                  {ROLE_OPTIONS.map((option) => (
+                  {INVITE_ROLE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -955,9 +948,7 @@ const filteredUsers = useMemo(() => {
                     </select>
                     <span className="users-modal-hint">
                       {managerOptions.length > 0
-                        ? inviteForm.role === 'SALES'
-                          ? 'Assign a Category Manager who oversees this sales rep.'
-                          : 'Assign a Sales user who this pre-sales member supports.'
+                        ? 'Assign a Sales user who this pre-sales member supports.'
                         : 'No eligible managers found. Add one first.'}
                     </span>
                   </>

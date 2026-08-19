@@ -3373,7 +3373,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
               height: '20px',
               borderRadius: '50%',
               border: a.done ? 'none' : '2px solid #ccc',
-              backgroundColor: a.done ? '#28a745' : 'transparent',
+              backgroundColor: a.done ? '#48D1CC' : 'transparent',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -3753,7 +3753,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
             className="btn" 
             onClick={() => setIsAddOpen(true)}
             style={{
-              background: '#28a745',
+              background: '#48D1CC',
               color: 'white',
               border: 'none',
               fontWeight: 600,
@@ -3896,7 +3896,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         </div>
               <div
                 className="summary-label"
-                style={{ color: tone?.text ?? '#28a745', textAlign: 'center' }}
+                style={{ color: tone?.text ?? '#48D1CC', textAlign: 'center' }}
               >
                 {card.label.includes('\n') ? (
                   <>
@@ -4309,11 +4309,11 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
       <style>{`
         @keyframes highlightPulse {
           0%, 100% {
-            box-shadow: 0 0 0 6px #10b981, 0 8px 24px rgba(16, 185, 129, 0.6), inset 0 0 0 2px rgba(16, 185, 129, 0.3);
-            background-color: #d1fae5;
+            box-shadow: 0 0 0 6px #48D1CC, 0 8px 24px rgba(72, 209, 204, 0.6), inset 0 0 0 2px rgba(72, 209, 204, 0.3);
+            background-color: #d4f5f3;
           }
           50% {
-            box-shadow: 0 0 0 10px #10b981, 0 12px 32px rgba(16, 185, 129, 0.8), inset 0 0 0 2px rgba(16, 185, 129, 0.4);
+            box-shadow: 0 0 0 10px #48D1CC, 0 12px 32px rgba(72, 209, 204, 0.8), inset 0 0 0 2px rgba(72, 209, 204, 0.4);
             background-color: #a7f3d0;
           }
         }
@@ -4386,13 +4386,13 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
               onClick={() => handleRowClick(a)} 
               style={{ 
                 cursor: 'pointer',
-                backgroundColor: isHighlighted ? '#d1fae5' : 'transparent',
+                backgroundColor: isHighlighted ? '#d4f5f3' : 'transparent',
                 transition: 'background-color 0.3s ease, box-shadow 0.3s ease, border 0.3s ease',
-                boxShadow: isHighlighted ? '0 0 0 6px #10b981, 0 8px 24px rgba(16, 185, 129, 0.6), inset 0 0 0 2px rgba(16, 185, 129, 0.3)' : 'none',
-                outline: isHighlighted ? '4px solid #10b981' : 'none',
+                boxShadow: isHighlighted ? '0 0 0 6px #48D1CC, 0 8px 24px rgba(72, 209, 204, 0.6), inset 0 0 0 2px rgba(72, 209, 204, 0.3)' : 'none',
+                outline: isHighlighted ? '4px solid #48D1CC' : 'none',
                 outlineOffset: isHighlighted ? '-4px' : '0',
-                borderLeft: isHighlighted ? '8px solid #10b981' : 'none',
-                borderRight: isHighlighted ? '2px solid #10b981' : 'none',
+                borderLeft: isHighlighted ? '8px solid #48D1CC' : 'none',
+                borderRight: isHighlighted ? '2px solid #48D1CC' : 'none',
                 position: isHighlighted ? 'relative' : 'static',
                 zIndex: isHighlighted ? 100 : 'auto',
                 transform: isHighlighted ? 'scale(1.01)' : 'scale(1)',
@@ -4727,9 +4727,9 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           <div className="am-confirmation-modal" onClick={(e) => e.stopPropagation()}>
             <div className="am-confirmation-icon">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="10" fill="#10b981" opacity="0.1"/>
-                <path d="M9 12l2 2 4-4" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="12" cy="12" r="10" stroke="#10b981" strokeWidth="2"/>
+                <circle cx="12" cy="12" r="10" fill="#48D1CC" opacity="0.1"/>
+                <path d="M9 12l2 2 4-4" stroke="#48D1CC" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="#48D1CC" strokeWidth="2"/>
               </svg>
             </div>
             <h3 className="am-confirmation-title">Activity Scheduled Successfully!</h3>

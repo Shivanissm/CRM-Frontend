@@ -25,11 +25,16 @@ code {
 :root {
   --text: #1f2328;
   --muted: #667085;
-  --border: #d1e7d7;
+  --border: #b8ebe9;
   --bg: #ffffff;
   --row: #ffffff;
-  --primary: #2563eb;
-  --header: #eaf7ef; /* light green to match reference */
+  --primary: #48D1CC;
+  --primary-dark: #36B5B0;
+  --primary-darker: #2E9E99;
+  --primary-darkest: #1F6360;
+  --primary-light: #e8faf9;
+  --primary-muted: #4a7573;
+  --header: #e8faf9;
 }
 
 .page { padding: 16px 20px; }
@@ -73,7 +78,7 @@ code {
   font-size: 15px;
   font-weight: 600;
   text-transform: uppercase;
-  color: #28a745;
+  color: #48D1CC;
   letter-spacing: 0.5px;
   text-align: center;
 }
@@ -150,7 +155,7 @@ code {
 }
 .table { width: max-content; min-width: 1200px; border-collapse: collapse; table-layout: fixed; }
 .table th, .table td { border-bottom: 1px solid var(--border); border-right: 1px solid #dee2e6; padding: 10px 8px; font-size: 13px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.table th { background: var(--header); font-weight: 600; color: #1b4332; position: sticky; top: 0; z-index: 1; border-right: 1px solid #cdebd8; }
+.table th { background: var(--header); font-weight: 600; color: #1f6360; position: sticky; top: 0; z-index: 1; border-right: 1px solid #b8ebe9; }
 .table th:last-child, .table td:last-child { border-right: none; }
 .table tr td { background: #fff; }
 .table tr {
@@ -161,7 +166,7 @@ code {
   background-color: #e3f2fd; /* Light blue hover - same as Persons page */
 }
 
-.text-green { color: #0f766e; }
+.text-green { color: #48D1CC; }
 .text-red { color: #dc2626; }
 .text-black { color: #111827; }
 
@@ -175,8 +180,8 @@ code {
   text-transform: uppercase;
 }
 .priority-low {
-  background-color: #d1fae5; /* Light green */
-  color: #065f46; /* Dark green text */
+  background-color: #d4f5f3;
+  color: #1a6360;
 }
 .priority-medium {
   background-color: #fef3c7; /* Light yellow */
@@ -200,7 +205,7 @@ code {
 .col-status { width: 120px; }
 .col-notes { width: 260px; }
 
-.link { color: #0f766e; text-decoration: none; }
+.link { color: #48D1CC; text-decoration: none; }
 .link:hover { text-decoration: underline; }
 
 @keyframes fadeIn {

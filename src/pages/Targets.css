@@ -192,7 +192,7 @@
   gap: 8px;
   border: none;
   border-radius: 12px;
-  background: #22c55e;
+  background: #48D1CC;
   color: #fff;
   font-size: 15px;
   font-weight: 600;
@@ -487,7 +487,7 @@
 
 .targets-grid-th-achieved {
   background: #dcfce7;
-  color: #166534;
+  color: #2E9E99;
 }
 
 .targets-grid-th-percent {
@@ -633,8 +633,8 @@
 }
 
 .targets-cell-achieved {
-  background: #d1fae5;
-  color: #065f46;
+  background: #d4f5f3;
+  color: #1a6360;
   font-weight: 500;
 }
 

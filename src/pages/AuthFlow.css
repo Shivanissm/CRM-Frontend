@@ -3,16 +3,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f0f4ff 0%, #f8fafc 100%);
+  background: linear-gradient(145deg, #b8ece9 0%, #8dddd8 22%, #6dccc6 48%, #5ec4bf 72%, #48d1cc 100%);
   padding: 32px 16px;
   box-sizing: border-box;
 }
 
 .auth-flow-card {
   width: min(420px, 100%);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.97);
   border-radius: 24px;
-  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.12);
+  box-shadow:
+    0 4px 6px rgba(26, 99, 96, 0.04),
+    0 24px 60px rgba(26, 99, 96, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.85);
   padding: 36px 40px;
   display: flex;
   flex-direction: column;
@@ -26,17 +29,30 @@
   text-align: center;
 }
 
+.auth-flow-badge {
+  align-self: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(72, 209, 204, 0.14);
+  color: #2e9e99;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
 .auth-flow-title {
   margin: 0;
   font-size: 1.8rem;
   font-weight: 700;
-  color: #0f172a;
+  color: #1a5553;
 }
 
 .auth-flow-subtitle {
   margin: 0;
-  color: #64748b;
+  color: #5a7a78;
   font-size: 0.95rem;
+  line-height: 1.55;
 }
 
 .auth-flow-form {
@@ -66,8 +82,8 @@
 
 .auth-flow-input:focus {
   outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  border-color: #48d1cc;
+  box-shadow: 0 0 0 3px rgba(72, 209, 204, 0.16);
 }
 
 .auth-flow-submit {
@@ -75,12 +91,12 @@
   padding: 12px 16px;
   border-radius: 14px;
   border: none;
-  background: #2563eb;
+  background: linear-gradient(135deg, #48d1cc 0%, #36b5b0 100%);
   color: #fff;
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 20px 35px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 8px 24px rgba(72, 209, 204, 0.28);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -92,7 +108,7 @@
 
 .auth-flow-submit:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 24px 40px rgba(37, 99, 235, 0.28);
+  box-shadow: 0 12px 28px rgba(72, 209, 204, 0.34);
 }
 
 .auth-flow-submit-content {
@@ -119,8 +135,8 @@
 }
 
 .auth-flow-status {
-  background: #dcfce7;
-  color: #15803d;
+  background: rgba(72, 209, 204, 0.1);
+  color: #1a6360;
   padding: 12px 14px;
   border-radius: 12px;
   font-size: 0.9rem;
@@ -136,7 +152,7 @@
 }
 
 .auth-flow-link {
-  color: #2563eb;
+  color: #2e9e99;
   font-weight: 600;
   text-decoration: none;
 }
@@ -152,7 +168,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px 0;
-  color: #2563eb;
+  color: #2e9e99;
 }
 
 .auth-flow-spinner::after {
@@ -160,8 +176,8 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: 4px solid rgba(37, 99, 235, 0.2);
-  border-top-color: #2563eb;
+  border: 4px solid rgba(72, 209, 204, 0.2);
+  border-top-color: #48d1cc;
   animation: authFlowSpin 0.9s linear infinite;
 }
 

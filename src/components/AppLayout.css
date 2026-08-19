@@ -8,7 +8,7 @@
 }
 
 .app-shell-sidebar {
-  background: linear-gradient(180deg, #19382a 0%, #245c37 100%);
+  background: linear-gradient(180deg, #1a5553 0%, #2e8f8b 100%);
   color: #ecf5ef;
   display: flex;
   flex-direction: column;
@@ -103,7 +103,7 @@
 
 .app-shell-nav-tooltip-portal {
   position: fixed;
-  background: #1f3a2d;
+  background: #1f6360;
   color: #ffffff;
   padding: 8px 12px;
   border-radius: 8px;
@@ -125,12 +125,12 @@
   top: 50%;
   transform: translateY(-50%);
   border: 6px solid transparent;
-  border-right-color: #1f3a2d;
+  border-right-color: #1f6360;
 }
 
 .app-shell-user-tooltip-portal {
   position: fixed;
-  background: #1f3a2d;
+  background: #1f6360;
   color: #ffffff;
   padding: 8px 12px;
   border-radius: 8px;
@@ -151,7 +151,7 @@
   top: 50%;
   transform: translateY(-50%);
   border: 6px solid transparent;
-  border-right-color: #1f3a2d;
+  border-right-color: #1f6360;
 }
 
 .app-shell-link-text::before {
@@ -161,7 +161,7 @@
   top: 50%;
   transform: translateY(-50%);
   border: 6px solid transparent;
-  border-right-color: #1f3a2d;
+  border-right-color: #1f6360;
 }
 
 @keyframes fadeIn {
@@ -226,7 +226,7 @@
 .app-shell-user-tooltip {
   display: none;
   position: fixed;
-  background: #1f3a2d;
+  background: #1f6360;
   color: #ffffff;
   padding: 8px 12px;
   border-radius: 8px;
@@ -245,7 +245,7 @@
   top: 50%;
   transform: translateY(-50%);
   border: 6px solid transparent;
-  border-right-color: #1f3a2d;
+  border-right-color: #1f6360;
 }
 
 .app-shell-user-name {
@@ -289,7 +289,7 @@
 .app-shell-logout-tooltip {
   display: none;
   position: fixed;
-  background: #1f3a2d;
+  background: #1f6360;
   color: #ffffff;
   padding: 8px 12px;
   border-radius: 8px;
@@ -309,14 +309,14 @@
   top: 50%;
   transform: translateY(-50%);
   border: 6px solid transparent;
-  border-right-color: #1f3a2d;
+  border-right-color: #1f6360;
 }
 
 .app-shell-logout::after {
   content: 'Logout';
   position: absolute;
   left: calc(100% + 12px);
-  background: #1f3a2d;
+  background: #1f6360;
   color: #ffffff;
   padding: 8px 12px;
   border-radius: 8px;
@@ -338,7 +338,7 @@
   top: 50%;
   transform: translateY(-50%);
   border: 6px solid transparent;
-  border-right-color: #1f3a2d;
+  border-right-color: #1f6360;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
@@ -564,13 +564,13 @@
 }
 
 .app-shell-search-result-status.won {
-  background: #d1fae5;
-  color: #065f46;
+  background: #d4f5f3;
+  color: #1a6360;
 }
 
 .app-shell-search-result-status.done {
-  background: #d1fae5;
-  color: #065f46;
+  background: #d4f5f3;
+  color: #1a6360;
 }
 
 .app-shell-search-result-status.pending {

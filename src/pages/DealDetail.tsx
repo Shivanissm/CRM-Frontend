@@ -1564,7 +1564,7 @@ export default function DealDetail() {
 
   // Unused - kept for potential future use
   // const statusColors: Record<string, string> = {
-  //   WON: '#10b981',
+  //   WON: '#48D1CC',
   //   LOST: '#ef4444',
   //   IN_PROGRESS: '#8b5cf6',
   // };
@@ -1616,8 +1616,8 @@ export default function DealDetail() {
           <div className="deal-detail-toast deal-detail-toast-success" onClick={(e) => e.stopPropagation()}>
             <div className="deal-detail-toast-icon-wrapper">
               <svg className="deal-detail-toast-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M20 6L9 17l-5-5" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="12" cy="12" r="10" stroke="#10B981" strokeWidth="2" fill="none"/>
+                <path d="M20 6L9 17l-5-5" stroke="#48D1CC" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="#48D1CC" strokeWidth="2" fill="none"/>
               </svg>
             </div>
             <div className="deal-detail-toast-content">
@@ -2279,7 +2279,7 @@ export default function DealDetail() {
                           }}
                           style={{
                             padding: '6px 12px',
-                            backgroundColor: '#10b981',
+                            backgroundColor: '#48D1CC',
                             color: 'white',
                             border: 'none',
                             borderRadius: '4px',

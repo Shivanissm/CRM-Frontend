@@ -2,7 +2,36 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { usersApi } from '../services/users';
 import { clearAuthSession } from '../utils/authToken';
+import type { InvitationVerification } from '../types/user';
 import './AuthFlow.css';
+
+function getInvitationSubtitle(
+  verifying: boolean,
+  verified: boolean,
+  invitation: InvitationVerification | null,
+): string {
+  if (verifying) {
+    return 'Verifying your invitation…';
+  }
+
+  if (!verified || !invitation) {
+    return 'We could not confirm your invitation.';
+  }
+
+  const fullName = [invitation.firstName, invitation.lastName].filter(Boolean).join(' ').trim();
+
+  if (invitation.email) {
+    return fullName
+      ? `Welcome, ${fullName}. Set up your account for ${invitation.email}.`
+      : `Set up your account for ${invitation.email}.`;
+  }
+
+  if (fullName) {
+    return `Welcome, ${fullName}. Set your password to activate your Houseofbarqat account.`;
+  }
+
+  return 'Set your password to activate your Houseofbarqat account.';
+}
 
 export default function AcceptInvitation() {
   const [searchParams] = useSearchParams();
@@ -11,11 +40,13 @@ export default function AcceptInvitation() {
 
   const [verifying, setVerifying] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
+  const [invitation, setInvitation] = useState<InvitationVerification | null>(null);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+
+  const isVerified = invitation !== null;
 
   useEffect(() => {
     if (!token) {
@@ -27,7 +58,7 @@ export default function AcceptInvitation() {
     const verify = async () => {
       try {
         const response = await usersApi.verifyInvitationToken(token);
-        setVerifiedEmail(response);
+        setInvitation(response);
         setStatus('Invitation verified. Set your password to finish creating your account.');
       } catch (err: any) {
         const message = err?.response?.data?.message || err?.message || 'Invitation link is invalid or expired.';
@@ -78,13 +109,10 @@ export default function AcceptInvitation() {
     <div className="auth-flow-page">
       <div className="auth-flow-card">
         <header className="auth-flow-header">
-          <h1 className="auth-flow-title">Welcome to The Brideside</h1>
+          <span className="auth-flow-badge">Welcome</span>
+          <h1 className="auth-flow-title">Welcome to Houseofbarqat</h1>
           <p className="auth-flow-subtitle">
-            {verifying
-              ? 'Verifying your invitation…'
-              : verifiedEmail
-                ? `Invitation for ${verifiedEmail}`
-                : 'We could not confirm your invitation.'}
+            {getInvitationSubtitle(verifying, isVerified, invitation)}
           </p>
         </header>
 
@@ -92,7 +120,7 @@ export default function AcceptInvitation() {
           <div className="auth-flow-spinner">
             <span>One moment…</span>
           </div>
-        ) : verifiedEmail ? (
+        ) : isVerified ? (
           <form className="auth-flow-form" onSubmit={handleSubmit}>
             <label className="auth-flow-label">
               New password
@@ -148,7 +176,7 @@ export default function AcceptInvitation() {
           </>
         )}
 
-        {!verifying && verifiedEmail && (
+        {!verifying && isVerified && (
           <div className="auth-flow-footer">
             <span>Already set up?</span>
             <Link to="/login" className="auth-flow-link">
@@ -160,4 +188,3 @@ export default function AcceptInvitation() {
     </div>
   );
 }
-

@@ -1178,7 +1178,7 @@ export default function PersonsList() {
     
     // Color mapping matching PersonDetail.tsx getLabelColor function
     const colorMap: Record<string, { bg: string; text: string; border: string }> = {
-      'CUSTOMER': { bg: '#e8f5e9', text: '#4CAF50', border: '#c8e6c9' },      // Mint green
+      'CUSTOMER': { bg: '#e8f5e9', text: '#48D1CC', border: '#c8e6c9' },      // Mint green
       'HOT_LEAD': { bg: '#ffebee', text: '#F44336', border: '#ffcdd2' },      // Red
       'WARM_LEAD': { bg: '#fffde7', text: '#FFC107', border: '#fff9c4' },     // Yellow
       'COLD_LEAD': { bg: '#e3f2fd', text: '#2196F3', border: '#bbdefb' },     // Blue
@@ -2287,7 +2287,7 @@ export default function PersonsList() {
             </div>
             <div className="customize-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
               <button onClick={() => setIsCustomizeOpen(false)} style={{ background: '#dc3545', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 4 }}>Cancel</button>
-              <button onClick={saveCustomize} style={{ background: '#28a745', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 4 }}>Save</button>
+              <button onClick={saveCustomize} style={{ background: '#48D1CC', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 4 }}>Save</button>
             </div>
           </div>
         </div>
@@ -2326,7 +2326,7 @@ export default function PersonsList() {
             </div>
             <div className="customize-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
               <button onClick={() => setIsAddCustomOpen(false)} style={{ background: '#dc3545', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 4 }}>Cancel</button>
-              <button onClick={saveCustomField} disabled={!newField.name || !newField.type} style={{ background: '#28a745', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 4, opacity: (!newField.name || !newField.type) ? 0.6 : 1 }}>Save</button>
+              <button onClick={saveCustomField} disabled={!newField.name || !newField.type} style={{ background: '#48D1CC', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 4, opacity: (!newField.name || !newField.type) ? 0.6 : 1 }}>Save</button>
             </div>
           </div>
         </div>
@@ -2579,7 +2579,7 @@ export default function PersonsList() {
             {/* Header */}
             <div
               style={{
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                background: 'linear-gradient(135deg, #48D1CC 0%, #36B5B0 100%)',
                 padding: '20px 24px',
                 display: 'flex',
                 alignItems: 'center',
@@ -2687,14 +2687,14 @@ export default function PersonsList() {
                   fontSize: '14px',
                   fontWeight: 500,
                   color: '#ffffff',
-                  backgroundColor: '#10b981',
+                  backgroundColor: '#48D1CC',
                   border: 'none',
                   borderRadius: '8px',
                   cursor: 'pointer',
                   transition: 'background-color 0.2s'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#059669'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#36B5B0'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#48D1CC'}
               >
                 OK
               </button>
@@ -2814,7 +2814,7 @@ export default function PersonsList() {
                   padding: '8px 16px',
                   border: 'none',
                   borderRadius: '4px',
-                  backgroundColor: (!dateRange.start || !dateRange.end) ? '#ccc' : '#10b981',
+                  backgroundColor: (!dateRange.start || !dateRange.end) ? '#ccc' : '#48D1CC',
                   color: 'white',
                   cursor: (!dateRange.start || !dateRange.end) ? 'not-allowed' : 'pointer',
                   fontSize: '14px',

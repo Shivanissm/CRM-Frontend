@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { User, ApiResponse, CreateUserRequest, UpdateUserRequest, SetPasswordRequest } from '../types/user';
+import type { User, ApiResponse, CreateUserRequest, UpdateUserRequest, SetPasswordRequest, InvitationVerification } from '../types/user';
 import { getStoredToken, logoutAndRedirect } from '../utils/authToken';
 import { withApiBase } from '../config/api';
 
@@ -79,11 +79,36 @@ export const usersApi = {
   },
 
   // Verify invitation token (no auth required)
-  verifyInvitationToken: async (token: string): Promise<string> => {
-    const response = await api.get<ApiResponse<string>>('/accept-invitation', {
+  verifyInvitationToken: async (token: string): Promise<InvitationVerification> => {
+    const response = await api.get<ApiResponse<InvitationVerification | string>>('/accept-invitation', {
       params: { token },
     });
-    return unwrap<string>(response.data);
+    const payload = unwrap<InvitationVerification | string>(response.data);
+    return parseInvitationVerification(payload);
   },
 };
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseInvitationVerification(payload: InvitationVerification | string): InvitationVerification {
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim();
+    if (trimmed.includes('@')) {
+      return { email: trimmed };
+    }
+    return {};
+  }
+
+  if (payload && typeof payload === 'object') {
+    const email =
+      typeof payload.email === 'string' && payload.email.includes('@') && !UUID_PATTERN.test(payload.email)
+        ? payload.email
+        : undefined;
+    const firstName = typeof payload.firstName === 'string' ? payload.firstName.trim() : undefined;
+    const lastName = typeof payload.lastName === 'string' ? payload.lastName.trim() : undefined;
+    return { email, firstName, lastName };
+  }
+
+  return {};
+}
 

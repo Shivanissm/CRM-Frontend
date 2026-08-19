@@ -468,7 +468,7 @@ export default function AddPersonModal({
             {/* Header */}
             <div
               style={{
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                background: 'linear-gradient(135deg, #48D1CC 0%, #36B5B0 100%)',
                 padding: '20px 24px',
                 display: 'flex',
                 alignItems: 'center',
@@ -576,14 +576,14 @@ export default function AddPersonModal({
                   fontSize: '14px',
                   fontWeight: 500,
                   color: '#ffffff',
-                  backgroundColor: '#10b981',
+                  backgroundColor: '#48D1CC',
                   border: 'none',
                   borderRadius: '8px',
                   cursor: 'pointer',
                   transition: 'background-color 0.2s'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#059669'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#10b981'}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#36B5B0'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#48D1CC'}
               >
                 OK
               </button>

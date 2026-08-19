@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 // Map routes to page titles
 const routeTitleMap: Record<string, string> = {
   '/login': 'Login - The Brideside',
-  '/accept-invitation': 'Accept Invitation - The Brideside',
+  '/accept-invitation': 'Accept Invitation - Houseofbarqat',
   '/reset-password': 'Reset Password - The Brideside',
   '/persons': 'Persons - The Brideside',
   '/activities': 'Activities - The Brideside',

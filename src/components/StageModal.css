@@ -31,7 +31,7 @@
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-  color: #1f3a2d;
+  color: #1f6360;
 }
 
 .stage-modal-close {
@@ -71,7 +71,7 @@
 
 .stage-modal-input {
   padding: 10px 14px;
-  border: 1px solid #cdebd8;
+  border: 1px solid #b8ebe9;
   border-radius: 10px;
   font-size: 14px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -79,8 +79,8 @@
 
 .stage-modal-input:focus {
   outline: none;
-  border-color: #28a745;
-  box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.18);
+  border-color: #48D1CC;
+  box-shadow: 0 0 0 3px rgba(72, 209, 204, 0.18);
 }
 
 .stage-modal-checkbox {
@@ -95,7 +95,7 @@
 .stage-modal-checkbox input {
   width: 18px;
   height: 18px;
-  accent-color: #28a745;
+  accent-color: #48D1CC;
 }
 
 .stage-modal-rotten {
@@ -141,14 +141,14 @@
 }
 
 .stage-modal-submit {
-  background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+  background: linear-gradient(135deg, #48D1CC 0%, #36B5B0 100%);
   color: #ffffff;
-  box-shadow: 0 8px 20px rgba(40, 167, 69, 0.28);
+  box-shadow: 0 8px 20px rgba(72, 209, 204, 0.28);
 }
 
 .stage-modal-submit:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 12px 28px rgba(40, 167, 69, 0.32);
+  box-shadow: 0 12px 28px rgba(72, 209, 204, 0.32);
 }
 
 .stage-modal-submit:disabled,

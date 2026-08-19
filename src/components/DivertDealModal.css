@@ -204,12 +204,12 @@
 }
 
 .divert-deal-btn-save-copy {
-  background: #10b981;
+  background: #48D1CC;
   color: #fff;
 }
 
 .divert-deal-btn-save-copy:hover:not(:disabled) {
-  background: #059669;
+  background: #36B5B0;
 }
 
 .divert-deal-btn-cancel:disabled,

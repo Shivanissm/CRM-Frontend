@@ -42,3 +42,9 @@ export interface SetPasswordRequest {
   confirmPassword: string;
 }
 
+export interface InvitationVerification {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+}
+
