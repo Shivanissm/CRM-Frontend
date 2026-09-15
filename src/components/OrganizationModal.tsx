@@ -140,7 +140,7 @@ export default function OrganizationModal({
               type="text"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Brideside Chicago"
+              placeholder="Organization name"
               className="organization-modal-input"
               maxLength={255}
               required

@@ -2850,10 +2850,6 @@ useEffect(() => {
       alert('Please enter a duration.');
       return;
     }
-    if (!pendingAttachmentFile && !pendingDoneActivity.attachmentUrl) {
-      alert('Please attach an image.');
-      return;
-    }
     const durationMinutes = parseDurationInputToMinutes(duration);
     if (durationMinutes === null || durationMinutes <= 0) {
       alert('Please enter a valid duration (e.g., 15 or 00:15:00).');

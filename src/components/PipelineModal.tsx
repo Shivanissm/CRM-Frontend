@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { filterFrontendCategoryStrings } from '../constants/categories';
 import type { Pipeline, PipelineRequest, PipelineUpdateRequest } from '../types/pipeline';
 import type { Organization } from '../types/organization';
 import type { Team } from '../types/team';
@@ -87,14 +88,18 @@ export default function PipelineModal({
     [mode],
   );
 
+  const applyAllowedCategories = (items: string[]) =>
+    filterFrontendCategoryStrings(
+      items
+        .map((item) => normaliseCategory(item))
+        .filter((item): item is string => Boolean(item)),
+    );
+
   useEffect(() => {
     if (categoryOptions.length === 0) return;
     setCategories((prev) => {
       const unique = new Set<string>(prev);
-      categoryOptions.forEach((item) => {
-        const normalised = normaliseCategory(item);
-        if (normalised) unique.add(normalised);
-      });
+      applyAllowedCategories(categoryOptions).forEach((item) => unique.add(item));
       return Array.from(unique).sort((a, b) => a.localeCompare(b));
     });
   }, [categoryOptions]);
@@ -149,14 +154,9 @@ export default function PipelineModal({
     pipelinesApi
       .listCategories()
       .then((data) => {
-        const unique = new Set<string>();
-        [...categoryOptions, ...data].forEach((item) => {
-          const normalised = normaliseCategory(item);
-          if (normalised) {
-            unique.add(normalised);
-          }
-        });
-        setCategories(Array.from(unique).sort((a, b) => a.localeCompare(b)));
+        setCategories(
+          applyAllowedCategories([...categoryOptions, ...data]).sort((a, b) => a.localeCompare(b)),
+        );
       })
       .catch((err: any) => {
         console.error('Failed to load pipeline categories', err);
@@ -164,9 +164,7 @@ export default function PipelineModal({
         // fallback to prop options if fetch fails
         setCategories((prev) => {
           if (prev.length > 0) return prev;
-          return categoryOptions
-            .map((item) => normaliseCategory(item))
-            .filter((item): item is string => Boolean(item));
+          return applyAllowedCategories(categoryOptions);
         });
       })
       .finally(() => setCategoriesLoading(false));

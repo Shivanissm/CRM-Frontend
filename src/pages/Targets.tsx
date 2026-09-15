@@ -20,6 +20,11 @@ import { getStoredUser } from '../utils/authToken';
 import SetTargetModal from '../components/SetTargetModal';
 import EditTargetModal from '../components/EditTargetModal';
 import Loader from '../components/Loader';
+import {
+  FRONTEND_TARGET_CATEGORIES,
+  FRONTEND_TARGET_CATEGORY,
+  filterTargetCategoryOptions,
+} from '../constants/categories';
 
 type ViewMode = 'USERS' | 'MONTHLY_TOTALS' | 'MONTHLY_GRID';
 type TargetLayer = 'SALES' | 'PRESALES';
@@ -176,7 +181,7 @@ export default function Targets() {
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
   
   // Filter state
-  const [selectedCategory, setSelectedCategory] = useState<TargetCategory | 'all'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<TargetCategory | 'all'>(FRONTEND_TARGET_CATEGORY);
   const [selectedTimePreset, setSelectedTimePreset] = useState<TimePreset>('THIS_MONTH');
   const [customMonth, setCustomMonth] = useState<number>(new Date().getMonth() + 1);
   const [customYear, setCustomYear] = useState<number>(new Date().getFullYear());
@@ -224,7 +229,11 @@ export default function Targets() {
     isPreSales && !isAdmin ? autoCategoryForPreSales : null;
 
   // Category order for display
-  const categoryOrder: TargetCategory[] = ['PHOTOGRAPHY', 'MAKEUP', 'PLANNING_AND_DECOR'];
+  const categoryOrder: TargetCategory[] = FRONTEND_TARGET_CATEGORIES;
+  const targetCategoryOptions = useMemo(
+    () => filterTargetCategoryOptions(filtersMeta?.categories ?? []),
+    [filtersMeta],
+  );
   const availableTimePresets = useMemo(
     () => filtersMeta?.presets.filter((preset) => !HIDDEN_TIME_PRESETS.includes(preset.code)) ?? [],
     [filtersMeta],
@@ -524,7 +533,7 @@ export default function Targets() {
       PLANNING_AND_DECOR: [],
     };
     dashboardData.deals.forEach((deal) => {
-      if (grouped[deal.category]) {
+      if (deal.category === FRONTEND_TARGET_CATEGORY && grouped[deal.category]) {
         grouped[deal.category].push(deal);
       }
     });
@@ -537,21 +546,38 @@ export default function Targets() {
   // fall back to aggregating from the category breakdown data (when available)
   // so that category managers still see totals instead of an empty table.
   const getCategoryTables = (): CategoryTable[] => {
-    if (!dashboardData) return [];
+    const buildEmptyTables = (categories: TargetCategory[] = categoryOrder): CategoryTable[] =>
+      categories.map((cat) => ({
+        category: cat,
+        categoryLabel: getCategoryLabel(cat),
+        rows: [],
+      }));
+
+    const filterToFrontendCategories = (tables: CategoryTable[]): CategoryTable[] =>
+      tables.filter((table) => categoryOrder.includes(table.category));
+
+    if (!dashboardData) {
+      return effectiveSelectedCategory === 'all'
+        ? buildEmptyTables()
+        : buildEmptyTables(
+            categoryOrder.includes(effectiveSelectedCategory) ? [effectiveSelectedCategory] : [],
+          );
+    }
 
     const hasMonthBlocks = dashboardData.months && dashboardData.months.length > 0;
 
     if (hasMonthBlocks) {
       const firstMonth = dashboardData.months[0];
-      const hasAnyRows = firstMonth.categories?.some((cat) => cat.rows && cat.rows.length > 0);
+      const monthCategories = filterToFrontendCategories(firstMonth.categories ?? []);
 
-      if (hasAnyRows) {
-        return firstMonth.categories;
+      if (monthCategories.length > 0) {
+        return monthCategories.map((cat) => ({
+          ...cat,
+          rows: cat.rows ?? [],
+        }));
       }
     }
 
-    // If there are no rows in the main dashboard data (for the current preset),
-    // try to build aggregated rows from the category breakdown data.
     if (categoryBreakdownData && categoryBreakdownParams?.category) {
       const aggregatedUsers = new Map<number, TargetRow>();
 
@@ -559,7 +585,6 @@ export default function Targets() {
         monthBlock.users.forEach((userRow) => {
           const existing = aggregatedUsers.get(userRow.userId);
           if (!existing) {
-            // Clone the row so we don't mutate the cached breakdown data
             aggregatedUsers.set(userRow.userId, { ...userRow });
           } else {
             existing.totalTarget = safeNumber(existing.totalTarget) + safeNumber(userRow.totalTarget);
@@ -593,8 +618,11 @@ export default function Targets() {
       ];
     }
 
-    // Fallback: no data available
-    return [];
+    return effectiveSelectedCategory === 'all'
+      ? buildEmptyTables()
+      : buildEmptyTables(
+          categoryOrder.includes(effectiveSelectedCategory) ? [effectiveSelectedCategory] : [],
+        );
   };
 
   // Get current month and year from dashboard data
@@ -680,22 +708,23 @@ export default function Targets() {
       return result;
     };
 
-    if (effectiveSelectedCategory === 'all') {
-      // Return all categories in order
-      return categoryOrder.map((cat) => {
-        const table = categoryTables.find((t) => t.category === cat);
-        if (!table) {
-          return { category: cat, categoryLabel: getCategoryLabel(cat), rows: [] };
-        }
-        const filteredRows = applyRowFilters(table.rows);
-        return { ...table, rows: filteredRows };
-      });
-    }
+    const categoriesToShow =
+      effectiveSelectedCategory === 'all'
+        ? categoryOrder
+        : categoryOrder.includes(effectiveSelectedCategory)
+          ? [effectiveSelectedCategory]
+          : [];
 
-    const table = categoryTables.find((t) => t.category === effectiveSelectedCategory);
-    if (!table) return [];
-    const filteredRows = applyRowFilters(table.rows);
-    return [{ ...table, rows: filteredRows }];
+    return categoriesToShow.map((cat) => {
+      const table = categoryTables.find((t) => t.category === cat);
+      const baseTable = table ?? {
+        category: cat,
+        categoryLabel: getCategoryLabel(cat),
+        rows: [],
+      };
+      const filteredRows = applyRowFilters(baseTable.rows);
+      return { ...baseTable, rows: filteredRows };
+    });
   }, [
     categoryTables,
     effectiveSelectedCategory,
@@ -791,11 +820,12 @@ export default function Targets() {
     if (
       !isAdmin &&
       dashboardData?.filters?.category &&
+      categoryOrder.includes(dashboardData.filters.category) &&
       selectedCategory === 'all'
     ) {
       setSelectedCategory(dashboardData.filters.category);
     }
-  }, [dashboardData?.filters?.category, isAdmin, selectedCategory]);
+  }, [dashboardData?.filters?.category, isAdmin, selectedCategory, categoryOrder]);
 
   /**
    * Filter and recompute monthly breakdown data based on targetLayer.
@@ -1062,13 +1092,11 @@ export default function Targets() {
               disabled={
                 !!restrictedCategoryForCategoryManager ||
                 !!restrictedCategoryForSales ||
-                !!restrictedCategoryForPreSales
+                !!restrictedCategoryForPreSales ||
+                targetCategoryOptions.length <= 1
               }
             >
-              {!restrictedCategoryForCategoryManager &&
-                !restrictedCategoryForSales &&
-                !restrictedCategoryForPreSales && <option value="all">All Categories</option>}
-              {filtersMeta?.categories
+              {targetCategoryOptions
                 .filter((cat) =>
                   restrictedCategoryForCategoryManager
                     ? cat.code === restrictedCategoryForCategoryManager
@@ -1659,7 +1687,8 @@ export default function Targets() {
             onCreated={async () => {
               await loadDashboard();
             }}
-            categories={filtersMeta?.categories ?? []}
+            categories={targetCategoryOptions}
+            defaultCategory={FRONTEND_TARGET_CATEGORY}
             defaultAssigneeType={targetLayer === 'PRESALES' ? 'PRE_SALES' : 'SALES'}
           />
           {editingTarget && (
@@ -1674,7 +1703,7 @@ export default function Targets() {
                 await loadDashboard();
               }}
               target={editingTarget}
-              categories={filtersMeta?.categories ?? []}
+              categories={targetCategoryOptions}
             />
           )}
         </>

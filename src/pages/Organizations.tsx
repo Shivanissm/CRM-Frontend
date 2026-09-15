@@ -9,6 +9,7 @@ import type { Organization, OrganizationCategory, OrganizationOwner, Organizatio
 import type { Deal } from '../types/deal';
 import type { User } from '../types/user';
 import './Organizations.css';
+import { filterOrganizationCategories } from '../constants/categories';
 import { clearAuthSession, getStoredUser } from '../utils/authToken';
 
 type ModalState =
@@ -318,7 +319,7 @@ export default function Organizations() {
   const loadCategories = async () => {
     try {
       const data = await organizationsApi.listCategories();
-      setCategories(data);
+      setCategories(filterOrganizationCategories(data));
     } catch (err: any) {
       if (err?.response?.status === 401) {
         handleAuthRedirect();
