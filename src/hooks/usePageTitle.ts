@@ -3,25 +3,25 @@ import { useLocation } from 'react-router-dom';
 
 // Map routes to page titles
 const routeTitleMap: Record<string, string> = {
-  '/login': 'Login - The Brideside',
+  '/login': 'Login - Houseofbarqat',
   '/accept-invitation': 'Accept Invitation - Houseofbarqat',
-  '/reset-password': 'Reset Password - The Brideside',
-  '/persons': 'Persons - The Brideside',
-  '/activities': 'Activities - The Brideside',
-  '/pipelines': 'Pipelines - The Brideside',
-  '/teams': 'Teams - The Brideside',
-  '/calendar': 'Calendar - The Brideside',
-  '/organizations': 'Organizations - The Brideside',
-  '/deals': 'Deals - The Brideside',
-  '/users': 'Users - The Brideside',
-  '/targets': 'Targets - The Brideside',
-  '/dashboard/sales': 'Sales Dashboard - The Brideside',
-  '/dashboard/category-manager': 'Category Manager Dashboard - The Brideside',
-  '/dashboard/pre-sales': 'Pre-Sales Dashboard - The Brideside',
+  '/reset-password': 'Reset Password - Houseofbarqat',
+  '/persons': 'Persons - Houseofbarqat',
+  '/activities': 'Activities - Houseofbarqat',
+  '/pipelines': 'Pipelines - Houseofbarqat',
+  '/teams': 'Teams - Houseofbarqat',
+  '/calendar': 'Calendar - Houseofbarqat',
+  '/organizations': 'Organizations - Houseofbarqat',
+  '/deals': 'Deals - Houseofbarqat',
+  '/users': 'Users - Houseofbarqat',
+  '/targets': 'Targets - Houseofbarqat',
+  '/dashboard/sales': 'Sales Dashboard - Houseofbarqat',
+  '/dashboard/category-manager': 'Category Manager Dashboard - Houseofbarqat',
+  '/dashboard/pre-sales': 'Pre-Sales Dashboard - Houseofbarqat',
 };
 
 // Default title
-const DEFAULT_TITLE = 'The Brideside';
+const DEFAULT_TITLE = 'Houseofbarqat';
 
 /**
  * Hook to set page title based on current route
@@ -37,11 +37,11 @@ export function usePageTitle() {
     let title: string | undefined;
 
     if (pathname.startsWith('/persons/') && pathname !== '/persons') {
-      title = 'Person Details - The Brideside';
+      title = 'Person Details - Houseofbarqat';
     } else if (pathname.startsWith('/deals/') && pathname !== '/deals') {
-      title = 'Deal Details - The Brideside';
+      title = 'Deal Details - Houseofbarqat';
     } else if (pathname.startsWith('/targets/users/')) {
-      title = 'Target User Details - The Brideside';
+      title = 'Target User Details - Houseofbarqat';
     } else {
       // Use exact match or default
       title = routeTitleMap[pathname] || DEFAULT_TITLE;

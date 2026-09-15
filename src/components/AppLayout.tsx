@@ -1,6 +1,19 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
+import {
+  Home,
+  Users,
+  Briefcase,
+  Calendar,
+  Handshake,
+  ListTodo,
+  Building2,
+  UserCircle,
+  Target,
+  LogOut,
+  type LucideIcon,
+} from 'lucide-react';
 import { clearAuthSession, getStoredUser } from '../utils/authToken';
 import './AppLayout.css';
 import { resolveRoleDashboardRoute } from '../utils/roleRoutes';
@@ -14,18 +27,19 @@ import { addToRecentlyViewed } from '../utils/recentlyViewed';
 interface NavItem {
   label: string;
   to: string;
-  icon?: string;
+  icon: LucideIcon;
+  end?: boolean;
 }
 
 const baseNavItems: NavItem[] = [
-  { label: 'Persons', to: '/persons' , icon: '👥' },
-  { label: 'Deals', to: '/deals', icon: '💼' },
-  { label: 'Calendar', to: '/calendar', icon: '📅' },
-  { label: 'Teams', to: '/teams', icon: '🤝' },
-  { label: 'Activities', to: '/activities', icon: '🗓️' },
-  { label: 'Organizations', to: '/organizations', icon: '🏢' },
-  { label: 'Users', to: '/users', icon: '🧑‍💼' },
-  { label: 'Targets', to: '/targets', icon: '🎯' },
+  { label: 'Persons', to: '/persons', icon: Users, end: true },
+  { label: 'Deals', to: '/deals', icon: Briefcase },
+  { label: 'Calendar', to: '/calendar', icon: Calendar },
+  { label: 'Teams', to: '/teams', icon: Handshake },
+  { label: 'Tasks', to: '/activities', icon: ListTodo },
+  { label: 'Organizations', to: '/organizations', icon: Building2 },
+  { label: 'Team', to: '/users', icon: UserCircle },
+  { label: 'Targets', to: '/targets', icon: Target },
 ];
 
 interface SearchResult {
@@ -41,25 +55,46 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const user = getStoredUser();
   const dashboardRoute = resolveRoleDashboardRoute(user?.role);
+  const homeRoute = dashboardRoute ?? '/deals';
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [tooltipState, setTooltipState] = useState<{ label: string; x: number; y: number } | null>(null);
-  const [userTooltipState, setUserTooltipState] = useState<{ name: string; role: string; x: number; y: number } | null>(null);
+  const [logoError, setLogoError] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchWrapperRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const resultsDropdownRef = useRef<HTMLDivElement>(null);
 
-  const navItems = useMemo(() => {
-    if (!dashboardRoute) return baseNavItems;
-    return [
-      { label: 'Dashboard', to: dashboardRoute, icon: '📊' },
-      ...baseNavItems,
-    ];
-  }, [dashboardRoute]);
+  const navItems = useMemo<NavItem[]>(
+    () => [{ label: 'Home', to: homeRoute, icon: Home, end: true }, ...baseNavItems],
+    [homeRoute],
+  );
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => !prev);
+  };
+
+  const showNavTooltip = sidebarCollapsed;
+
+  const handleNavMouseEnter = (label: string, e: React.MouseEvent<HTMLElement>) => {
+    if (!showNavTooltip) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltipState({
+      label,
+      x: rect.right + 12,
+      y: rect.top + rect.height / 2,
+    });
+  };
+
+  const handleNavMouseLeave = () => {
+    if (showNavTooltip) {
+      setTooltipState(null);
+    }
+  };
 
   // Perform search - optimized with parallel requests
   const performSearch = useCallback(async (query: string) => {
@@ -76,10 +111,8 @@ export default function AppLayout() {
       const searchLower = query.toLowerCase().trim();
       const allResults: SearchResult[] = [];
 
-      // Execute all searches in parallel for faster response
       const [dealsResult, personsResult, organizationsResult, activitiesResult] = await Promise.allSettled([
-        // Search deals
-        dealsApi.list().then(deals => 
+        dealsApi.list().then(deals =>
           deals
             .filter(deal => deal.name.toLowerCase().includes(searchLower))
             .slice(0, 5)
@@ -90,10 +123,9 @@ export default function AppLayout() {
               subtitle: deal.personId ? `Person ID: ${deal.personId}` : 'No person',
               status: deal.status,
               value: deal.value || undefined,
-            }))
+            })),
         ),
-        // Search persons
-        personsApi.list({ page: 0, size: 50, q: query }).then(personsResponse => 
+        personsApi.list({ page: 0, size: 50, q: query }).then(personsResponse =>
           (personsResponse.content || [])
             .slice(0, 5)
             .map(person => ({
@@ -101,10 +133,9 @@ export default function AppLayout() {
               id: person.id,
               title: person.name,
               subtitle: person.organization || person.email || person.phone || undefined,
-            }))
+            })),
         ),
-        // Search organizations
-        organizationsApi.list().then(organizations => 
+        organizationsApi.list().then(organizations =>
           organizations
             .filter(org => org.name.toLowerCase().includes(searchLower))
             .slice(0, 5)
@@ -113,16 +144,15 @@ export default function AppLayout() {
               id: org.id,
               title: org.name,
               subtitle: org.category || undefined,
-            }))
+            })),
         ),
-        // Search activities
         activitiesApi.list({ page: 0, size: 50 }).then(activitiesResponse => {
           const activities = activitiesResponse.content || [];
           return activities
-            .filter(activity => 
+            .filter(activity =>
               activity.subject?.toLowerCase().includes(searchLower) ||
               activity.assignedUser?.toLowerCase().includes(searchLower) ||
-              activity.dealName?.toLowerCase().includes(searchLower)
+              activity.dealName?.toLowerCase().includes(searchLower),
             )
             .slice(0, 5)
             .map(activity => ({
@@ -135,7 +165,6 @@ export default function AppLayout() {
         }),
       ]);
 
-      // Collect results from all settled promises
       if (dealsResult.status === 'fulfilled') {
         allResults.push(...dealsResult.value);
       }
@@ -158,7 +187,6 @@ export default function AppLayout() {
     }
   }, []);
 
-  // Debounced search - reduced delay for faster response
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
@@ -169,14 +197,12 @@ export default function AppLayout() {
 
     const timeoutId = setTimeout(() => {
       performSearch(searchQuery);
-    }, 150); // Reduced from 300ms to 150ms for faster response
+    }, 150);
 
     return () => clearTimeout(timeoutId);
   }, [searchQuery, performSearch]);
 
-  // Handle result selection
   const handleSelectResult = useCallback((result: SearchResult) => {
-    // Add to recently viewed
     addToRecentlyViewed({
       type: result.type,
       id: result.id,
@@ -186,7 +212,6 @@ export default function AppLayout() {
       value: result.value,
     });
 
-    // Navigate to the result
     let path = '';
     switch (result.type) {
       case 'deal':
@@ -196,7 +221,7 @@ export default function AppLayout() {
         path = `/persons/${result.id}`;
         break;
       case 'organization':
-        path = `/organizations`;
+        path = '/organizations';
         break;
       case 'activity':
         path = `/activities?activityId=${result.id}`;
@@ -212,7 +237,6 @@ export default function AppLayout() {
     }
   }, [navigate]);
 
-  // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -233,12 +257,11 @@ export default function AppLayout() {
     }
   };
 
-  // Close results when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
       if (
-        searchWrapperRef.current && 
+        searchWrapperRef.current &&
         !searchWrapperRef.current.contains(target) &&
         resultsDropdownRef.current &&
         !resultsDropdownRef.current.contains(target)
@@ -253,7 +276,6 @@ export default function AppLayout() {
     }
   }, [showResults]);
 
-  // Scroll selected item into view
   useEffect(() => {
     if (selectedIndex >= 0 && resultsRef.current) {
       const selectedElement = resultsRef.current.children[selectedIndex] as HTMLElement;
@@ -263,17 +285,16 @@ export default function AppLayout() {
     }
   }, [selectedIndex]);
 
-  // Keyboard shortcut: Cmd/Ctrl+K to focus search
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
   const handleLogout = () => {
@@ -281,43 +302,59 @@ export default function AppLayout() {
     navigate('/login', { replace: true });
   };
 
+  const userName = user
+    ? [user.firstName, user.lastName].filter(Boolean).join(' ') || 'User'
+    : 'User';
+  const userRole = user?.role ?? 'Member';
+  const userInitial = (user?.firstName?.[0] ?? user?.email?.[0] ?? '?').toUpperCase();
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell${sidebarCollapsed ? ' app-shell--collapsed' : ''}`}>
       <aside className="app-shell-sidebar">
-        <div 
-          className="app-shell-brand" 
-          onClick={() => navigate('/deals')}
-          title="The Brideside"
+        <button
+          type="button"
+          className="app-shell-brand"
+          onClick={toggleSidebar}
+          title={sidebarCollapsed ? 'Show sidebar labels' : 'Hide sidebar labels'}
+          aria-expanded={!sidebarCollapsed}
+          aria-label="Toggle sidebar"
         >
-          <img 
-            src="https://bridesideimages.blob.core.windows.net/tbs-website-images/heyueye.png" 
-            alt="The Brideside Logo" 
-            className="app-shell-logo"
-          />
-        </div>
-        <nav className="app-shell-nav">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/persons'}
-              className={({ isActive }) =>
-                `app-shell-link${isActive ? ' active' : ''}`
-              }
-              onMouseEnter={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const centerY = rect.top + (rect.height / 2);
-                const rightX = rect.right + 12;
-                setTooltipState({ label: item.label, x: rightX, y: centerY });
-              }}
-              onMouseLeave={() => {
-                setTooltipState(null);
-              }}
-            >
-              {item.icon && <span className="app-shell-link-icon">{item.icon}</span>}
-            </NavLink>
-          ))}
+          {!logoError ? (
+            <img
+              src="https://bridesideimages.blob.core.windows.net/tbs-website-images/heyueye.png"
+              alt=""
+              className="app-shell-logo"
+              onError={() => setLogoError(true)}
+            />
+          ) : (
+            <span className="app-shell-logo app-shell-logo-fallback" aria-hidden="true">HB</span>
+          )}
+          {!sidebarCollapsed && (
+            <span className="app-shell-brand-name">Houseofbarqat</span>
+          )}
+        </button>
+
+        <nav className="app-shell-nav" aria-label="Main navigation">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to + item.label}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `app-shell-link${isActive ? ' active' : ''}`
+                }
+                onMouseEnter={(e) => handleNavMouseEnter(item.label, e)}
+                onMouseLeave={handleNavMouseLeave}
+              >
+                <Icon className="app-shell-link-icon" size={21} strokeWidth={2} aria-hidden="true" />
+                <span className="app-shell-link-text">{item.label}</span>
+              </NavLink>
+            );
+          })}
         </nav>
+
         {tooltipState && createPortal(
           <div
             className="app-shell-nav-tooltip-portal"
@@ -331,100 +368,49 @@ export default function AppLayout() {
           >
             {tooltipState.label}
           </div>,
-          document.body
+          document.body,
         )}
-        {userTooltipState && createPortal(
-          <div
-            className="app-shell-user-tooltip-portal"
-            style={{
-              position: 'fixed',
-              top: `${userTooltipState.y}px`,
-              left: `${userTooltipState.x}px`,
-              transform: 'translateY(-50%)',
-              zIndex: 999999,
-            }}
-          >
-            <div style={{ fontWeight: 600, marginBottom: '2px' }}>{userTooltipState.name}</div>
-            <div style={{ fontSize: '12px', opacity: 0.8 }}>{userTooltipState.role}</div>
-          </div>,
-          document.body
-        )}
+
         <div className="app-shell-footer">
           {user && (
-            <div 
+            <div
               className="app-shell-user"
-              onMouseEnter={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'User';
-                const userRole = user.role ?? 'Member';
-                const centerY = rect.top + (rect.height / 2);
-                const rightX = rect.right + 12;
-                setUserTooltipState({ name: userName, role: userRole, x: rightX, y: centerY });
-              }}
-              onMouseLeave={() => {
-                setUserTooltipState(null);
-              }}
+              title={`${userName} · ${userRole}`}
+              onMouseEnter={(e) => handleNavMouseEnter('Profile', e)}
+              onMouseLeave={handleNavMouseLeave}
             >
-              <div className="app-shell-avatar">
-                {(user.firstName?.[0] ?? user.email?.[0] ?? '?').toUpperCase()}
-              </div>
+              <div className="app-shell-avatar">{userInitial}</div>
               <div className="app-shell-user-details">
-                <div className="app-shell-user-name">
-                  {[user.firstName, user.lastName].filter(Boolean).join(' ') || 'User'}
-                </div>
-                <div className="app-shell-user-role">{user.role ?? 'Member'}</div>
+                <div className="app-shell-user-name">{userName}</div>
+                <div className="app-shell-user-role">{userRole}</div>
               </div>
             </div>
           )}
-          <button 
-            className="app-shell-logout" 
+          <button
+            type="button"
+            className="app-shell-logout"
             onClick={handleLogout}
-            onMouseEnter={(e) => {
-              const textEl = e.currentTarget.querySelector('.app-shell-logout-tooltip') as HTMLElement;
-              if (textEl) {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const tooltipTop = rect.top + (rect.height / 2);
-                const tooltipLeft = rect.right + 12;
-                textEl.style.cssText = `
-                  display: block !important;
-                  position: fixed !important;
-                  top: ${tooltipTop}px !important;
-                  left: ${tooltipLeft}px !important;
-                  transform: translateY(-50%) !important;
-                  z-index: 999999 !important;
-                  margin: 0 !important;
-                  padding: 8px 12px !important;
-                `;
-              }
-            }}
-            onMouseLeave={(e) => {
-              const textEl = e.currentTarget.querySelector('.app-shell-logout-tooltip') as HTMLElement;
-              if (textEl) {
-                textEl.style.display = 'none';
-              }
-            }}
+            onMouseEnter={(e) => handleNavMouseEnter('Logout', e)}
+            onMouseLeave={handleNavMouseLeave}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-              <polyline points="16 17 21 12 16 7"></polyline>
-              <line x1="21" y1="12" x2="9" y2="12"></line>
-            </svg>
-            <span className="app-shell-logout-tooltip">Logout</span>
+            <LogOut className="app-shell-logout-icon" size={21} strokeWidth={2} aria-hidden="true" />
+            <span className="app-shell-logout-text">Logout</span>
           </button>
         </div>
       </aside>
+
       <main className="app-shell-content">
         <div className="app-shell-header">
           <div className="app-shell-search-wrapper" ref={searchWrapperRef}>
             <div className="app-shell-search-input">
               <svg className="app-shell-search-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M9 17A8 8 0 1 0 9 1a8 8 0 0 0 0 16zM19 19l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M9 17A8 8 0 1 0 9 1a8 8 0 0 0 0 16zM19 19l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <input
                 ref={searchInputRef}
                 type="text"
                 className="app-shell-search-input-field"
-                placeholder="Search The Brideside"
+                placeholder="Search Houseofbarqat"
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -439,6 +425,7 @@ export default function AppLayout() {
               />
               {searchQuery && (
                 <button
+                  type="button"
                   className="app-shell-search-clear"
                   onClick={() => {
                     setSearchQuery('');
@@ -453,7 +440,7 @@ export default function AppLayout() {
               )}
             </div>
             {showResults && (searchResults.length > 0 || isSearching) && createPortal(
-              <div 
+              <div
                 ref={resultsDropdownRef}
                 className="app-shell-search-results"
                 style={{
@@ -465,7 +452,7 @@ export default function AppLayout() {
               >
                 {isSearching && (
                   <div className="app-shell-search-loading">
-                    <div className="app-shell-search-spinner"></div>
+                    <div className="app-shell-search-spinner" />
                     <span>Searching...</span>
                   </div>
                 )}
@@ -489,9 +476,9 @@ export default function AppLayout() {
                       >
                         <div className="app-shell-search-result-icon">
                           {result.type === 'deal' && '$'}
-                          {result.type === 'person' && '👤'}
-                          {result.type === 'organization' && '🏢'}
-                          {result.type === 'activity' && '📅'}
+                          {result.type === 'person' && 'P'}
+                          {result.type === 'organization' && 'O'}
+                          {result.type === 'activity' && 'T'}
                         </div>
                         <div className="app-shell-search-result-content">
                           <div className="app-shell-search-result-title">{result.title}</div>
@@ -514,16 +501,16 @@ export default function AppLayout() {
                   </div>
                 )}
               </div>,
-              document.body
+              document.body,
             )}
             <div className="app-shell-header-actions">
               <QuickAdd
-              onAddPerson={() => navigate('/persons', { state: { openModal: true } })}
-              onAddDeal={() => navigate('/deals', { state: { openModal: true } })}
-              onAddOrganization={() => navigate('/organizations', { state: { openModal: true } })}
-              onAddActivity={() => navigate('/activities', { state: { openModal: true } })}
-              onAddPipeline={() => navigate('/pipelines', { state: { openModal: true } })}
-              onAddUser={() => navigate('/users', { state: { openModal: true } })}
+                onAddPerson={() => navigate('/persons', { state: { openModal: true } })}
+                onAddDeal={() => navigate('/deals', { state: { openModal: true } })}
+                onAddOrganization={() => navigate('/organizations', { state: { openModal: true } })}
+                onAddActivity={() => navigate('/activities', { state: { openModal: true } })}
+                onAddPipeline={() => navigate('/pipelines', { state: { openModal: true } })}
+                onAddUser={() => navigate('/users', { state: { openModal: true } })}
               />
             </div>
           </div>
@@ -535,5 +522,3 @@ export default function AppLayout() {
     </div>
   );
 }
-
-

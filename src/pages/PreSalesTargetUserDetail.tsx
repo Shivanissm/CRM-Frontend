@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import './TargetUserDetail.css';
 import { usersApi } from '../services/users';
 import { targetsApi } from '../services/targets';
+import { FRONTEND_TARGET_CATEGORIES } from '../constants/categories';
 import type {
   TimePreset,
   TimePresetOption,
@@ -710,11 +711,11 @@ export default function PreSalesTargetUserDetail() {
   };
 
   const categoryOptions: { code: TargetCategory; label: string }[] = useMemo(
-    () => [
-      { code: 'PHOTOGRAPHY', label: 'Photography' },
-      { code: 'MAKEUP', label: 'Makeup' },
-      { code: 'PLANNING_AND_DECOR', label: 'Planning & Decor' },
-    ],
+    () =>
+      FRONTEND_TARGET_CATEGORIES.map((code) => ({
+        code,
+        label: code === 'PHOTOGRAPHY' ? 'Photography' : code.replace(/_/g, ' '),
+      })),
     [],
   );
 
@@ -817,7 +818,7 @@ export default function PreSalesTargetUserDetail() {
                 {derivedCategory
                   ? categoryOptions.find((c) => c.code === derivedCategory)?.label ??
                     derivedCategory.replace(/_/g, ' ')
-                  : 'All Categories'}
+                  : 'Photography'}
               </div>
             </div>
 

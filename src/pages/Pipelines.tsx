@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  FRONTEND_CATEGORY_LABELS,
+  filterFrontendCategoryStrings,
+} from '../constants/categories';
 import StageModal from '../components/StageModal';
 import PipelineModal from '../components/PipelineModal';
 import { pipelinesApi } from '../services/pipelines';
@@ -38,14 +42,14 @@ export default function Pipelines() {
   );
 
   const categoryOptions = useMemo(() => {
-    const unique = new Set<string>();
+    const unique = new Set<string>(FRONTEND_CATEGORY_LABELS);
     pipelines.forEach((pipeline) => {
       const category = pipeline.category?.trim();
-      if (category) {
+      if (category && filterFrontendCategoryStrings([category]).length > 0) {
         unique.add(category);
       }
     });
-    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+    return filterFrontendCategoryStrings(Array.from(unique));
   }, [pipelines]);
 
   useEffect(() => {

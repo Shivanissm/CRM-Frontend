@@ -45,6 +45,35 @@ const unwrap = <T,>(payload: any): T => {
   return payload as T;
 };
 
+const normalizeDealList = (payload: unknown): Deal[] => {
+  const unwrapped = unwrap<unknown>(payload);
+
+  if (Array.isArray(unwrapped)) {
+    return unwrapped;
+  }
+
+  if (unwrapped && typeof unwrapped === 'object') {
+    const record = unwrapped as Record<string, unknown>;
+
+    if (Array.isArray(record.content)) {
+      return record.content as Deal[];
+    }
+
+    if (Array.isArray(record.data)) {
+      return record.data as Deal[];
+    }
+
+    if (record.data && typeof record.data === 'object') {
+      const nested = record.data as Record<string, unknown>;
+      if (Array.isArray(nested.content)) {
+        return nested.content as Deal[];
+      }
+    }
+  }
+
+  return [];
+};
+
 const statusEndpointMap: Record<DealStatus, string> = {
   WON: '/won',
   LOST: '/lost',
@@ -111,7 +140,7 @@ export const dealsApi = {
       queryParams.search = params.search;
     }
     const response = await api.get('', { params: queryParams });
-    return unwrap<Deal[]>(response.data);
+    return normalizeDealList(response.data);
   },
 
   listCategories: async (): Promise<DealCategory[]> => {
@@ -122,7 +151,7 @@ export const dealsApi = {
   listByStatus: async (status: DealStatus): Promise<Deal[]> => {
     const endpoint = statusEndpointMap[status];
     const response = await api.get(endpoint);
-    return unwrap<Deal[]>(response.data);
+    return normalizeDealList(response.data);
   },
 
   get: async (id: number): Promise<Deal> => {

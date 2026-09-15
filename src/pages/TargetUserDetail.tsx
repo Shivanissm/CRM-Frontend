@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { filterTargetCategoryOptions } from '../constants/categories';
 import { targetsApi } from '../services/targets';
 import SetTargetModal from '../components/SetTargetModal';
 import { getStoredUser } from '../utils/authToken';
@@ -79,7 +80,7 @@ export default function TargetUserDetail() {
   const [filtersMeta, setFiltersMeta] = useState<any>(null);
   const [isSetTargetModalOpen, setIsSetTargetModalOpen] = useState(false);
   // Filter state
-  const [selectedCategory, setSelectedCategory] = useState<TargetCategory | 'all'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<TargetCategory | 'all'>('PHOTOGRAPHY');
   // For organization filter, allow multi-select. When the array is empty, it means "all organizations".
   const [selectedOrganizations, setSelectedOrganizations] = useState<string[]>([]);
   const [selectedTimePreset, setSelectedTimePreset] = useState<TimePreset>('THIS_YEAR');
@@ -297,17 +298,19 @@ export default function TargetUserDetail() {
 
     const availableCategories = normalizedFrom(userData?.availableCategories);
     if (availableCategories.length) {
-      return availableCategories;
+      return filterTargetCategoryOptions(availableCategories);
     }
 
     const legacyCategories = normalizedFrom(userData?.categories);
     if (legacyCategories.length) {
-      return legacyCategories;
+      return filterTargetCategoryOptions(legacyCategories);
     }
 
-    return (filtersMeta?.categories || [])
-      .map((cat: CategoryOption) => normalizeCategoryOption(cat))
-      .filter((cat: CategoryOption | null): cat is CategoryOption => Boolean(cat));
+    return filterTargetCategoryOptions(
+      (filtersMeta?.categories || [])
+        .map((cat: CategoryOption) => normalizeCategoryOption(cat))
+        .filter((cat: CategoryOption | null): cat is CategoryOption => Boolean(cat)),
+    );
   }, [userData, filtersMeta, normalizeCategoryOption]);
 
   useEffect(() => {
@@ -834,8 +837,8 @@ export default function TargetUserDetail() {
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value as TargetCategory | 'all')}
                   className="target-user-goal-filter-select"
+                  disabled={categoryOptions.length <= 1}
                 >
-                  <option value="all">All Categories</option>
                   {categoryOptions.map((cat) => (
                     <option key={cat.code} value={cat.code}>
                       {cat.label}
@@ -845,7 +848,7 @@ export default function TargetUserDetail() {
               ) : (
                 <div className="target-user-goal-filter-value">
                   {categoryOptions.find((c) => c.code === selectedCategory)?.label ||
-                    (selectedCategory === 'all' ? 'All Categories' : selectedCategory.replace(/_/g, ' '))}
+                    selectedCategory.replace(/_/g, ' ')}
                 </div>
               )}
             </div>

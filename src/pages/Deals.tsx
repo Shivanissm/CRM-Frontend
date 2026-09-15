@@ -7,6 +7,7 @@ import type { Deal, DealStatus, DealSource, DealSubSource, DealCreateRequest } f
 import type { OrganizationCategory } from '../types/organization';
 import { organizationsApi } from '../services/organizations';
 import type { Organization } from '../types/organization';
+import { filterOrganizationCategories, FRONTEND_ORGANIZATION_CATEGORY_CODES } from '../constants/categories';
 import { pipelinesApi } from '../services/pipelines';
 import type { Pipeline, Stage } from '../types/pipeline';
 import { personsApi } from '../services/api';
@@ -55,7 +56,7 @@ const getLabelTextColor = (hexColor: string): string => {
   const g = parseInt(hex.substring(2, 4), 16);
   const b = parseInt(hex.substring(4, 6), 16);
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.5 ? '#374151' : '#ffffff';
+  return luminance > 0.5 ? '#285763' : '#ffffff';
 };
 
 // Helper function to get border color
@@ -567,10 +568,6 @@ const Deals = () => {
     const duration = pendingDurationValue.trim();
     if (!duration) {
       alert('Please enter a duration.');
-      return;
-    }
-    if (!pendingAttachmentFile && !pendingDoneActivity.attachmentUrl) {
-      alert('Please attach an image.');
       return;
     }
     const durationMinutes = parseDurationInputToMinutes(duration);
@@ -1122,11 +1119,12 @@ const Deals = () => {
       
       // Load deals with filters applied
       const data = await dealsApi.list(apiParams);
-      setDeals(data);
+      const dealList = Array.isArray(data) ? data : [];
+      setDeals(dealList);
       setSelectedDealIds((prev) => {
         if (prev.size === 0) return prev;
         const next = new Set<number>();
-        data.forEach((deal) => {
+        dealList.forEach((deal) => {
           if (prev.has(deal.id)) {
             next.add(deal.id);
           }
@@ -1134,25 +1132,26 @@ const Deals = () => {
         return next;
       });
       if (preserveDealId) {
-        const match = data.find((deal) => deal.id === preserveDealId) ?? null;
+        const match = dealList.find((deal) => deal.id === preserveDealId) ?? null;
         setSelectedDeal(match);
       } else if (!preserveDealId) {
         setSelectedDeal((prev) => {
           if (!prev) {
             return null;
           }
-          const match = data.find((deal) => deal.id === prev.id) ?? null;
+          const match = dealList.find((deal) => deal.id === prev.id) ?? null;
           return match;
         });
       }
       setError(null);
-      // Load activities after deals are loaded
-      await loadActivities();
+      // Load activities in the background so a slow activities API cannot block the deals page.
+      void loadActivities();
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Failed to load deals.';
       setError(message);
     } finally {
       setLoading(false);
+      hasCompletedInitialDealsLoad.current = true;
     }
   }, [sortField, sortDirection, selectedPipelineId, filterStatus, filterOrganization, filterCategory, filterManager, dateRange, searchQuery, categoryOptions, loadActivities]);
 
@@ -1172,6 +1171,7 @@ const Deals = () => {
   }, [selectedPipelineId, filterStatus, filterOrganization, filterCategory, filterManager, dateRange, searchQuery]);
 
   const hasHandledOpenModal = useRef(false);
+  const hasCompletedInitialDealsLoad = useRef(false);
   
   // Auto-open modal if coming from QuickAdd or Person page
   useEffect(() => {
@@ -1281,9 +1281,17 @@ const Deals = () => {
     setCategoryLoading(true);
     setCategoryError(null);
     try {
-      const categories = await organizationsApi.listCategories();
+      const categories = filterOrganizationCategories(await organizationsApi.listCategories());
       const normalized: Array<{ id: string; label: string }> = [];
-      categories.forEach((category: OrganizationCategory) => {
+      const categoriesToUse =
+        categories.length > 0
+          ? categories
+          : FRONTEND_ORGANIZATION_CATEGORY_CODES.map((code) => ({
+              code,
+              label: code === 'PHOTOGRAPHY' ? 'Photography' : 'Makeup',
+            }));
+
+      categoriesToUse.forEach((category: OrganizationCategory) => {
         const code = String(category.code ?? '').trim();
         if (code.length === 0) {
           return;
@@ -1299,7 +1307,7 @@ const Deals = () => {
         setCategoriesFetched(true);
       } else if (force) {
         setCategoryOptions([]);
-        setCategoriesFetched(false);
+        setCategoriesFetched(true);
       }
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Failed to load categories.';
@@ -1967,7 +1975,7 @@ const Deals = () => {
         ]);
         
         setPersons(personsPage.content ?? []);
-        setDeals(dealsData);
+        setDeals(Array.isArray(dealsData) ? dealsData : []);
         
         // Wait a bit for state to update, then check and move deals immediately
         setTimeout(() => {
@@ -1996,12 +2004,12 @@ const Deals = () => {
     };
   }, [checkAndMoveDeals]);
 
-  // Reload deals when sort changes
+  // Reload deals when sort changes (skip until the first load finishes)
   useEffect(() => {
-    // Skip initial render (handled by initial load effect)
-    if (loading && deals.length === 0) return;
+    if (!hasCompletedInitialDealsLoad.current) return;
     void loadDeals();
-  }, [sortField, sortDirection, loadDeals]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortField, sortDirection]);
 
   // Focus search input when pipeline dropdown opens
   useEffect(() => {
@@ -2370,16 +2378,7 @@ const Deals = () => {
   const organizationsById = useMemo(() => {
     const map = new Map<number, Organization>();
     organizations.forEach((org) => map.set(org.id, org));
-    // Add TBS as a static organization option
-    // Using a high ID (999999) to avoid conflicts with real organization IDs
-    map.set(999999, { id: 999999, name: 'TBS' } as Organization);
     return map;
-  }, [organizations]);
-
-  // Combined organizations list including TBS
-  const allOrganizations = useMemo(() => {
-    const tbsOrg: Organization = { id: 999999, name: 'TBS' } as Organization;
-    return [tbsOrg, ...organizations];
   }, [organizations]);
 
   const selectedOrganizationForForm = formData.organizationId
@@ -2783,7 +2782,8 @@ const Deals = () => {
   };
 
   const filteredDeals = useMemo(() => {
-    const result = deals.filter((deal) => {
+    const safeDeals = Array.isArray(deals) ? deals : [];
+    const result = safeDeals.filter((deal) => {
       // Filter by status
       const statusMatch = filterStatus === 'all' || deal.status === filterStatus;
       
@@ -4272,204 +4272,68 @@ const Deals = () => {
           </div>
         </div>
         <div className="deals-header-bottom">
-          <div style={{ position: 'relative' }} ref={dateRangeDropdownRef}>
+          <div className="deals-date-range-wrap" ref={dateRangeDropdownRef}>
             <button 
-              className="filter-select"
+              className="filter-select deals-date-range-trigger"
               onClick={() => setIsDateRangeDropdownOpen(!isDateRangeDropdownOpen)}
-              style={{
-                padding: '8px 16px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                background: '#fff',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 500,
-                color: '#374151',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                minWidth: '180px',
-                justifyContent: 'space-between',
-              }}
             >
               <span>{getDateRangeDisplayText()}</span>
-              <span style={{ fontSize: '10px' }}>▾</span>
+              <span className="deals-date-range-caret">▾</span>
             </button>
             {isDateRangeDropdownOpen && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 8px)',
-                  left: 0,
-                  backgroundColor: '#fff',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                  minWidth: '200px',
-                  zIndex: 1000,
-                  overflow: 'hidden',
-                }}
-              >
+              <div className="deals-date-range-menu">
                 <button
+                  className="deals-date-range-option"
                   onClick={() => handleDateRangeOption('today')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
                 >
                   Today
                 </button>
                 <button
+                  className="deals-date-range-option"
                   onClick={() => handleDateRangeOption('yesterday')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
                 >
                   Yesterday
                 </button>
                 <button
+                  className="deals-date-range-option"
                   onClick={() => handleDateRangeOption('thisWeek')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
                 >
                   This week
                 </button>
                 <button
+                  className="deals-date-range-option"
                   onClick={() => handleDateRangeOption('lastWeek')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
                 >
                   Last week
                 </button>
                 <button
+                  className="deals-date-range-option"
                   onClick={() => handleDateRangeOption('thisMonth')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
                 >
                   This month
                 </button>
                 <button
+                  className="deals-date-range-option"
                   onClick={() => handleDateRangeOption('lastMonth')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
                 >
                   Last month
                 </button>
                 <button
+                  className="deals-date-range-option"
                   onClick={() => handleDateRangeOption('last7Days')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
                 >
                   Last 7 days
                 </button>
                 <button
+                  className="deals-date-range-option"
                   onClick={() => handleDateRangeOption('last30Days')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
                 >
                   Last 30 days
                 </button>
-                <div style={{ height: '1px', background: '#e5e7eb', margin: '4px 0' }}></div>
+                <div className="deals-date-range-divider"></div>
                 <button
+                  className="deals-date-range-option"
                   onClick={() => handleDateRangeOption('custom')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
                 >
                   Select date range
                 </button>
@@ -5617,7 +5481,7 @@ const Deals = () => {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                   <span style={{ fontWeight: 500 }}>{person.name}</span>
                                   {(person.phone || person.instagramId || person.email) && (
-                                    <span style={{ fontSize: '12px', color: '#64748b' }}>
+                                    <span style={{ fontSize: '12px', color: '#6B7F7F' }}>
                                       {[person.phone, person.instagramId, person.email].filter(Boolean).join(' • ')}
                                     </span>
                                   )}
@@ -5625,7 +5489,7 @@ const Deals = () => {
                           </div>
                         ))}
                         {filteredPersons.length > 10 && (
-                          <div className="form-person-suggestion-item" style={{ color: '#64748b', fontStyle: 'italic', cursor: 'default' }}>
+                          <div className="form-person-suggestion-item" style={{ color: '#6B7F7F', fontStyle: 'italic', cursor: 'default' }}>
                             +{filteredPersons.length - 10} more...
                           </div>
                         )}
@@ -5660,7 +5524,7 @@ const Deals = () => {
                                   borderTop: filteredPersons.length > 0 ? '1px solid #e5e7eb' : 'none',
                                   paddingTop: filteredPersons.length > 0 ? '8px' : '0',
                                   marginTop: filteredPersons.length > 0 ? '4px' : '0',
-                                  color: '#2563eb',
+                                  color: '#3DB9B5',
                                   fontWeight: 500,
                                   cursor: 'pointer'
                                 }}
@@ -5694,7 +5558,7 @@ const Deals = () => {
                     disabled={isSubmitting}
                   >
                     <option value="">Select Organization</option>
-                    {allOrganizations.map((org) => (
+                    {organizations.map((org) => (
                       <option key={org.id} value={org.id}>
                         {org.name}
                         {org.googleCalendarId ? ' • Calendar' : ''}
@@ -5946,7 +5810,7 @@ const Deals = () => {
                     />
                     <div style={{ 
                       fontSize: '12px', 
-                      color: '#64748b', 
+                      color: '#6B7F7F', 
                       marginTop: '4px',
                       fontStyle: 'italic'
                     }}>
@@ -6304,9 +6168,9 @@ const Deals = () => {
                               title="View screenshot"
                             >
                               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M14.25 3H3.75C2.92157 3 2.25 3.67157 2.25 4.5V13.5C2.25 14.3284 2.92157 15 3.75 15H14.25C15.0784 15 15.75 14.3284 15.75 13.5V4.5C15.75 3.67157 15.0784 3 14.25 3Z" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                <path d="M6.75 7.5C7.57843 7.5 8.25 6.82843 8.25 6C8.25 5.17157 7.57843 4.5 6.75 4.5C5.92157 4.5 5.25 5.17157 5.25 6C5.25 6.82843 5.92157 7.5 6.75 7.5Z" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                <path d="M15.75 10.5L12 7.5L3.75 13.5" stroke="#2563eb" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M14.25 3H3.75C2.92157 3 2.25 3.67157 2.25 4.5V13.5C2.25 14.3284 2.92157 15 3.75 15H14.25C15.0784 15 15.75 14.3284 15.75 13.5V4.5C15.75 3.67157 15.0784 3 14.25 3Z" stroke="#3DB9B5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M6.75 7.5C7.57843 7.5 8.25 6.82843 8.25 6C8.25 5.17157 7.57843 4.5 6.75 4.5C5.92157 4.5 5.25 5.17157 5.25 6C5.25 6.82843 5.92157 7.5 6.75 7.5Z" stroke="#3DB9B5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M15.75 10.5L12 7.5L3.75 13.5" stroke="#3DB9B5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                               </svg>
                             </button>
                           )}
@@ -6579,7 +6443,7 @@ const Deals = () => {
                   padding: '8px 16px',
                   border: 'none',
                   borderRadius: '4px',
-                  backgroundColor: (!dateRange.start || !dateRange.end) ? '#ccc' : '#2563eb',
+                  backgroundColor: (!dateRange.start || !dateRange.end) ? '#ccc' : '#3DB9B5',
                   color: 'white',
                   cursor: (!dateRange.start || !dateRange.end) ? 'not-allowed' : 'pointer',
                   fontSize: '14px',
@@ -6896,7 +6760,7 @@ const Deals = () => {
                 className="text-sm text-gray-700 mb-4 leading-relaxed"
                 style={{
                   fontSize: '14px',
-                  color: '#374151',
+                  color: '#285763',
                   marginBottom: '16px',
                   lineHeight: '1.5',
                   margin: '0 0 16px 0'
@@ -7011,7 +6875,7 @@ const Deals = () => {
                   borderRadius: '6px',
                   fontSize: '12px',
                   fontWeight: 600,
-                  color: '#374151',
+                  color: '#285763',
                   backgroundColor: '#ffffff',
                   border: '1px solid #d1d5db',
                   minWidth: '80px',
@@ -7170,7 +7034,7 @@ const Deals = () => {
                 )}
                 <label
                   style={{
-                    color: '#2563eb',
+                    color: '#3DB9B5',
                     cursor: pendingUploading ? 'not-allowed' : 'pointer',
                     fontWeight: 600,
                     fontSize: '13px',
@@ -7208,7 +7072,7 @@ const Deals = () => {
                 disabled={pendingUploading}
                 style={{
                   border: 'none',
-                  background: pendingUploading ? '#9ca3af' : '#2563eb',
+                  background: pendingUploading ? '#9ca3af' : '#3DB9B5',
                   color: '#fff',
                   borderRadius: 6,
                   padding: '6px 12px',
@@ -7309,14 +7173,14 @@ const Deals = () => {
                   <div style={{ marginTop: 8 }}>
                     <label
                       style={{
-                        color: '#2563eb',
+                        color: '#3DB9B5',
                         cursor: screenshotReplacing ? 'not-allowed' : 'pointer',
                         fontWeight: 600,
                         fontSize: '13px',
                         opacity: screenshotReplacing ? 0.6 : 1,
                         display: 'inline-block',
                         padding: '8px 12px',
-                        border: '1px solid #2563eb',
+                        border: '1px solid #3DB9B5',
                         borderRadius: 6,
                         background: '#fff',
                       }}
@@ -7358,7 +7222,7 @@ const Deals = () => {
                       disabled={screenshotReplacing}
                       style={{
                         border: 'none',
-                        background: screenshotReplacing ? '#9ca3af' : '#2563eb',
+                        background: screenshotReplacing ? '#9ca3af' : '#3DB9B5',
                         color: '#fff',
                         borderRadius: 6,
                         padding: '6px 12px',
@@ -7503,7 +7367,7 @@ const Deals = () => {
                 style={{
                   margin: 0,
                   fontSize: '16px',
-                  color: '#374151',
+                  color: '#285763',
                   lineHeight: '1.5'
                 }}
               >
