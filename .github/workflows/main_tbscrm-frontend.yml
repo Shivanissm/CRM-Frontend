@@ -1,7 +1,4 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-
-name: Build and deploy Node.js app to Azure Web App - TBSCRM-Frontend
+name: Deploy CRM Frontend to AWS
 
 on:
   push:
@@ -9,57 +6,34 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  build:
-    runs-on: windows-latest
-    permissions:
-      contents: read #This is required for actions/checkout
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js version
-        uses: actions/setup-node@v3
-        with:
-          node-version: '22.x'
-
-      - name: npm install, build, and test
-        run: |
-          npm install
-          npm run build --if-present
-          npm run test --if-present
-      
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-app
-          path: ./dist
-
   deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+    runs-on: [self-hosted, Linux, X64]
 
     steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: node-app
-      
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_BB84296A65AD445DBFC3998A1AC21E42 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_3F081DCB94534616A531075A7E5A3A93 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_4BBE773CDC44487E8F6A0D5EE822E1A0 }}
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: 'Deploy to Azure Web App'
-        uses: azure/webapps-deploy@v3
-        id: deploy-to-webapp
-        with:
-          app-name: 'TBSCRM-Frontend'
-          slot-name: 'Production'
-          package: .
-          
+      - name: Check Node.js
+        run: |
+          node --version
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Deploy to Nginx
+        run: |
+          rm -rf /opt/crm-instagram-frontend/dist/*
+          cp -a dist/. /opt/crm-instagram-frontend/dist/
+
+      - name: Verify deployment
+        run: |
+          test -f /opt/crm-instagram-frontend/dist/index.html
+          echo "CRM Frontend deployed successfully"
