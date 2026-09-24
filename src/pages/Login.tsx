@@ -148,7 +148,6 @@ export default function Login() {
           <div className="login-card-header">
             <span className="login-badge">Welcome back</span>
             <h1>Sign in to continue</h1>
-            <p>Use your Houseofbarqat account to access the dashboard.</p>
           </div>
 
           <form className="login-form" onSubmit={handleLogin}>

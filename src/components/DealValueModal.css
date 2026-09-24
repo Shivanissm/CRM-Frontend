@@ -163,7 +163,7 @@
   padding: 10px 20px;
   border: none;
   border-radius: 6px;
-  background: #48D1CC;
+  background: #C94D78;
   color: white;
   font-size: 14px;
   font-weight: 500;
@@ -172,7 +172,7 @@
 }
 
 .deal-value-submit:hover:not(:disabled) {
-  background: #36B5B0;
+  background: #B52F58;
 }
 
 .deal-value-submit:disabled {

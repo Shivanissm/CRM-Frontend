@@ -8,18 +8,18 @@
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: #f8f9fa;
-  border: 1px solid #ddd;
+  background: #ffffff;
+  border: 1px solid #D8E7E6;
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-  color: #007bff;
+  color: #2EA9A5;
   transition: background-color 0.2s;
   user-select: none;
 }
 
 .filter-dropdown-header:hover {
-  background: #e9ecef;
+  background: #B7E9E5;
 }
 
 .filter-icon {
@@ -56,11 +56,11 @@
 }
 
 .filter-dropdown-item:hover {
-  background-color: #f8f9fa;
+  background-color: #B7E9E5;
 }
 
 .filter-dropdown-item.active {
-  background-color: #e3f2fd;
+  background-color: #F6DCE5;
 }
 
 .filter-padlock {
@@ -80,7 +80,7 @@
 }
 
 .filter-dropdown-item.active .filter-item-name {
-  color: #1976d2;
+  color: #B52F58;
   font-weight: 500;
 }
 
@@ -116,7 +116,7 @@
 
 .add-filter-icon {
   font-size: 18px;
-  color: #007bff;
+  color: #2EA9A5;
   font-weight: bold;
   width: 20px;
   text-align: center;

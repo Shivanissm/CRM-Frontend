@@ -78,7 +78,7 @@ export default function DealDetail() {
   const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null);
   const [pendingUploading, setPendingUploading] = useState(false);
   const [pendingDialogPosition, setPendingDialogPosition] = useState<{ top: number; left: number } | null>(null);
-  const [durationEntries, setDurationEntries] = useState<Record<number, string>>({});
+  const [, setDurationEntries] = useState<Record<number, string>>({});
   const [screenshotViewerActivity, setScreenshotViewerActivity] = useState<Activity | null>(null);
   const [screenshotViewerImageUrl, setScreenshotViewerImageUrl] = useState<string | null>(null);
   const [screenshotReplacementFile, setScreenshotReplacementFile] = useState<File | null>(null);
@@ -605,14 +605,13 @@ export default function DealDetail() {
   const handlePendingDoneConfirm = async () => {
     if (!pendingDoneActivity) return;
     const duration = pendingDurationValue.trim();
-    if (!duration) {
-      alert('Please enter a duration.');
-      return;
-    }
-    const durationMinutes = parseDurationInputToMinutes(duration);
-    if (durationMinutes === null || durationMinutes <= 0) {
-      alert('Please enter a valid duration (e.g., 15 or 00:15:00).');
-      return;
+    let durationMinutes: number | null = null;
+    if (duration) {
+      durationMinutes = parseDurationInputToMinutes(duration);
+      if (durationMinutes === null || durationMinutes <= 0) {
+        alert('Please enter a valid duration (e.g., 15 or 00:15:00).');
+        return;
+      }
     }
     
     setPendingUploading(true);
@@ -630,27 +629,29 @@ export default function DealDetail() {
         }
       }
       
-      const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
-      const startMinutes = existingStartMinutes ?? 0;
-      const endMinutes = startMinutes + durationMinutes;
-      const startTimeFormatted =
-        existingStartMinutes !== null && pendingDoneActivity.startTime
-          ? pendingDoneActivity.startTime
-          : formatMinutesToHHMM(startMinutes);
-      const endTimeFormatted = formatMinutesToHHMM(endMinutes);
-      
-      const updatedActivity = await activitiesApi.update(pendingDoneActivity.id, {
-        startTime: startTimeFormatted,
-        endTime: endTimeFormatted,
-      });
-      if (updatedActivity && id) {
-        await loadActivities(Number(id));
+      if (durationMinutes !== null) {
+        const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
+        const startMinutes = existingStartMinutes ?? 0;
+        const endMinutes = startMinutes + durationMinutes;
+        const startTimeFormatted =
+          existingStartMinutes !== null && pendingDoneActivity.startTime
+            ? pendingDoneActivity.startTime
+            : formatMinutesToHHMM(startMinutes);
+        const endTimeFormatted = formatMinutesToHHMM(endMinutes);
+
+        const updatedActivity = await activitiesApi.update(pendingDoneActivity.id, {
+          startTime: startTimeFormatted,
+          endTime: endTimeFormatted,
+        });
+        if (updatedActivity && id) {
+          await loadActivities(Number(id));
+        }
+
+        const durationDisplay = duration.includes(':')
+          ? duration
+          : formatMinutesToHHMM(durationMinutes);
+        setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
       }
-      
-      const durationDisplay = duration.includes(':')
-        ? duration
-        : formatMinutesToHHMM(durationMinutes);
-      setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
       await completeToggleDone(pendingDoneActivity.id, pendingDoneValue);
       handlePendingDoneCancel();
     } catch (error: any) {
@@ -759,27 +760,9 @@ export default function DealDetail() {
   };
 
   // Mark activity as done and move to history (or undo and move back to focus)
-  const markActivityDone = async (activityId: number, done: boolean, clickPosition?: { top: number; left: number }) => {
-    const activity = activities.find(a => a.id === activityId);
-    if (!activity) {
-      await completeToggleDone(activityId, done);
-      return;
-    }
-
-    // Check if it's a call activity being marked as done
-    const category = normalizeCategoryLabel(activity.category);
-    if (category === 'Call' && done) {
-      setPendingDoneActivity(activity);
-      setPendingDoneValue(done);
-      setPendingDurationValue(durationEntries[activity.id] ?? '');
-      setPendingAttachmentFile(null);
-      // If activity already has an attachment URL, use it as preview
-      setPendingAttachmentPreview(activity.attachmentUrl || null);
-      setPendingDialogPosition(clickPosition || null);
-      setOpenMenuId(null); // Close menu when modal opens
-      return;
-    }
-    
+  const markActivityDone = async (activityId: number, done: boolean, _clickPosition?: { top: number; left: number }) => {
+    // Mark the activity done directly (no call-completion modal).
+    setOpenMenuId(null);
     await completeToggleDone(activityId, done);
   };
 
@@ -1560,7 +1543,7 @@ export default function DealDetail() {
 
   // Unused - kept for potential future use
   // const statusColors: Record<string, string> = {
-  //   WON: '#48D1CC',
+  //   WON: '#C94D78',
   //   LOST: '#ef4444',
   //   IN_PROGRESS: '#8b5cf6',
   // };
@@ -1612,8 +1595,8 @@ export default function DealDetail() {
           <div className="deal-detail-toast deal-detail-toast-success" onClick={(e) => e.stopPropagation()}>
             <div className="deal-detail-toast-icon-wrapper">
               <svg className="deal-detail-toast-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M20 6L9 17l-5-5" stroke="#48D1CC" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="12" cy="12" r="10" stroke="#48D1CC" strokeWidth="2" fill="none"/>
+                <path d="M20 6L9 17l-5-5" stroke="#C94D78" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="#C94D78" strokeWidth="2" fill="none"/>
               </svg>
             </div>
             <div className="deal-detail-toast-content">
@@ -1798,7 +1781,12 @@ export default function DealDetail() {
               >
                 {(() => {
                   const selectedOwner = users.find(u => u.id === formData.ownerId);
-                  if (selectedOwner) {
+                  // Fall back to the deal's denormalized owner name when the owner
+                  // user isn't present in the loaded users list (e.g. team managers).
+                  const fallbackOwnerName = (!selectedOwner && formData.ownerId && deal?.ownerDisplayName)
+                    ? deal.ownerDisplayName
+                    : null;
+                  if (selectedOwner || fallbackOwnerName) {
                     return (
                       <>
                         <div className="deal-owner-avatar">
@@ -1809,7 +1797,7 @@ export default function DealDetail() {
                         </div>
                         <div className="deal-owner-info">
                           <div className="deal-owner-name">
-                            {selectedOwner.firstName} {selectedOwner.lastName}
+                            {selectedOwner ? `${selectedOwner.firstName} ${selectedOwner.lastName}` : fallbackOwnerName}
                           </div>
                           <div className="deal-owner-role">Owner</div>
                         </div>
@@ -2275,7 +2263,7 @@ export default function DealDetail() {
                           }}
                           style={{
                             padding: '6px 12px',
-                            backgroundColor: '#48D1CC',
+                            backgroundColor: '#C94D78',
                             color: 'white',
                             border: 'none',
                             borderRadius: '4px',
@@ -3132,24 +3120,6 @@ export default function DealDetail() {
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>Complete call activity</h3>
             </div>
             <div style={{ padding: 16 }}>
-            <label style={{ display: 'block', marginBottom: 10, fontWeight: 500, fontSize: '13px' }}>
-              Please Enter Duration In Minutes
-              <input
-                type="text"
-                value={pendingDurationValue}
-                onChange={(e) => setPendingDurationValue(e.target.value)}
-                placeholder="15"
-                style={{
-                  width: '100%',
-                  marginTop: 4,
-                  padding: '8px 10px',
-                  border: '1px solid #f5d867',
-                  borderRadius: 6,
-                  fontSize: '13px',
-                  background: '#fff9e6',
-                }}
-              />
-            </label>
             <label style={{ display: 'block', marginBottom: 16, fontWeight: 500, fontSize: '13px' }}>
               Attach image
               <div style={{ marginTop: 4 }}>

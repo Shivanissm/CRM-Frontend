@@ -44,6 +44,7 @@ export interface Deal {
   referencedPipelineId?: number | null;
   lostReason?: string | null;
   ownerId?: number | null;
+  ownerDisplayName?: string | null;
   createdBy?: 'USER' | 'BOT' | null;
   createdByUserId?: number | null;
   createdByName?: string | null;

@@ -22,9 +22,10 @@
 }
 
 .quick-add-button-circle:hover {
-  background: #f9fafb;
-  border-color: #d1d5db;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background: #E8F7F5;
+  border-color: #54C9C4;
+  color: #2EA9A5;
+  box-shadow: 0 2px 4px rgba(84, 201, 196, 0.16);
 }
 
 .quick-add-button-circle:active {

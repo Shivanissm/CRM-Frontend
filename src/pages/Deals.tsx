@@ -56,7 +56,7 @@ const getLabelTextColor = (hexColor: string): string => {
   const g = parseInt(hex.substring(2, 4), 16);
   const b = parseInt(hex.substring(4, 6), 16);
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.5 ? '#285763' : '#ffffff';
+  return luminance > 0.5 ? '#2EA9A5' : '#ffffff';
 };
 
 // Helper function to get border color
@@ -188,7 +188,7 @@ const getDisplayStageName = (stageName: string | null | undefined): string => {
 
 // Unused - kept for potential future use
 // const statusColors: Record<DealStatus, string> = {
-//   WON: '#48D1CC',
+//   WON: '#C94D78',
 //   LOST: '#ef4444',
 //   IN_PROGRESS: '#8b5cf6',
 // };
@@ -359,7 +359,7 @@ const Deals = () => {
   const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null);
   const [pendingUploading, setPendingUploading] = useState(false);
   const [pendingDialogPosition, setPendingDialogPosition] = useState<{ top: number; left: number } | null>(null);
-  const [durationEntries, setDurationEntries] = useState<Record<number, string>>({});
+  const [, setDurationEntries] = useState<Record<number, string>>({});
   const [screenshotViewerActivity, setScreenshotViewerActivity] = useState<Activity | null>(null);
   const [screenshotViewerImageUrl, setScreenshotViewerImageUrl] = useState<string | null>(null);
   const [screenshotReplacementFile, setScreenshotReplacementFile] = useState<File | null>(null);
@@ -566,14 +566,13 @@ const Deals = () => {
   const handlePendingDoneConfirm = useCallback(async () => {
     if (!pendingDoneActivity) return;
     const duration = pendingDurationValue.trim();
-    if (!duration) {
-      alert('Please enter a duration.');
-      return;
-    }
-    const durationMinutes = parseDurationInputToMinutes(duration);
-    if (durationMinutes === null || durationMinutes <= 0) {
-      alert('Please enter a valid duration (e.g., 15 or 00:15:00).');
-      return;
+    let durationMinutes: number | null = null;
+    if (duration) {
+      durationMinutes = parseDurationInputToMinutes(duration);
+      if (durationMinutes === null || durationMinutes <= 0) {
+        alert('Please enter a valid duration (e.g., 15 or 00:15:00).');
+        return;
+      }
     }
     
     setPendingUploading(true);
@@ -591,27 +590,29 @@ const Deals = () => {
         }
       }
       
-      const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
-      const startMinutes = existingStartMinutes ?? 0;
-      const endMinutes = startMinutes + durationMinutes;
-      const startTimeFormatted =
-        existingStartMinutes !== null && pendingDoneActivity.startTime
-          ? pendingDoneActivity.startTime
-          : formatMinutesToHHMM(startMinutes);
-      const endTimeFormatted = formatMinutesToHHMM(endMinutes);
-      
-      const updatedActivity = await activitiesApi.update(pendingDoneActivity.id, {
-        startTime: startTimeFormatted,
-        endTime: endTimeFormatted,
-      });
-      if (updatedActivity) {
-        await loadActivities();
+      if (durationMinutes !== null) {
+        const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
+        const startMinutes = existingStartMinutes ?? 0;
+        const endMinutes = startMinutes + durationMinutes;
+        const startTimeFormatted =
+          existingStartMinutes !== null && pendingDoneActivity.startTime
+            ? pendingDoneActivity.startTime
+            : formatMinutesToHHMM(startMinutes);
+        const endTimeFormatted = formatMinutesToHHMM(endMinutes);
+
+        const updatedActivity = await activitiesApi.update(pendingDoneActivity.id, {
+          startTime: startTimeFormatted,
+          endTime: endTimeFormatted,
+        });
+        if (updatedActivity) {
+          await loadActivities();
+        }
+
+        const durationDisplay = duration.includes(':')
+          ? duration
+          : formatMinutesToHHMM(durationMinutes);
+        setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
       }
-      
-      const durationDisplay = duration.includes(':')
-        ? duration
-        : formatMinutesToHHMM(durationMinutes);
-      setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
       await completeToggleDone(pendingDoneActivity.id, pendingDoneValue);
       handlePendingDoneCancel();
     } catch (error: any) {
@@ -626,21 +627,10 @@ const Deals = () => {
   }, [pendingDoneActivity, pendingDurationValue, pendingAttachmentFile, pendingDoneValue, parseDurationInputToMinutes, parseTimeToMinutes, formatMinutesToHHMM, completeToggleDone, handlePendingDoneCancel, loadActivities]);
 
   // Toggle done with call activity check
-  const toggleDone = useCallback(async (activity: Activity, value: boolean, clickPosition?: { top: number; left: number }) => {
-    // Check if it's a call activity being marked as done
-    const category = normalizeCategoryLabel(activity.category);
-    if (category === 'Call' && value) {
-      setPendingDoneActivity(activity);
-      setPendingDoneValue(value);
-      setPendingDurationValue(durationEntries[activity.id] ?? '');
-      setPendingAttachmentFile(null);
-      // If activity already has an attachment URL, use it as preview
-      setPendingAttachmentPreview(activity.attachmentUrl || null);
-      setPendingDialogPosition(clickPosition || null);
-      return;
-    }
+  const toggleDone = useCallback(async (activity: Activity, value: boolean, _clickPosition?: { top: number; left: number }) => {
+    // Mark the activity done directly (no call-completion modal).
     await completeToggleDone(activity.id, value);
-  }, [normalizeCategoryLabel, durationEntries, completeToggleDone]);
+  }, [completeToggleDone]);
 
   // Open screenshot viewer
   const openScreenshotViewer = useCallback((activity: Activity) => {
@@ -5481,7 +5471,7 @@ const Deals = () => {
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                   <span style={{ fontWeight: 500 }}>{person.name}</span>
                                   {(person.phone || person.instagramId || person.email) && (
-                                    <span style={{ fontSize: '12px', color: '#6B7F7F' }}>
+                                    <span style={{ fontSize: '12px', color: '#65777D' }}>
                                       {[person.phone, person.instagramId, person.email].filter(Boolean).join(' • ')}
                                     </span>
                                   )}
@@ -5489,7 +5479,7 @@ const Deals = () => {
                           </div>
                         ))}
                         {filteredPersons.length > 10 && (
-                          <div className="form-person-suggestion-item" style={{ color: '#6B7F7F', fontStyle: 'italic', cursor: 'default' }}>
+                          <div className="form-person-suggestion-item" style={{ color: '#65777D', fontStyle: 'italic', cursor: 'default' }}>
                             +{filteredPersons.length - 10} more...
                           </div>
                         )}
@@ -5524,7 +5514,7 @@ const Deals = () => {
                                   borderTop: filteredPersons.length > 0 ? '1px solid #e5e7eb' : 'none',
                                   paddingTop: filteredPersons.length > 0 ? '8px' : '0',
                                   marginTop: filteredPersons.length > 0 ? '4px' : '0',
-                                  color: '#3DB9B5',
+                                  color: '#C94D78',
                                   fontWeight: 500,
                                   cursor: 'pointer'
                                 }}
@@ -5810,7 +5800,7 @@ const Deals = () => {
                     />
                     <div style={{ 
                       fontSize: '12px', 
-                      color: '#6B7F7F', 
+                      color: '#65777D', 
                       marginTop: '4px',
                       fontStyle: 'italic'
                     }}>
@@ -5982,7 +5972,7 @@ const Deals = () => {
                       disabled={isSubmitting}
                       style={{
                         padding: '6px 12px',
-                        backgroundColor: '#48D1CC',
+                        backgroundColor: '#C94D78',
                         color: 'white',
                         border: 'none',
                         borderRadius: '4px',
@@ -6130,7 +6120,7 @@ const Deals = () => {
                           >
                             {topActivity.done ? (
                               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <circle cx="8" cy="8" r="7" fill="#48D1CC" stroke="#48D1CC" strokeWidth="1.5"/>
+                                <circle cx="8" cy="8" r="7" fill="#C94D78" stroke="#C94D78" strokeWidth="1.5"/>
                                 <path d="M5 8L7 10L11 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                               </svg>
                             ) : (
@@ -6168,9 +6158,9 @@ const Deals = () => {
                               title="View screenshot"
                             >
                               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M14.25 3H3.75C2.92157 3 2.25 3.67157 2.25 4.5V13.5C2.25 14.3284 2.92157 15 3.75 15H14.25C15.0784 15 15.75 14.3284 15.75 13.5V4.5C15.75 3.67157 15.0784 3 14.25 3Z" stroke="#3DB9B5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                <path d="M6.75 7.5C7.57843 7.5 8.25 6.82843 8.25 6C8.25 5.17157 7.57843 4.5 6.75 4.5C5.92157 4.5 5.25 5.17157 5.25 6C5.25 6.82843 5.92157 7.5 6.75 7.5Z" stroke="#3DB9B5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                <path d="M15.75 10.5L12 7.5L3.75 13.5" stroke="#3DB9B5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M14.25 3H3.75C2.92157 3 2.25 3.67157 2.25 4.5V13.5C2.25 14.3284 2.92157 15 3.75 15H14.25C15.0784 15 15.75 14.3284 15.75 13.5V4.5C15.75 3.67157 15.0784 3 14.25 3Z" stroke="#C94D78" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M6.75 7.5C7.57843 7.5 8.25 6.82843 8.25 6C8.25 5.17157 7.57843 4.5 6.75 4.5C5.92157 4.5 5.25 5.17157 5.25 6C5.25 6.82843 5.92157 7.5 6.75 7.5Z" stroke="#C94D78" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                <path d="M15.75 10.5L12 7.5L3.75 13.5" stroke="#C94D78" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                               </svg>
                             </button>
                           )}
@@ -6443,7 +6433,7 @@ const Deals = () => {
                   padding: '8px 16px',
                   border: 'none',
                   borderRadius: '4px',
-                  backgroundColor: (!dateRange.start || !dateRange.end) ? '#ccc' : '#3DB9B5',
+                  backgroundColor: (!dateRange.start || !dateRange.end) ? '#ccc' : '#C94D78',
                   color: 'white',
                   cursor: (!dateRange.start || !dateRange.end) ? 'not-allowed' : 'pointer',
                   fontSize: '14px',
@@ -6760,7 +6750,7 @@ const Deals = () => {
                 className="text-sm text-gray-700 mb-4 leading-relaxed"
                 style={{
                   fontSize: '14px',
-                  color: '#285763',
+                  color: '#2EA9A5',
                   marginBottom: '16px',
                   lineHeight: '1.5',
                   margin: '0 0 16px 0'
@@ -6875,7 +6865,7 @@ const Deals = () => {
                   borderRadius: '6px',
                   fontSize: '12px',
                   fontWeight: 600,
-                  color: '#285763',
+                  color: '#2EA9A5',
                   backgroundColor: '#ffffff',
                   border: '1px solid #d1d5db',
                   minWidth: '80px',
@@ -6992,24 +6982,6 @@ const Deals = () => {
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>Complete call activity</h3>
             </div>
             <div style={{ padding: 16 }}>
-            <label style={{ display: 'block', marginBottom: 10, fontWeight: 500, fontSize: '13px' }}>
-              Please Enter Duration In Minutes
-              <input
-                type="text"
-                value={pendingDurationValue}
-                onChange={(e) => setPendingDurationValue(e.target.value)}
-                placeholder="15"
-                style={{
-                  width: '100%',
-                  marginTop: 4,
-                  padding: '8px 10px',
-                  border: '1px solid #f5d867',
-                  borderRadius: 6,
-                  fontSize: '13px',
-                  background: '#fff9e6',
-                }}
-              />
-            </label>
             <label style={{ display: 'block', marginBottom: 16, fontWeight: 500, fontSize: '13px' }}>
               Attach image
               <div style={{ marginTop: 4 }}>
@@ -7034,7 +7006,7 @@ const Deals = () => {
                 )}
                 <label
                   style={{
-                    color: '#3DB9B5',
+                    color: '#C94D78',
                     cursor: pendingUploading ? 'not-allowed' : 'pointer',
                     fontWeight: 600,
                     fontSize: '13px',
@@ -7072,7 +7044,7 @@ const Deals = () => {
                 disabled={pendingUploading}
                 style={{
                   border: 'none',
-                  background: pendingUploading ? '#9ca3af' : '#3DB9B5',
+                  background: pendingUploading ? '#9ca3af' : '#C94D78',
                   color: '#fff',
                   borderRadius: 6,
                   padding: '6px 12px',
@@ -7173,14 +7145,14 @@ const Deals = () => {
                   <div style={{ marginTop: 8 }}>
                     <label
                       style={{
-                        color: '#3DB9B5',
+                        color: '#C94D78',
                         cursor: screenshotReplacing ? 'not-allowed' : 'pointer',
                         fontWeight: 600,
                         fontSize: '13px',
                         opacity: screenshotReplacing ? 0.6 : 1,
                         display: 'inline-block',
                         padding: '8px 12px',
-                        border: '1px solid #3DB9B5',
+                        border: '1px solid #C94D78',
                         borderRadius: 6,
                         background: '#fff',
                       }}
@@ -7222,7 +7194,7 @@ const Deals = () => {
                       disabled={screenshotReplacing}
                       style={{
                         border: 'none',
-                        background: screenshotReplacing ? '#9ca3af' : '#3DB9B5',
+                        background: screenshotReplacing ? '#9ca3af' : '#C94D78',
                         color: '#fff',
                         borderRadius: 6,
                         padding: '6px 12px',
@@ -7294,7 +7266,7 @@ const Deals = () => {
             {/* Header */}
             <div
               style={{
-                background: 'linear-gradient(135deg, #48D1CC 0%, #36B5B0 100%)',
+                background: 'linear-gradient(135deg, #C94D78 0%, #B52F58 100%)',
                 padding: '20px 24px',
                 borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
               }}
@@ -7367,7 +7339,7 @@ const Deals = () => {
                 style={{
                   margin: 0,
                   fontSize: '16px',
-                  color: '#285763',
+                  color: '#2EA9A5',
                   lineHeight: '1.5'
                 }}
               >
@@ -7393,14 +7365,14 @@ const Deals = () => {
                   fontSize: '14px',
                   fontWeight: 500,
                   color: '#ffffff',
-                  backgroundColor: '#48D1CC',
+                  backgroundColor: '#C94D78',
                   border: 'none',
                   borderRadius: '8px',
                   cursor: 'pointer',
                   transition: 'background-color 0.2s'
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#36B5B0'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#48D1CC'}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#B52F58'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C94D78'}
               >
                 OK
               </button>

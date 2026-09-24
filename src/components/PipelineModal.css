@@ -31,7 +31,7 @@
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-  color: #1f6360;
+  color: #B52F58;
 }
 
 .pipeline-modal-close {
@@ -50,7 +50,7 @@
 .pipeline-modal-subtitle {
   margin: 0;
   font-size: 14px;
-  color: #4a7573;
+  color: #65777D;
   line-height: 1.6;
 }
 
@@ -73,7 +73,7 @@
 .pipeline-modal-textarea {
   padding: 10px 14px;
   border-radius: 10px;
-  border: 1px solid #b8ebe9;
+  border: 1px solid #D8E7E6;
   font-size: 14px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   resize: vertical;
@@ -82,8 +82,8 @@
 .pipeline-modal-input:focus,
 .pipeline-modal-textarea:focus {
   outline: none;
-  border-color: #48D1CC;
-  box-shadow: 0 0 0 3px rgba(72, 209, 204, 0.18);
+  border-color: #C94D78;
+  box-shadow: 0 0 0 3px rgba(201, 77, 120, 0.18);
 }
 
 .pipeline-modal-grid {
@@ -110,7 +110,7 @@
 .pipeline-modal-checkbox input {
   width: 18px;
   height: 18px;
-  accent-color: #48D1CC;
+  accent-color: #C94D78;
 }
 
 .pipeline-modal-hint {
@@ -136,7 +136,7 @@
 }
 
 .pipeline-modal-category-chip {
-  border: 1px solid #b8ebe9;
+  border: 1px solid #D8E7E6;
   background: #f3fcf6;
   color: #246a3b;
   border-radius: 999px;
@@ -151,8 +151,8 @@
 }
 
 .pipeline-modal-category-chip.active {
-  background: #48D1CC;
-  border-color: #48D1CC;
+  background: #C94D78;
+  border-color: #C94D78;
   color: #ffffff;
 }
 
@@ -192,14 +192,14 @@
 }
 
 .pipeline-modal-submit {
-  background: linear-gradient(135deg, #48D1CC 0%, #36B5B0 100%);
+  background: linear-gradient(135deg, #C94D78 0%, #B52F58 100%);
   color: #ffffff;
-  box-shadow: 0 8px 20px rgba(72, 209, 204, 0.28);
+  box-shadow: 0 8px 20px rgba(201, 77, 120, 0.28);
 }
 
 .pipeline-modal-submit:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 12px 26px rgba(72, 209, 204, 0.32);
+  box-shadow: 0 12px 26px rgba(201, 77, 120, 0.32);
 }
 
 .pipeline-modal-submit:disabled,
