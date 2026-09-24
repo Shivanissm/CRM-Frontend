@@ -196,12 +196,12 @@
 }
 
 .reorder-pipelines-save {
-  background: #48D1CC;
+  background: #C94D78;
   color: #fff;
 }
 
 .reorder-pipelines-save:hover:not(:disabled) {
-  background: #36B5B0;
+  background: #B52F58;
 }
 
 .reorder-pipelines-cancel:disabled,

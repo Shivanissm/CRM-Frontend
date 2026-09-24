@@ -330,14 +330,6 @@ export default function DivertDealModal({
           </button>
           <button
             type="button"
-            className="divert-deal-btn-save"
-            onClick={() => handleSave(false)}
-            disabled={saving || selectedPipelineIds.length === 0}
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            type="button"
             className="divert-deal-btn-save-copy"
             onClick={() => handleSave(true)}
             disabled={saving || selectedPipelineIds.length === 0}

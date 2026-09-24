@@ -31,7 +31,7 @@
   margin: 0;
   font-size: 20px;
   font-weight: 700;
-  color: #1f6360;
+  color: #B52F58;
 }
 
 .organization-modal-close {
@@ -50,7 +50,7 @@
 .organization-modal-subtitle {
   margin: 0;
   font-size: 14px;
-  color: #4a7573;
+  color: #65777D;
   line-height: 1.5;
 }
 
@@ -73,7 +73,7 @@
 .organization-modal-textarea {
   padding: 10px 14px;
   border-radius: 10px;
-  border: 1px solid #b8ebe9;
+  border: 1px solid #D8E7E6;
   font-size: 14px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -81,8 +81,8 @@
 .organization-modal-input:focus,
 .organization-modal-textarea:focus {
   outline: none;
-  border-color: #48D1CC;
-  box-shadow: 0 0 0 3px rgba(72, 209, 204, 0.18);
+  border-color: #C94D78;
+  box-shadow: 0 0 0 3px rgba(201, 77, 120, 0.18);
 }
 
 .organization-modal-textarea {
@@ -132,14 +132,14 @@
 }
 
 .organization-modal-submit {
-  background: linear-gradient(135deg, #48D1CC 0%, #36B5B0 100%);
+  background: linear-gradient(135deg, #C94D78 0%, #B52F58 100%);
   color: #ffffff;
-  box-shadow: 0 8px 20px rgba(72, 209, 204, 0.28);
+  box-shadow: 0 8px 20px rgba(201, 77, 120, 0.28);
 }
 
 .organization-modal-submit:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 12px 28px rgba(72, 209, 204, 0.32);
+  box-shadow: 0 12px 28px rgba(201, 77, 120, 0.32);
 }
 
 .organization-modal-submit:disabled,

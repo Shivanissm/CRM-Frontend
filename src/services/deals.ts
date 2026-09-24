@@ -156,7 +156,12 @@ export const dealsApi = {
 
   get: async (id: number): Promise<Deal> => {
     const response = await api.get(`/${id}`);
-    return unwrap<Deal>(response.data);
+    const payload = unwrap<any>(response.data);
+    // The detail endpoint returns { deal, persons, activities }; unwrap the nested deal.
+    if (payload && typeof payload === 'object' && 'deal' in payload && payload.deal) {
+      return payload.deal as Deal;
+    }
+    return payload as Deal;
   },
 
   create: async (payload: DealCreateRequest): Promise<Deal> => {

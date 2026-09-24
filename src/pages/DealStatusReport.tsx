@@ -19,7 +19,7 @@ type Series = { key: string; label: string; color: string; values: Record<string
 type PieSlice = { key: string; label: string; value: number; color: string };
 type ChartView = 'vertical' | 'horizontal' | 'pie';
 
-const chartPalette = ['#2563eb', '#48D1CC', '#f59e0b', '#a855f7', '#ec4899', '#0ea5e9', '#14b8a6', '#f97316'];
+const chartPalette = ['#2563eb', '#C94D78', '#f59e0b', '#a855f7', '#ec4899', '#0ea5e9', '#14b8a6', '#f97316'];
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('en-IN', {

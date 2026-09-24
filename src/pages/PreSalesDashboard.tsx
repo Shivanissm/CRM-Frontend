@@ -59,7 +59,7 @@ function TargetAchievedChart({
       key: 'achieved',
       label: 'Achieved',
       // Teal with dark‑greenish shade combo for achieved
-      color: 'linear-gradient(180deg, #0F766E 0%, #2E9E99 100%)',
+      color: 'linear-gradient(180deg, #0F766E 0%, #B52F58 100%)',
       values: { TARGET: 0, ACHIEVED: achieved },
     },
   ];
@@ -224,7 +224,7 @@ function TargetAchievedChart({
   );
 }
 
-const chartPalette = ['#2563eb', '#48D1CC', '#f59e0b', '#a855f7', '#ec4899', '#0ea5e9', '#14b8a6', '#f97316'];
+const chartPalette = ['#2563eb', '#C94D78', '#f59e0b', '#a855f7', '#ec4899', '#0ea5e9', '#14b8a6', '#f97316'];
 
 const parseActivityDate = (activity: Activity): Date | null => {
   const raw = activity.dateTime || activity.date || activity.dueDate || activity.createdAt || activity.updatedAt;
@@ -2586,7 +2586,7 @@ export default function PreSalesDashboard() {
   const dealStatusSlices: PieSlice[] = useMemo(() => {
     const statusDefs = [
       { key: 'IN_PROGRESS', label: 'Open', color: '#fef08a' }, // light yellow
-      { key: 'WON', label: 'Won', color: '#48D1CC' }, // light green
+      { key: 'WON', label: 'Won', color: '#C94D78' }, // light green
       { key: 'LOST', label: 'Lost', color: '#fecaca' }, // light red
     ];
 

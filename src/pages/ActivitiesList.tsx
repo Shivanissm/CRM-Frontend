@@ -190,7 +190,7 @@ useEffect(() => {
   const [pendingAttachmentPreview, setPendingAttachmentPreview] = useState<string | null>(null);
   const [pendingUploading, setPendingUploading] = useState(false);
   const [pendingDialogPosition, setPendingDialogPosition] = useState<{ top: number; left: number } | null>(null);
-  const [lastClickPosition, setLastClickPosition] = useState<{ top: number; left: number } | null>(null);
+  const [, setLastClickPosition] = useState<{ top: number; left: number } | null>(null);
   const [screenshotViewerActivity, setScreenshotViewerActivity] = useState<Activity | null>(null);
   const [screenshotViewerImageUrl, setScreenshotViewerImageUrl] = useState<string | null>(null);
   const [screenshotReplacementFile, setScreenshotReplacementFile] = useState<File | null>(null);
@@ -2846,14 +2846,13 @@ useEffect(() => {
   const handlePendingDoneConfirm = async () => {
     if (!pendingDoneActivity) return;
     const duration = pendingDurationValue.trim();
-    if (!duration) {
-      alert('Please enter a duration.');
-      return;
-    }
-    const durationMinutes = parseDurationInputToMinutes(duration);
-    if (durationMinutes === null || durationMinutes <= 0) {
-      alert('Please enter a valid duration (e.g., 15 or 00:15:00).');
-      return;
+    let durationMinutes: number | null = null;
+    if (duration) {
+      durationMinutes = parseDurationInputToMinutes(duration);
+      if (durationMinutes === null || durationMinutes <= 0) {
+        alert('Please enter a valid duration (e.g., 15 or 00:15:00).');
+        return;
+      }
     }
     
     setPendingUploading(true);
@@ -2872,39 +2871,53 @@ useEffect(() => {
         }
       }
       
-    const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
-    const startMinutes = existingStartMinutes ?? 0;
-    const endMinutes = startMinutes + durationMinutes;
-    const startTimeFormatted =
-      existingStartMinutes !== null && pendingDoneActivity.startTime
-        ? pendingDoneActivity.startTime
-        : formatMinutesToHHMM(startMinutes);
-    const endTimeFormatted = formatMinutesToHHMM(endMinutes);
-      
-      const updatedActivity = await activitiesApi.update(pendingDoneActivity.id, {
-        startTime: startTimeFormatted,
-        endTime: endTimeFormatted,
-        duration_minutes: durationMinutes,
-      } as any);
-      if (updatedActivity) {
+      if (durationMinutes !== null) {
+        const existingStartMinutes = parseTimeToMinutes(pendingDoneActivity.startTime);
+        const startMinutes = existingStartMinutes ?? 0;
+        const endMinutes = startMinutes + durationMinutes;
+        const startTimeFormatted =
+          existingStartMinutes !== null && pendingDoneActivity.startTime
+            ? pendingDoneActivity.startTime
+            : formatMinutesToHHMM(startMinutes);
+        const endTimeFormatted = formatMinutesToHHMM(endMinutes);
+
+        const updatedActivity = await activitiesApi.update(pendingDoneActivity.id, {
+          startTime: startTimeFormatted,
+          endTime: endTimeFormatted,
+          duration_minutes: durationMinutes,
+        } as any);
+        if (updatedActivity) {
+          setData((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  content: prev.content.map((a) =>
+                    a.id === updatedActivity.id ? { ...a, ...updatedActivity, attachmentUrl } : a,
+                  ),
+                }
+              : prev,
+          );
+        }
+
+        const durationDisplay = duration.includes(':')
+          ? duration
+          : formatMinutesToHHMM(durationMinutes);
+        setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
+      } else if (pendingAttachmentFile) {
+        // No duration entered, but reflect the newly uploaded screenshot in local state
         setData((prev) =>
           prev
             ? {
                 ...prev,
                 content: prev.content.map((a) =>
-                  a.id === updatedActivity.id ? { ...a, ...updatedActivity, attachmentUrl } : a,
+                  a.id === pendingDoneActivity.id ? { ...a, attachmentUrl } : a,
                 ),
               }
             : prev,
         );
       }
-      
-      const durationDisplay = duration.includes(':')
-        ? duration
-        : formatMinutesToHHMM(durationMinutes);
-      setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
       // Pass duration_minutes to markDone API call
-      await completeToggleDone(pendingDoneActivity.id, pendingDoneValue, durationMinutes);
+      await completeToggleDone(pendingDoneActivity.id, pendingDoneValue, durationMinutes ?? undefined);
       handlePendingDoneCancel();
     } catch (error: any) {
       console.error('Failed to save call duration:', error);
@@ -3009,16 +3022,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
   };
 
   const toggleDone = async (activity: Activity, value: boolean) => {
-    if (normalizeCategoryLabel(activity.category) === 'Call' && value) {
-      setPendingDoneActivity(activity);
-      setPendingDoneValue(value);
-      setPendingDurationValue(durationEntries[activity.id] ?? '');
-      setPendingAttachmentFile(null);
-      // If activity already has an attachment URL, use it as preview
-      setPendingAttachmentPreview(activity.attachmentUrl || null);
-      setPendingDialogPosition(lastClickPosition || null);
-      return;
-    }
+    // Mark the activity done directly (no call-completion modal).
     await completeToggleDone(activity.id, value);
   };
 
@@ -3369,7 +3373,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
               height: '20px',
               borderRadius: '50%',
               border: a.done ? 'none' : '2px solid #ccc',
-              backgroundColor: a.done ? '#48D1CC' : 'transparent',
+              backgroundColor: a.done ? '#C94D78' : 'transparent',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -3749,7 +3753,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
             className="btn" 
             onClick={() => setIsAddOpen(true)}
             style={{
-              background: '#48D1CC',
+              background: '#C94D78',
               color: 'white',
               border: 'none',
               fontWeight: 600,
@@ -3892,7 +3896,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         </div>
               <div
                 className="summary-label"
-                style={{ color: tone?.text ?? '#48D1CC', textAlign: 'center' }}
+                style={{ color: tone?.text ?? '#C94D78', textAlign: 'center' }}
               >
                 {card.label.includes('\n') ? (
                   <>
@@ -4305,11 +4309,11 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
       <style>{`
         @keyframes highlightPulse {
           0%, 100% {
-            box-shadow: 0 0 0 6px #48D1CC, 0 8px 24px rgba(72, 209, 204, 0.6), inset 0 0 0 2px rgba(72, 209, 204, 0.3);
-            background-color: #d4f5f3;
+            box-shadow: 0 0 0 6px #C94D78, 0 8px 24px rgba(201, 77, 120, 0.6), inset 0 0 0 2px rgba(201, 77, 120, 0.3);
+            background-color: #E8F7F5;
           }
           50% {
-            box-shadow: 0 0 0 10px #48D1CC, 0 12px 32px rgba(72, 209, 204, 0.8), inset 0 0 0 2px rgba(72, 209, 204, 0.4);
+            box-shadow: 0 0 0 10px #C94D78, 0 12px 32px rgba(201, 77, 120, 0.8), inset 0 0 0 2px rgba(201, 77, 120, 0.4);
             background-color: #a7f3d0;
           }
         }
@@ -4382,13 +4386,13 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
               onClick={() => handleRowClick(a)} 
               style={{ 
                 cursor: 'pointer',
-                backgroundColor: isHighlighted ? '#d4f5f3' : 'transparent',
+                backgroundColor: isHighlighted ? '#E8F7F5' : 'transparent',
                 transition: 'background-color 0.3s ease, box-shadow 0.3s ease, border 0.3s ease',
-                boxShadow: isHighlighted ? '0 0 0 6px #48D1CC, 0 8px 24px rgba(72, 209, 204, 0.6), inset 0 0 0 2px rgba(72, 209, 204, 0.3)' : 'none',
-                outline: isHighlighted ? '4px solid #48D1CC' : 'none',
+                boxShadow: isHighlighted ? '0 0 0 6px #C94D78, 0 8px 24px rgba(201, 77, 120, 0.6), inset 0 0 0 2px rgba(201, 77, 120, 0.3)' : 'none',
+                outline: isHighlighted ? '4px solid #C94D78' : 'none',
                 outlineOffset: isHighlighted ? '-4px' : '0',
-                borderLeft: isHighlighted ? '8px solid #48D1CC' : 'none',
-                borderRight: isHighlighted ? '2px solid #48D1CC' : 'none',
+                borderLeft: isHighlighted ? '8px solid #C94D78' : 'none',
+                borderRight: isHighlighted ? '2px solid #C94D78' : 'none',
                 position: isHighlighted ? 'relative' : 'static',
                 zIndex: isHighlighted ? 100 : 'auto',
                 transform: isHighlighted ? 'scale(1.01)' : 'scale(1)',
@@ -4723,9 +4727,9 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           <div className="am-confirmation-modal" onClick={(e) => e.stopPropagation()}>
             <div className="am-confirmation-icon">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="10" fill="#48D1CC" opacity="0.1"/>
-                <path d="M9 12l2 2 4-4" stroke="#48D1CC" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="12" cy="12" r="10" stroke="#48D1CC" strokeWidth="2"/>
+                <circle cx="12" cy="12" r="10" fill="#C94D78" opacity="0.1"/>
+                <path d="M9 12l2 2 4-4" stroke="#C94D78" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="#C94D78" strokeWidth="2"/>
               </svg>
             </div>
             <h3 className="am-confirmation-title">Activity Scheduled Successfully!</h3>
@@ -4793,24 +4797,6 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#0f172a' }}>Complete call activity</h3>
             </div>
             <div style={{ padding: 16 }}>
-            <label style={{ display: 'block', marginBottom: 10, fontWeight: 500, fontSize: '13px' }}>
-              Please Enter Duration In Minutes
-              <input
-                type="text"
-                value={pendingDurationValue}
-                onChange={(e) => setPendingDurationValue(e.target.value)}
-                placeholder="15"
-                style={{
-                  width: '100%',
-                  marginTop: 4,
-                  padding: '8px 10px',
-                  border: '1px solid #f5d867',
-                  borderRadius: 6,
-                  fontSize: '13px',
-                  background: '#fff9e6',
-                }}
-              />
-            </label>
             <label style={{ display: 'block', marginBottom: 16, fontWeight: 500, fontSize: '13px' }}>
               Attach image
               <div style={{ marginTop: 4 }}>

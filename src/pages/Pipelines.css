@@ -18,12 +18,12 @@
   margin: 0;
   font-size: 28px;
   font-weight: 700;
-  color: #1f6360;
+  color: #B52F58;
 }
 
 .pipelines-header p {
   margin: 4px 0 0;
-  color: #4a7573;
+  color: #65777D;
   font-size: 14px;
 }
 
@@ -39,7 +39,7 @@
   border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
-  border: 1px solid #b8ebe9;
+  border: 1px solid #D8E7E6;
   background: #ffffff;
   color: #2e8f8b;
   cursor: pointer;
@@ -48,8 +48,8 @@
 
 .pipelines-add:hover,
 .pipelines-refresh:hover:not(:disabled) {
-  background: #f6fff9;
-  color: #1a6360;
+  background: #F6DCE5;
+  color: #B52F58;
   box-shadow: 0 2px 6px rgba(46, 143, 139, 0.12);
 }
 
@@ -71,7 +71,7 @@
 .pipelines-loading {
   padding: 40px 12px;
   text-align: center;
-  color: #4a7573;
+  color: #65777D;
 }
 
 .pipelines-grid {
@@ -108,7 +108,7 @@
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  color: #1f6360;
+  color: #B52F58;
 }
 
 .pipeline-card-meta {
@@ -117,7 +117,7 @@
   gap: 10px;
   margin-top: 6px;
   font-size: 12px;
-  color: #4a7573;
+  color: #65777D;
 }
 
 .pipeline-badge {
@@ -127,8 +127,8 @@
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
-  background: rgba(72, 209, 204, 0.18);
-  color: #1a6360;
+  background: rgba(201, 77, 120, 0.18);
+  color: #B52F58;
 }
 
 .pipeline-badge.muted {
@@ -145,8 +145,8 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  background: rgba(72, 209, 204, 0.12);
-  color: #36B5B0;
+  background: rgba(201, 77, 120, 0.12);
+  color: #B52F58;
 }
 
 .pipeline-card-actions {
@@ -159,7 +159,7 @@
 .pipeline-action {
   padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid #b8ebe9;
+  border: 1px solid #D8E7E6;
   background: #ffffff;
   color: #2e8f8b;
   font-size: 13px;
@@ -169,8 +169,8 @@
 }
 
 .pipeline-action:hover {
-  background: #f6fff9;
-  color: #1a6360;
+  background: #F6DCE5;
+  color: #B52F58;
   box-shadow: 0 2px 6px rgba(46, 143, 139, 0.12);
 }
 
@@ -223,13 +223,13 @@
 .pipeline-stage-name {
   font-size: 15px;
   font-weight: 600;
-  color: #1f6360;
+  color: #B52F58;
 }
 
 .pipeline-stage-order {
   font-size: 12px;
   font-weight: 500;
-  color: #4a7573;
+  color: #65777D;
 }
 
 .pipeline-stage-badge {
@@ -253,7 +253,7 @@
 .stage-action-button {
   padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid #b8ebe9;
+  border: 1px solid #D8E7E6;
   background: #ffffff;
   font-size: 12px;
   font-weight: 600;
@@ -262,7 +262,7 @@
 }
 
 .stage-action-button:hover:not(:disabled) {
-  background: #f6fff9;
+  background: #F6DCE5;
   box-shadow: 0 2px 6px rgba(46, 143, 139, 0.12);
 }
 
@@ -285,8 +285,8 @@
 .pipeline-stage-empty {
   padding: 16px;
   border-radius: 12px;
-  border: 1px dashed #b8ebe9;
-  color: #4a7573;
+  border: 1px dashed #D8E7E6;
+  color: #65777D;
   font-size: 14px;
   text-align: center;
   background: #ffffff;
@@ -295,13 +295,13 @@
 .pipeline-description {
   margin: 0;
   font-size: 13px;
-  color: #4a7573;
+  color: #65777D;
   line-height: 1.6;
 }
 
 .pipeline-stage-probability {
   font-size: 12px;
-  color: #4a7573;
+  color: #65777D;
 }
 
 @media (max-width: 768px) {

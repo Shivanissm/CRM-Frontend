@@ -15,12 +15,12 @@
   margin: 0;
   font-size: 26px;
   font-weight: 700;
-  color: #1f6360;
+  color: #B52F58;
 }
 
 .organizations-header p {
   margin: 6px 0 0;
-  color: #4a7573;
+  color: #65777D;
   font-size: 14px;
 }
 
@@ -34,15 +34,15 @@
 .organizations-search input {
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid #b8ebe9;
+  border: 1px solid #D8E7E6;
   min-width: 220px;
   font-size: 14px;
 }
 
 .organizations-search input:focus {
   outline: none;
-  border-color: #48D1CC;
-  box-shadow: 0 0 0 2px rgba(72, 209, 204, 0.16);
+  border-color: #C94D78;
+  box-shadow: 0 0 0 2px rgba(201, 77, 120, 0.16);
 }
 
 .organizations-add,
@@ -51,7 +51,7 @@
   border-radius: 8px;
   font-size: 14px;
   font-weight: 600;
-  border: 1px solid #b8ebe9;
+  border: 1px solid #D8E7E6;
   background: #ffffff;
   color: #2e8f8b;
   cursor: pointer;
@@ -60,8 +60,8 @@
 
 .organizations-add:hover,
 .organizations-refresh:hover:not(:disabled) {
-  background: #f6fff9;
-  color: #1a6360;
+  background: #F6DCE5;
+  color: #B52F58;
   box-shadow: 0 2px 6px rgba(46, 143, 139, 0.12);
 }
 
@@ -82,7 +82,7 @@
 .organizations-loading {
   padding: 36px 12px;
   text-align: center;
-  color: #4a7573;
+  color: #65777D;
 }
 
 .organizations-empty {
@@ -105,12 +105,12 @@
 .organizations-empty-card h2 {
   margin: 0 0 12px;
   font-size: 20px;
-  color: #1f6360;
+  color: #B52F58;
 }
 
 .organizations-empty-card p {
   margin: 0;
-  color: #4a7573;
+  color: #65777D;
   line-height: 1.6;
 }
 
@@ -138,17 +138,17 @@
   gap: 6px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(72, 209, 204, 0.1);
-  color: #2E9E99;
+  background: rgba(201, 77, 120, 0.1);
+  color: #B52F58;
   font-size: 13px;
   font-weight: 600;
-  border: 1px solid rgba(72, 209, 204, 0.25);
+  border: 1px solid rgba(201, 77, 120, 0.25);
 }
 
 .organizations-table th {
   background: #f3fbf6;
   font-weight: 700;
-  color: #1f6360;
+  color: #B52F58;
 }
 
 .organizations-table tr:last-child td {
@@ -165,7 +165,7 @@
 .organizations-row-btn {
   padding: 6px 12px;
   border-radius: 8px;
-  border: 1px solid #b8ebe9;
+  border: 1px solid #D8E7E6;
   background: #ffffff;
   color: #2e8f8b;
   font-size: 13px;
@@ -175,8 +175,8 @@
 }
 
 .organizations-row-btn:hover:not(:disabled) {
-  background: #f6fff9;
-  color: #1a6360;
+  background: #F6DCE5;
+  color: #B52F58;
   box-shadow: 0 2px 6px rgba(46, 143, 139, 0.12);
 }
 

@@ -55,7 +55,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, #48D1CC, #36B5B0);
+  background: linear-gradient(135deg, #C94D78, #B52F58);
   border: none;
   color: #fff;
   padding: 10px 18px;
@@ -161,7 +161,7 @@
 }
 
 .target-user-detail-cell-achieved {
-  color: #36B5B0;
+  color: #B52F58;
   font-weight: 500;
 }
 
@@ -301,11 +301,11 @@
 }
 
 .target-user-summary-achieved {
-  color: #36B5B0;
+  color: #B52F58;
 }
 
 .target-user-summary-difference-positive {
-  color: #36B5B0;
+  color: #B52F58;
 }
 
 .target-user-summary-difference-negative {
@@ -348,7 +348,7 @@
 }
 
 .target-user-chart-legend-achieved {
-  background: #48D1CC;
+  background: #C94D78;
 }
 
 .target-user-chart-legend-target {
@@ -493,7 +493,7 @@
 }
 
 .target-user-chart-tooltip-icon-achieved {
-  color: #48D1CC;
+  color: #C94D78;
 }
 
 .target-user-chart-tooltip-icon-target {
@@ -529,7 +529,7 @@
 }
 
 .target-user-chart-bar-achieved {
-  background: #48D1CC;
+  background: #C94D78;
   z-index: 2;
 }
 

@@ -2,7 +2,7 @@
   display: grid;
   grid-template-columns: 240px 1fr;
   height: 100vh;
-  background: #f6f9fb;
+  background: #FFF7F5;
   overflow: hidden;
   position: relative;
   transition: grid-template-columns 0.2s ease;
@@ -15,13 +15,12 @@
 .app-shell-sidebar {
   background: linear-gradient(
     180deg,
-    #b8ece9 0%,
-    #9de4df 28%,
-    #7dd4cf 55%,
-    #5ec4bf 78%,
-    #48d1cc 100%
+    #54C9C4 0%,
+    #67CCC8 25%,
+    #A77BB5 65%,
+    #C94D78 100%
   );
-  color: #1a5553;
+  color: #ffffff;
   display: flex;
   flex-direction: column;
   padding: 16px 12px;
@@ -32,7 +31,7 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 2px 0 12px rgba(26, 85, 83, 0.08);
+  box-shadow: 2px 0 12px rgba(46, 169, 165, 0.18);
 }
 
 .app-shell-brand {
@@ -57,7 +56,7 @@
 }
 
 .app-shell-brand:focus-visible {
-  outline: 2px solid #1a5553;
+  outline: 2px solid #ffffff;
   outline-offset: 2px;
 }
 
@@ -68,7 +67,7 @@
   border-radius: 10px;
   background: #ffffff;
   padding: 6px;
-  box-shadow: 0 2px 8px rgba(26, 85, 83, 0.12);
+  box-shadow: 0 2px 8px rgba(46, 169, 165, 0.18);
   flex-shrink: 0;
 }
 
@@ -79,18 +78,19 @@
   font-weight: 700;
   font-size: 13px;
   letter-spacing: -0.04em;
-  color: #1a5553;
+  color: #2EA9A5;
 }
 
 .app-shell-brand-name {
   font-size: 15px;
   font-weight: 700;
-  color: #1a5553;
+  color: #ffffff;
   letter-spacing: -0.01em;
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(36, 52, 61, 0.22);
 }
 
 .app-shell-nav {
@@ -110,7 +110,7 @@
 }
 
 .app-shell-nav::-webkit-scrollbar-thumb {
-  background: rgba(26, 85, 83, 0.18);
+  background: rgba(255, 255, 255, 0.35);
   border-radius: 4px;
 }
 
@@ -120,7 +120,7 @@
   gap: 12px;
   padding: 10px 12px;
   border-radius: 10px;
-  color: #1f6360;
+  color: rgba(255, 255, 255, 0.92);
   text-decoration: none;
   font-weight: 500;
   font-size: 14px;
@@ -129,23 +129,26 @@
   width: 100%;
   min-height: 42px;
   flex-shrink: 0;
+  text-shadow: 0 1px 2px rgba(36, 52, 61, 0.22);
 }
 
 .app-shell-link:hover {
-  background: rgba(255, 255, 255, 0.55);
-  color: #134543;
+  background: #E8F7F5;
+  color: #2EA9A5;
+  text-shadow: none;
 }
 
 .app-shell-link.active {
   background: #ffffff;
-  color: #134543;
+  color: #B52F58;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(26, 85, 83, 0.12);
+  box-shadow: 0 2px 8px rgba(181, 47, 88, 0.16);
+  text-shadow: none;
 }
 
 .app-shell-link-icon {
   flex-shrink: 0;
-  color: #1a5553;
+  color: currentColor;
   stroke: currentColor;
 }
 
@@ -158,13 +161,13 @@
 
 .app-shell-nav-tooltip-portal {
   position: fixed;
-  background: #1a5553;
+  background: #2EA9A5;
   color: #ffffff;
   padding: 7px 11px;
   border-radius: 8px;
   white-space: nowrap;
   z-index: 999999;
-  box-shadow: 0 4px 12px rgba(26, 85, 83, 0.2);
+  box-shadow: 0 4px 12px rgba(46, 169, 165, 0.25);
   font-size: 13px;
   font-weight: 500;
   pointer-events: none;
@@ -180,7 +183,7 @@
   top: 50%;
   transform: translateY(-50%);
   border: 5px solid transparent;
-  border-right-color: #1a5553;
+  border-right-color: #2EA9A5;
 }
 
 @keyframes fadeIn {
@@ -202,7 +205,7 @@
   width: 100%;
   flex-shrink: 0;
   padding-top: 12px;
-  border-top: 1px solid rgba(26, 85, 83, 0.12);
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
 }
 
 .app-shell-user {
@@ -211,28 +214,28 @@
   gap: 10px;
   padding: 8px 10px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.22);
   width: 100%;
   transition: background 0.15s ease;
   cursor: default;
 }
 
 .app-shell-user:hover {
-  background: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.32);
 }
 
 .app-shell-avatar {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #ffffff;
-  color: #1a5553;
+  background: #2EA9A5;
+  color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
   font-size: 14px;
-  box-shadow: 0 1px 4px rgba(26, 85, 83, 0.12);
+  box-shadow: 0 1px 4px rgba(46, 169, 165, 0.25);
   flex-shrink: 0;
 }
 
@@ -244,7 +247,7 @@
 .app-shell-user-name {
   font-size: 13px;
   font-weight: 600;
-  color: #1a5553;
+  color: #ffffff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -252,7 +255,7 @@
 
 .app-shell-user-role {
   font-size: 11px;
-  color: rgba(26, 85, 83, 0.72);
+  color: #F6DCE5;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -262,8 +265,8 @@
   border: none;
   border-radius: 10px;
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.45);
-  color: #1a5553;
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
   font-weight: 600;
   font-size: 14px;
   cursor: pointer;
@@ -276,12 +279,12 @@
 }
 
 .app-shell-logout:hover {
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.32);
 }
 
 .app-shell-logout-icon {
   flex-shrink: 0;
-  color: #1a5553;
+  color: #ffffff;
 }
 
 .app-shell-content {
@@ -329,7 +332,7 @@
   display: flex;
   align-items: center;
   padding: 12px 18px;
-  border: 1.5px solid #e5e7eb;
+  border: 1.5px solid #D8E7E6;
   border-radius: 10px;
   background: #ffffff;
   cursor: text;
@@ -342,17 +345,17 @@
 }
 
 .app-shell-search-input:hover {
-  border-color: #d1d5db;
+  border-color: #B7E9E5;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
 }
 
 .app-shell-search-input:focus-within {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1), 0 2px 4px rgba(0, 0, 0, 0.08);
+  border-color: #54C9C4;
+  box-shadow: 0 0 0 4px rgba(84, 201, 196, 0.18), 0 2px 4px rgba(0, 0, 0, 0.08);
 }
 
 .app-shell-search-icon {
-  color: #9ca3af;
+  color: #2EA9A5;
   margin-right: 14px;
   flex-shrink: 0;
   width: 20px;
@@ -495,13 +498,13 @@
 }
 
 .app-shell-search-result-status.won {
-  background: #d4f5f3;
-  color: #1a6360;
+  background: #dcfce7;
+  color: #166534;
 }
 
 .app-shell-search-result-status.done {
-  background: #d4f5f3;
-  color: #1a6360;
+  background: #dcfce7;
+  color: #166534;
 }
 
 .app-shell-search-result-status.pending {

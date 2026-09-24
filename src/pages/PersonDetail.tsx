@@ -659,7 +659,7 @@ export default function PersonDetail() {
 
   const labelColors = [
     '#2196F3', // Blue
-    '#48D1CC', // Mint green
+    '#C94D78', // Mint green
     '#FFC107', // Yellow
     '#F44336', // Red
     '#9C27B0', // Purple
@@ -673,7 +673,7 @@ export default function PersonDetail() {
   // Color mapping for labels (you can extend this based on label codes)
   const getLabelColor = (labelCode: string): string => {
     const colorMap: Record<string, string> = {
-      'CUSTOMER': '#48D1CC',      // Mint green
+      'CUSTOMER': '#C94D78',      // Mint green
       'HOT_LEAD': '#F44336',      // Red
       'WARM_LEAD': '#FFC107',     // Yellow
       'COLD_LEAD': '#2196F3',     // Blue
@@ -777,8 +777,8 @@ export default function PersonDetail() {
           <div className="person-detail-toast person-detail-toast-success" onClick={(e) => e.stopPropagation()}>
             <div className="person-detail-toast-icon-wrapper">
               <svg className="person-detail-toast-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M20 6L9 17l-5-5" stroke="#48D1CC" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="12" cy="12" r="10" stroke="#48D1CC" strokeWidth="2" fill="none"/>
+                <path d="M20 6L9 17l-5-5" stroke="#C94D78" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="#C94D78" strokeWidth="2" fill="none"/>
               </svg>
             </div>
             <div className="person-detail-toast-content">
@@ -886,7 +886,7 @@ export default function PersonDetail() {
                         </div>
                         <div className="person-labels-list">
                           {[
-                            { code: 'CUSTOMER', label: 'CUSTOMER', color: '#48D1CC' },
+                            { code: 'CUSTOMER', label: 'CUSTOMER', color: '#C94D78' },
                             { code: 'HOT_LEAD', label: 'HOT LEAD', color: '#F44336' },
                             { code: 'WARM_LEAD', label: 'WARM LEAD', color: '#FFC107' },
                             { code: 'COLD_LEAD', label: 'COLD LEAD', color: '#2196F3' },
@@ -1409,7 +1409,7 @@ export default function PersonDetail() {
                 <label className="person-field-label">Labels</label>
                 <div className="person-labels-container">
                   {editingField === 'orgLabel' || orgLabelsDropdownOpen ? (
-                    <div className="person-field-input person-label-select" style={{ borderColor: orgLabelsDropdownOpen ? '#48D1CC' : '#ddd' }}>
+                    <div className="person-field-input person-label-select" style={{ borderColor: orgLabelsDropdownOpen ? '#C94D78' : '#ddd' }}>
                       {formData.label ? (
                         <span className="person-label-badge" style={{ backgroundColor: getLabelColor(formData.label) }}>
                           {labels.find(l => l.code === formData.label)?.label || formData.label}
@@ -1456,7 +1456,7 @@ export default function PersonDetail() {
                         </div>
                         <div className="person-labels-list">
                           {[
-                            { code: 'CUSTOMER', label: 'CUSTOMER', color: '#48D1CC' },
+                            { code: 'CUSTOMER', label: 'CUSTOMER', color: '#C94D78' },
                             { code: 'HOT_LEAD', label: 'HOT LEAD', color: '#F44336' },
                             { code: 'WARM_LEAD', label: 'WARM LEAD', color: '#FFC107' },
                             { code: 'COLD_LEAD', label: 'COLD LEAD', color: '#2196F3' },
