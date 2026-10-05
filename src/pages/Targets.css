@@ -6,32 +6,38 @@
   --targets-table-body: #ffffff;
   --targets-table-row-alt: #FFF7F5;
   --targets-table-border: #D8E7E6;
-  --targets-row-hover: #F6DCE5;
+  --targets-row-hover: #F7FCFB;
   --targets-text-main: #24343D;
   --targets-text-muted: #65777D;
-  --targets-presales-bg: #f2f7f7;
+  --targets-presales-bg: #E8F7F5;
   --targets-presales-text: #65777D;
-  --targets-teal-shadow: rgba(84, 201, 196, 0.28);
+  --targets-teal-shadow: rgba(201, 77, 120, 0.22);
 
-  padding: 24px 32px;
-  background: #fff;
-  min-height: calc(100vh - 48px);
-  max-width: 1400px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 8px 8px 32px;
+  background: transparent;
+  min-height: 100%;
+  max-width: 1600px;
   margin: 0 auto;
   color: var(--targets-text-main);
+  box-sizing: border-box;
 }
 
 .targets-header {
-  margin-bottom: 24px;
-  border-bottom: 1px solid var(--targets-table-border);
-  padding-bottom: 16px;
+  margin-bottom: 2px;
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
 .targets-title {
   font-size: 28px;
   font-weight: 700;
+  letter-spacing: -0.03em;
   color: var(--targets-text-main);
   margin: 0;
+  line-height: 1.2;
 }
 
 .targets-loading,
@@ -43,12 +49,13 @@
 }
 
 .targets-error {
-  color: #ef4444;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  margin-bottom: 24px;
-  padding: 16px;
+  color: #B52F58;
+  background: #F6DCE5;
+  border: 1px solid #E6A0B8;
+  border-radius: 12px;
+  margin-bottom: 0;
+  padding: 12px 16px;
+  text-align: left;
 }
 
 /* Filters */
@@ -58,7 +65,7 @@
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 24px;
+  margin-bottom: 0;
 }
 
 .targets-actions {
@@ -74,7 +81,7 @@
   flex-direction: row;
   align-items: center;
   justify-content: flex-end;
-  gap: 16px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
@@ -87,42 +94,45 @@
 .targets-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  margin-bottom: 32px;
-  padding: 20px;
-  background: var(--targets-table-row-alt);
-  border-radius: 8px;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 0;
+  padding: 12px 14px;
+  background: #fff;
+  border-radius: 14px;
   border: 1px solid var(--targets-table-border);
+  box-shadow: 0 2px 8px rgba(36, 52, 61, 0.04);
 }
 
 .targets-view-toggle {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: var(--targets-presales-bg);
-  border-radius: 999px;
+  background: #fff;
+  border-radius: 12px;
   padding: 4px;
   border: 1px solid var(--targets-table-border);
   height: fit-content;
   white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(36, 52, 61, 0.04);
 }
 
 .targets-view-toggle-btn {
   border: none;
   background: transparent;
   padding: 8px 16px;
-  border-radius: 999px;
+  border-radius: 10px;
   font-size: 14px;
   font-weight: 600;
   color: var(--targets-presales-text);
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
 }
 
 .targets-view-toggle-btn.active {
   background: var(--targets-primary-teal);
   color: #fff;
-  box-shadow: 0 6px 14px var(--targets-teal-shadow);
+  box-shadow: 0 4px 12px var(--targets-teal-shadow);
 }
 
 .targets-view-toggle-btn:disabled {
@@ -152,24 +162,24 @@
 }
 
 .targets-view-toggle-icons {
-  padding: 8px 10px;
-  border-radius: 16px;
+  padding: 4px;
+  border-radius: 12px;
   border-color: var(--targets-table-border);
-  box-shadow: 0 8px 20px rgba(42, 35, 39, 0.06);
-  gap: 10px;
+  box-shadow: 0 2px 8px rgba(36, 52, 61, 0.04);
+  gap: 4px;
   background: #ffffff;
 }
 
 .targets-view-toggle-icon-btn {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   padding: 0;
-  border-radius: 14px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
-  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+  transition: transform 150ms ease, background 150ms ease, color 150ms ease;
 }
 
 .targets-view-toggle-icon-btn svg {
@@ -228,22 +238,22 @@
   align-items: center;
   gap: 8px;
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--targets-primary-teal);
   color: #fff;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
-  padding: 12px 20px;
-  box-shadow: 0 10px 20px var(--targets-teal-shadow);
+  padding: 0 16px;
+  min-height: 40px;
+  box-shadow: 0 4px 12px var(--targets-teal-shadow);
   cursor: pointer;
   height: fit-content;
   white-space: nowrap;
-  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
 
 .targets-set-target-btn:not(:disabled):hover {
   background: #B52F58;
-  box-shadow: 0 12px 24px rgba(201, 77, 120, 0.35);
 }
 
 .targets-set-target-btn:disabled {
@@ -261,51 +271,55 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 150px;
+  min-width: 160px;
 }
 
 .targets-filter-group label {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--targets-dark-teal);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--targets-text-muted);
 }
 
 .targets-filter-select {
   padding: 8px 12px;
   border: 1px solid var(--targets-table-border);
-  border-radius: 6px;
+  border-radius: 10px;
+  min-height: 40px;
   font-size: 14px;
   background: #fff;
   color: var(--targets-text-main);
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
 
 .targets-filter-select:hover {
-  border-color: #b8d4d8;
+  background: #E8F7F5;
 }
 
 .targets-filter-select:focus {
-  outline: none;
-  border-color: var(--targets-primary-teal);
-  box-shadow: 0 0 0 3px rgba(201, 77, 120, 0.15);
+  outline: 2px solid #54C9C4;
+  outline-offset: 1px;
+  border-color: #54C9C4;
+  box-shadow: 0 0 0 3px rgba(84, 201, 196, 0.18);
 }
 
 /* Tables Container */
 .targets-tables-container {
   display: flex;
   flex-direction: column;
-  gap: 40px;
-  align-items: center;
+  gap: 20px;
+  align-items: stretch;
 }
 
 .targets-breakdown-container {
   width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 .targets-breakdown-error {
@@ -316,7 +330,7 @@
   overflow-x: auto;
   border-radius: 16px;
   border: 1px solid var(--targets-table-border);
-  box-shadow: 0 12px 28px rgba(42, 35, 39, 0.06);
+  box-shadow: 0 8px 24px rgba(36, 52, 61, 0.06);
   background: var(--targets-table-body);
 }
 
@@ -427,7 +441,7 @@
   background: var(--targets-table-body);
   border-radius: 16px;
   border: 1px solid var(--targets-table-border);
-  box-shadow: 0 12px 28px rgba(42, 35, 39, 0.06);
+  box-shadow: 0 8px 24px rgba(36, 52, 61, 0.06);
   display: flex;
   flex-direction: column;
 }
@@ -480,8 +494,10 @@
 }
 
 .targets-grid-mini-table th {
-  font-weight: 600;
-  color: var(--targets-dark-teal);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: #B52F58;
   background: var(--targets-column-header-bg);
 }
 
@@ -501,7 +517,7 @@
 .targets-grid-th-deals,
 .targets-grid-th-incentive {
   background: var(--targets-column-header-bg);
-  color: var(--targets-dark-teal);
+  color: #B52F58;
 }
 
 .targets-grid-mini-table tbody tr:nth-child(even) {
@@ -538,16 +554,17 @@
 
 .targets-category-section {
   width: 100%;
-  max-width: 1200px;
+  max-width: none;
 }
 
 /* Main Target Table */
 .targets-table-wrapper {
-  margin-bottom: 32px;
+  margin-bottom: 0;
   overflow-x: auto;
-  border-radius: 12px;
+  border-radius: 16px;
   border: 1px solid var(--targets-table-border);
-  box-shadow: 0 12px 28px rgba(42, 35, 39, 0.06);
+  box-shadow: 0 8px 24px rgba(36, 52, 61, 0.06);
+  background: #fff;
 }
 
 .targets-table {
@@ -562,14 +579,14 @@
 }
 
 .targets-category-title {
-  padding: 16px;
+  padding: 14px 16px;
   text-align: center;
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
   color: #ffffff;
   background: var(--targets-section-header);
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
 }
 
 .targets-table-header-row {
@@ -579,12 +596,13 @@
 .targets-table-header {
   padding: 12px 16px;
   text-align: left;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--targets-dark-teal);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #B52F58;
   background: var(--targets-column-header-bg);
   border-bottom: 1px solid var(--targets-table-border);
-  border-right: 1px solid var(--targets-table-border);
+  border-right: none;
 }
 
 .targets-table-header:last-child {
@@ -618,10 +636,10 @@
 }
 
 .targets-table-cell {
-  padding: 12px 16px;
-  font-size: 14px;
+  padding: 14px 16px;
+  font-size: 13px;
   color: var(--targets-text-main);
-  border-right: 1px solid var(--targets-table-border);
+  border-right: none;
   background: transparent;
 }
 
@@ -665,17 +683,17 @@
 
 .targets-deals-title {
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--targets-text-main);
   margin-bottom: 16px;
   padding-bottom: 8px;
-  border-bottom: 2px solid var(--targets-table-border);
+  border-bottom: 1px solid var(--targets-table-border);
 }
 
 .targets-deals-table-wrapper {
   overflow-x: auto;
-  border-radius: 8px;
-  box-shadow: 0 8px 20px rgba(42, 35, 39, 0.05);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(36, 52, 61, 0.06);
   border: 1px solid var(--targets-table-border);
 }
 
@@ -691,11 +709,12 @@
 }
 
 .targets-deals-header {
-  padding: 10px 12px;
+  padding: 12px 16px;
   text-align: left;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--targets-dark-teal);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #B52F58;
   background: var(--targets-column-header-bg);
   border-bottom: 1px solid var(--targets-table-border);
   white-space: nowrap;
@@ -728,7 +747,7 @@
 /* Responsive */
 @media (max-width: 768px) {
   .targets-page {
-    padding: 16px;
+    padding: 8px 8px 32px;
   }
 
   .targets-filters-row {

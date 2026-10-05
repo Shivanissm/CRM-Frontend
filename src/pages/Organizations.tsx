@@ -401,6 +401,11 @@ export default function Organizations() {
     }
   };
 
+  const getOwnerInitials = (label: string) => {
+    const parts = label.trim().split(/\s+/);
+    return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('') || '?';
+  };
+
   return (
     <div className="organizations-page">
       <header className="organizations-header">
@@ -418,186 +423,24 @@ export default function Organizations() {
             />
           </div>
           <div style={{ position: 'relative' }} ref={dateRangeDropdownRef}>
-            <button 
+            <button
               className="organizations-date-range-btn"
               onClick={() => setIsDateRangeDropdownOpen(!isDateRangeDropdownOpen)}
-              style={{
-                padding: '8px 16px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                background: '#fff',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 500,
-                color: '#374151',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}
             >
               <span>{getDateRangeDisplayText()}</span>
               <span style={{ fontSize: '10px' }}>▾</span>
             </button>
             {isDateRangeDropdownOpen && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 8px)',
-                  left: 0,
-                  backgroundColor: '#fff',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-                  minWidth: '200px',
-                  zIndex: 1000,
-                  overflow: 'hidden',
-                }}
-              >
-                <button
-                  onClick={() => handleDateRangeOption('today')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
-                >
-                  Today
-                </button>
-                <button
-                  onClick={() => handleDateRangeOption('yesterday')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
-                >
-                  Yesterday
-                </button>
-                <button
-                  onClick={() => handleDateRangeOption('thisWeek')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
-                >
-                  This week
-                </button>
-                <button
-                  onClick={() => handleDateRangeOption('lastWeek')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
-                >
-                  Last week
-                </button>
-                <button
-                  onClick={() => handleDateRangeOption('thisMonth')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
-                >
-                  This month
-                </button>
-                <button
-                  onClick={() => handleDateRangeOption('lastMonth')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
-                >
-                  Last month
-                </button>
-                <button
-                  onClick={() => handleDateRangeOption('last30Days')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
-                >
-                  Last 30 days
-                </button>
-                <div style={{ height: '1px', background: '#e5e7eb', margin: '4px 0' }}></div>
-                <button
-                  onClick={() => handleDateRangeOption('custom')}
-                  style={{
-                    width: '100%',
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    border: 'none',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    color: '#374151',
-                    transition: 'background-color 0.15s',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#fff'}
-                >
-                  Select date range
-                </button>
+              <div className="organizations-date-menu">
+                <button className="organizations-date-option" onClick={() => handleDateRangeOption('today')}>Today</button>
+                <button className="organizations-date-option" onClick={() => handleDateRangeOption('yesterday')}>Yesterday</button>
+                <button className="organizations-date-option" onClick={() => handleDateRangeOption('thisWeek')}>This week</button>
+                <button className="organizations-date-option" onClick={() => handleDateRangeOption('lastWeek')}>Last week</button>
+                <button className="organizations-date-option" onClick={() => handleDateRangeOption('thisMonth')}>This month</button>
+                <button className="organizations-date-option" onClick={() => handleDateRangeOption('lastMonth')}>Last month</button>
+                <button className="organizations-date-option" onClick={() => handleDateRangeOption('last30Days')}>Last 30 days</button>
+                <div className="organizations-date-divider"></div>
+                <button className="organizations-date-option" onClick={() => handleDateRangeOption('custom')}>Select date range</button>
               </div>
             )}
           </div>
@@ -624,11 +467,14 @@ export default function Organizations() {
       ) : filteredOrganizations.length === 0 ? (
         <div className="organizations-empty">
           <div className="organizations-empty-card">
+            <div className="organizations-empty-icon" aria-hidden="true">⌂</div>
             <h2>No organizations yet</h2>
             <p>Use the “+ Organization” button to create your first record.</p>
           </div>
         </div>
       ) : (
+        <div className="organizations-panel">
+        <div className="organizations-table-wrap">
         <table className="organizations-table">
           <thead>
             <tr>
@@ -649,23 +495,47 @@ export default function Organizations() {
               const isBusy = busyId === organization.id;
               const dealCounts = organizationDealCounts[organization.id] || { total: 0, won: 0, lost: 0, open: 0 };
               const owner = organization.owner;
+              const ownerLabel = owner ? owner.displayName || `${owner.firstName} ${owner.lastName}` : '—';
               return (
                 <tr key={organization.id}>
-                  <td>{organization.id}</td>
-                  <td>{organization.name}</td>
-                  <td>{organization.category ?? '—'}</td>
-                  <td>{owner ? owner.displayName || `${owner.firstName} ${owner.lastName}` : '—'}</td>
-                  <td style={{ textAlign: 'center' }}>{dealCounts.total}</td>
-                  <td style={{ textAlign: 'center' }}>{dealCounts.won}</td>
-                  <td style={{ textAlign: 'center' }}>{dealCounts.lost}</td>
-                  <td style={{ textAlign: 'center' }}>{dealCounts.open}</td>
+                  <td><span className="organizations-id">{organization.id}</span></td>
+                  <td><span className="organizations-name">{organization.name}</span></td>
+                  <td>
+                    {organization.category ? (
+                      <span className="organizations-category-chip">{organization.category}</span>
+                    ) : (
+                      <span className="organizations-muted">—</span>
+                    )}
+                  </td>
+                  <td>
+                    {ownerLabel !== '—' ? (
+                      <span className="organizations-owner">
+                        <span className="organizations-avatar" aria-hidden="true">{getOwnerInitials(ownerLabel)}</span>
+                        <span>{ownerLabel}</span>
+                      </span>
+                    ) : (
+                      <span className="organizations-muted">—</span>
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <span className="organizations-count organizations-count-total">{dealCounts.total}</span>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <span className="organizations-count organizations-count-won">{dealCounts.won}</span>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <span className="organizations-count organizations-count-lost">{dealCounts.lost}</span>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <span className="organizations-count organizations-count-open">{dealCounts.open}</span>
+                  </td>
                   <td>
                     {organization.googleCalendarId ? (
                       <span className="organizations-calendar-pill" title="This organization syncs to Google Calendar">
                         {organization.googleCalendarId}
                       </span>
                     ) : (
-                      '—'
+                      <span className="organizations-muted">—</span>
                     )}
                   </td>
                   <td>
@@ -691,6 +561,33 @@ export default function Organizations() {
             })}
           </tbody>
         </table>
+        </div>
+        <div className="organizations-card-list">
+          {filteredOrganizations.map((organization) => {
+            const isBusy = busyId === organization.id;
+            const dealCounts = organizationDealCounts[organization.id] || { total: 0, won: 0, lost: 0, open: 0 };
+            const owner = organization.owner;
+            const ownerLabel = owner ? owner.displayName || `${owner.firstName} ${owner.lastName}` : '—';
+            return (
+              <div key={`card-${organization.id}`} className="organizations-card">
+                <div className="organizations-card-title">{organization.name}</div>
+                <div className="organizations-card-row"><span>ID</span><span>{organization.id}</span></div>
+                <div className="organizations-card-row"><span>Category</span><span>{organization.category ?? '—'}</span></div>
+                <div className="organizations-card-row"><span>Owner</span><span>{ownerLabel}</span></div>
+                <div className="organizations-card-row"><span>Total Deals</span><span>{dealCounts.total}</span></div>
+                <div className="organizations-card-row"><span>WON</span><span>{dealCounts.won}</span></div>
+                <div className="organizations-card-row"><span>LOST</span><span>{dealCounts.lost}</span></div>
+                <div className="organizations-card-row"><span>Open</span><span>{dealCounts.open}</span></div>
+                <div className="organizations-card-row"><span>Calendar email</span><span>{organization.googleCalendarId || '—'}</span></div>
+                <div className="organizations-row-actions" style={{ marginTop: 10 }}>
+                  <button className="organizations-row-btn" onClick={() => setModalState({ mode: 'edit', organization })} disabled={isBusy}>Edit</button>
+                  <button className="organizations-row-btn danger" onClick={() => void handleDelete(organization)} disabled={isBusy}>Delete</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        </div>
       )}
 
       {modalState && (
@@ -712,52 +609,27 @@ export default function Organizations() {
 
       {/* Date Range Modal */}
       {isDateRangeModalOpen && (
-        <div 
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
+        <div
+          className="organizations-range-overlay"
           onClick={() => setIsDateRangeModalOpen(false)}
         >
-          <div 
-            style={{
-              backgroundColor: 'white',
-              padding: '24px',
-              borderRadius: '8px',
-              minWidth: '400px',
-              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-            }}
+          <div
+            className="organizations-range-modal"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: 600 }}>Select Date Range</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: 500 }}>
+            <h3>Select Date Range</h3>
+            <div className="organizations-range-field">
+                <label>
                   Start Date
                 </label>
                 <input
                   type="date"
                   value={dateRange.start}
                   onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                  }}
                 />
               </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', fontWeight: 500 }}>
+            <div className="organizations-range-field">
+                <label>
                   End Date
                 </label>
                 <input
@@ -765,52 +637,28 @@ export default function Organizations() {
                   value={dateRange.end}
                   onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
                   min={dateRange.start || undefined}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                  }}
                 />
               </div>
-            </div>
-            <div style={{ display: 'flex', gap: '12px', marginTop: '20px', justifyContent: 'flex-end' }}>
+            <div className="organizations-range-actions">
               <button
+                  className="organizations-range-clear"
                   onClick={() => {
                     setIsDateRangeModalOpen(false);
                     setDateRange({ start: '', end: '' });
                     setSelectedDateRangeOption('');
                   }}
-                style={{
-                  padding: '8px 16px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  backgroundColor: 'white',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                }}
               >
                 Clear
               </button>
               <button
+                className="organizations-range-apply"
                 onClick={() => {
                   if (dateRange.start && dateRange.end) {
                     setIsDateRangeModalOpen(false);
-                    setSelectedDateRangeOption(''); // Clear preset option when using custom range
+                    setSelectedDateRangeOption('');
                   }
                 }}
                 disabled={!dateRange.start || !dateRange.end}
-                style={{
-                  padding: '8px 16px',
-                  border: 'none',
-                  borderRadius: '4px',
-                  backgroundColor: (!dateRange.start || !dateRange.end) ? '#ccc' : '#2563eb',
-                  color: 'white',
-                  cursor: (!dateRange.start || !dateRange.end) ? 'not-allowed' : 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                }}
               >
                 Apply
               </button>

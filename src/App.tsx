@@ -16,9 +16,7 @@ import { getStoredToken } from './utils/authToken';
 import './App.css';
 import AcceptInvitation from './pages/AcceptInvitation';
 import ResetPassword from './pages/ResetPassword';
-import SalesDashboard from './pages/SalesDashboard';
 import CategoryManagerDashboard from './pages/CategoryManagerDashboard';
-import PreSalesDashboard from './pages/PreSalesDashboard';
 import Targets from './pages/Targets';
 import TargetUserDetail from './pages/TargetUserDetail';
 import DealSourceReport from './pages/DealSourceReport';
@@ -96,9 +94,9 @@ function App() {
           
           {/* Catch all for protected routes - redirect to deals if route not found */}
           <Route path="*" element={<Navigate to="/deals" replace />} />
-          <Route path="/dashboard/sales" element={<SalesDashboard />} />
+          <Route path="/dashboard/sales" element={<Deals />} />
           <Route path="/dashboard/category-manager" element={<CategoryManagerDashboard />} />
-          <Route path="/dashboard/pre-sales" element={<PreSalesDashboard />} />
+          <Route path="/dashboard/pre-sales" element={<Deals />} />
         </Route>
       </Routes>
     </BrowserRouter>

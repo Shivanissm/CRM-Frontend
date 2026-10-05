@@ -1,17 +1,19 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import {
   Home,
   Users,
   Briefcase,
-  Calendar,
-  Handshake,
   ListTodo,
   Building2,
   UserCircle,
   Target,
+  UsersRound,
   LogOut,
+  Menu,
+  X,
+  ChevronRight,
   type LucideIcon,
 } from 'lucide-react';
 import { clearAuthSession, getStoredUser } from '../utils/authToken';
@@ -31,16 +33,36 @@ interface NavItem {
   end?: boolean;
 }
 
-const baseNavItems: NavItem[] = [
-  { label: 'Persons', to: '/persons', icon: Users, end: true },
+interface NavGroup {
+  title: string;
+  items: NavItem[];
+}
+
+const mainNavItems: NavItem[] = [
+  { label: 'Lead', to: '/persons', icon: Users, end: true },
   { label: 'Deals', to: '/deals', icon: Briefcase },
-  { label: 'Calendar', to: '/calendar', icon: Calendar },
-  { label: 'Teams', to: '/teams', icon: Handshake },
   { label: 'Tasks', to: '/activities', icon: ListTodo },
-  { label: 'Organizations', to: '/organizations', icon: Building2 },
-  { label: 'Team', to: '/users', icon: UserCircle },
+];
+
+const managementNavItems: NavItem[] = [
+  { label: 'Organization', to: '/organizations', icon: Building2 },
+  { label: 'Users', to: '/users', icon: UserCircle },
+  { label: 'Teams', to: '/teams', icon: UsersRound },
   { label: 'Targets', to: '/targets', icon: Target },
 ];
+
+const PRESALES_ROLE_CODES = ['PRESALES', 'PRE_SALES', 'PRE-SALES'];
+
+const isSalesOrPreSalesRole = (role?: string | null): boolean => {
+  const normalized = (role || '').toUpperCase();
+  return normalized === 'SALES' || PRESALES_ROLE_CODES.includes(normalized);
+};
+
+const isManagementPath = (pathname: string): boolean =>
+  pathname.startsWith('/organizations') ||
+  pathname.startsWith('/users') ||
+  pathname.startsWith('/teams') ||
+  pathname.startsWith('/targets');
 
 interface SearchResult {
   type: 'deal' | 'person' | 'organization' | 'activity';
@@ -53,7 +75,18 @@ interface SearchResult {
 
 export default function AppLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const managementPageActive = isManagementPath(location.pathname);
+  const [managementOpen, setManagementOpen] = useState(false);
+  const managementExpanded = managementOpen || managementPageActive;
   const user = getStoredUser();
+  const limitedManagementNav = isSalesOrPreSalesRole(user?.role);
+  const visibleMainNavItems = limitedManagementNav
+    ? mainNavItems.filter((item) => item.to !== '/persons')
+    : mainNavItems;
+  const visibleManagementNavItems = limitedManagementNav
+    ? managementNavItems.filter((item) => item.to === '/targets')
+    : managementNavItems;
   const dashboardRoute = resolveRoleDashboardRoute(user?.role);
   const homeRoute = dashboardRoute ?? '/deals';
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,15 +96,22 @@ export default function AppLayout() {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [tooltipState, setTooltipState] = useState<{ label: string; x: number; y: number } | null>(null);
   const [logoError, setLogoError] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchWrapperRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const resultsDropdownRef = useRef<HTMLDivElement>(null);
 
-  const navItems = useMemo<NavItem[]>(
-    () => [{ label: 'Home', to: homeRoute, icon: Home, end: true }, ...baseNavItems],
-    [homeRoute],
+  const navGroups = useMemo<NavGroup[]>(
+    () => [
+      {
+        title: 'Main',
+        items: [{ label: 'Home', to: homeRoute, icon: Home, end: true }, ...visibleMainNavItems],
+      },
+      { title: 'Management', items: visibleManagementNavItems },
+    ],
+    [homeRoute, visibleMainNavItems, visibleManagementNavItems],
   );
 
   const toggleSidebar = () => {
@@ -308,8 +348,13 @@ export default function AppLayout() {
   const userRole = user?.role ?? 'Member';
   const userInitial = (user?.firstName?.[0] ?? user?.email?.[0] ?? '?').toUpperCase();
 
+  const closeMobileNav = () => setMobileNavOpen(false);
+
   return (
-    <div className={`app-shell${sidebarCollapsed ? ' app-shell--collapsed' : ''}`}>
+    <div className={`app-shell${sidebarCollapsed ? ' app-shell--collapsed' : ''}${mobileNavOpen ? ' app-shell--mobile-open' : ''}`}>
+      {mobileNavOpen && (
+        <button type="button" className="app-shell-backdrop" aria-label="Close navigation" onClick={closeMobileNav} />
+      )}
       <aside className="app-shell-sidebar">
         <button
           type="button"
@@ -335,22 +380,52 @@ export default function AppLayout() {
         </button>
 
         <nav className="app-shell-nav" aria-label="Main navigation">
-          {navItems.map((item) => {
-            const Icon = item.icon;
+          {navGroups.map((group) => {
+            const isManagement = group.title === 'Management';
             return (
-              <NavLink
-                key={item.to + item.label}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  `app-shell-link${isActive ? ' active' : ''}`
-                }
-                onMouseEnter={(e) => handleNavMouseEnter(item.label, e)}
-                onMouseLeave={handleNavMouseLeave}
-              >
-                <Icon className="app-shell-link-icon" size={21} strokeWidth={2} aria-hidden="true" />
-                <span className="app-shell-link-text">{item.label}</span>
-              </NavLink>
+              <div key={group.title} className="app-shell-nav-group">
+                {isManagement && !limitedManagementNav ? (
+                  <button
+                    type="button"
+                    className="app-shell-nav-toggle"
+                    aria-expanded={managementExpanded}
+                    onClick={() => setManagementOpen((open) => !open)}
+                    onMouseEnter={(e) => handleNavMouseEnter(group.title, e)}
+                    onMouseLeave={handleNavMouseLeave}
+                  >
+                    <span className="app-shell-nav-label">Management</span>
+                    <ChevronRight
+                      className={`app-shell-nav-chevron${managementExpanded ? ' is-open' : ''}`}
+                      size={16}
+                      strokeWidth={2.25}
+                      aria-hidden="true"
+                    />
+                  </button>
+                ) : (
+                  <div className="app-shell-nav-label">{group.title}</div>
+                )}
+                <div className={isManagement && !limitedManagementNav ? `app-shell-nav-submenu${managementExpanded ? ' is-open' : ''}` : undefined}>
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <NavLink
+                        key={item.to + item.label}
+                        to={item.to}
+                        end={item.end}
+                        className={({ isActive }) =>
+                          `app-shell-link${isActive ? ' active' : ''}`
+                        }
+                        onClick={closeMobileNav}
+                        onMouseEnter={(e) => handleNavMouseEnter(item.label, e)}
+                        onMouseLeave={handleNavMouseLeave}
+                      >
+                        <Icon className="app-shell-link-icon" size={20} strokeWidth={2} aria-hidden="true" />
+                        <span className="app-shell-link-text">{item.label}</span>
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </nav>
@@ -401,6 +476,14 @@ export default function AppLayout() {
 
       <main className="app-shell-content">
         <div className="app-shell-header">
+          <button
+            type="button"
+            className="app-shell-mobile-toggle"
+            onClick={() => setMobileNavOpen((open) => !open)}
+            aria-label={mobileNavOpen ? 'Close navigation' : 'Open navigation'}
+          >
+            {mobileNavOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
           <div className="app-shell-search-wrapper" ref={searchWrapperRef}>
             <div className="app-shell-search-input">
               <svg className="app-shell-search-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">

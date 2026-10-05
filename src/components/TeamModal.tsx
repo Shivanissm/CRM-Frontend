@@ -1,7 +1,35 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { Team, TeamManagerOption, TeamMemberOption, TeamRequest, TeamUpdateRequest } from '../types/team';
+import type { User } from '../types/user';
 import { teamsApi } from '../services/teams';
+import { usersApi } from '../services/users';
 import './TeamModal.css';
+
+const toMemberOption = (user: TeamMemberOption | User): TeamMemberOption => ({
+  id: user.id,
+  firstName: user.firstName,
+  lastName: user.lastName,
+  email: user.email,
+  role: user.role,
+  displayName:
+    'displayName' in user && user.displayName
+      ? user.displayName
+      : [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || `User ${user.id}`,
+});
+
+const mergeMemberOptions = (...lists: Array<Array<TeamMemberOption | User> | undefined>): TeamMemberOption[] => {
+  const byId = new Map<number, TeamMemberOption>();
+  lists.forEach((list) => {
+    (list ?? []).forEach((user) => {
+      if (typeof user.id === 'number' && Number.isFinite(user.id)) {
+        byId.set(user.id, toMemberOption(user));
+      }
+    });
+  });
+  return Array.from(byId.values()).sort((a, b) =>
+    (a.displayName ?? '').localeCompare(b.displayName ?? ''),
+  );
+};
 
 interface TeamModalProps {
   isOpen: boolean;
@@ -85,38 +113,33 @@ export default function TeamModal({ isOpen, mode, team, onClose, onSubmit }: Tea
       .finally(() => setManagersLoading(false));
 
     setMembersLoading(true);
-    teamsApi
-      .listMembers()
-      .then((data) => {
-        // When editing, ensure existing team members are included in options
-        if (mode === 'edit' && team) {
-          const byId = new Map<number, TeamMemberOption>();
-          data.forEach((member) => {
-            byId.set(member.id, member);
-          });
-          (team.members ?? []).forEach((member) => {
-            if (!byId.has(member.id)) {
-              byId.set(member.id, member);
-            }
-          });
-          setMemberOptions(Array.from(byId.values()));
-          return;
-        }
+    Promise.allSettled([teamsApi.listMembers(), usersApi.list()])
+      .then(([membersResult, usersResult]) => {
+        const apiMembers = membersResult.status === 'fulfilled' ? membersResult.value : [];
+        const allUsers = usersResult.status === 'fulfilled' ? usersResult.value : [];
+        const existingMembers = mode === 'edit' && team ? team.members : [];
 
-        setMemberOptions(data);
-      })
-      .catch((err: any) => {
-        console.error('Failed to load member options', err);
-        setOptionsError(
-          (prev) =>
-            prev ??
-            err?.response?.data?.message ??
-            err?.message ??
-            'Failed to load member options.',
-        );
+        const merged = mergeMemberOptions(apiMembers, allUsers, existingMembers);
+        setMemberOptions(merged);
+
+        if (membersResult.status === 'rejected' && usersResult.status === 'rejected') {
+          const err = membersResult.reason;
+          setOptionsError(
+            (prev) =>
+              prev ??
+              err?.response?.data?.message ??
+              err?.message ??
+              'Failed to load member options.',
+          );
+        }
       })
       .finally(() => setMembersLoading(false));
   }, [isOpen, mode, team]);
+
+  const selectableMembers = useMemo(
+    () => memberOptions.filter((member) => member.id !== form.managerId),
+    [memberOptions, form.managerId],
+  );
 
   if (!isOpen) return null;
 
@@ -133,6 +156,9 @@ export default function TeamModal({ isOpen, mode, team, onClose, onSubmit }: Tea
     setForm((prev) => ({
       ...prev,
       managerId: Number.isNaN(numeric) ? undefined : numeric,
+      memberIds: Number.isNaN(numeric)
+        ? prev.memberIds
+        : prev.memberIds.filter((id) => id !== numeric),
       clearManager: false,
     }));
   };
@@ -244,11 +270,15 @@ export default function TeamModal({ isOpen, mode, team, onClose, onSubmit }: Tea
             <legend>Members</legend>
             {membersLoading ? (
               <div className="team-modal-hint">Loading members…</div>
-            ) : memberOptions.length === 0 ? (
-              <div className="team-modal-hint">No members available.</div>
+            ) : selectableMembers.length === 0 ? (
+              <div className="team-modal-hint">
+                {form.managerId
+                  ? 'No other users available to add as members.'
+                  : 'No members available.'}
+              </div>
             ) : (
               <div className="team-modal-members">
-                {memberOptions.map((member) => {
+                {selectableMembers.map((member) => {
                   const label =
                     member.displayName ??
                     ([member.firstName, member.lastName].filter(Boolean).join(' ') ||

@@ -28,13 +28,29 @@
   color: var(--deals-text-main);
 }
 
+.deals-page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px 32px 8px;
+}
+
 .deals-page-title {
   font-size: 28px;
   font-weight: 700;
   color: var(--deals-text-main);
   margin: 0;
-  padding: 24px 32px 16px 32px;
-  border-bottom: 1px solid var(--deals-border);
+  letter-spacing: -0.03em;
+}
+
+.deals-page-subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--deals-text-secondary);
+}
+
+.deals-metric-row {
+  padding: 0 32px 8px;
 }
 
 @media (max-width: 768px) {
@@ -46,9 +62,9 @@
 .deals-header {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-bottom: 24px;
-  padding: 20px 32px 20px 32px;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 8px 32px 16px;
   border-bottom: 1px solid #D8E7E6;
   width: 100%;
   box-sizing: border-box;
@@ -915,20 +931,20 @@
 /* Kanban Board Styles */
 .deals-kanban-board {
   display: flex;
-  gap: 10px;
-  overflow-x: hidden;
+  gap: 12px;
+  overflow-x: auto;
   padding-bottom: 16px;
   width: 100%;
   min-height: 600px;
 }
 
 .kanban-column {
-  flex: 1 1 0;
-  min-width: 0;
-  width: 0;
+  flex: 1 1 220px;
+  min-width: 220px;
+  width: auto;
   background: var(--deals-very-light-surface, #FFF7F5);
   border: 1px solid var(--deals-border, #D8E7E6);
-  border-radius: 10px;
+  border-radius: 14px;
   display: flex;
   flex-direction: column;
   height: calc(100vh - 300px);
@@ -939,13 +955,13 @@
   overflow: visible;
 }
 
-.kanban-column:nth-child(7n+1) .kanban-column-header { background: #E8F7F5; }
-.kanban-column:nth-child(7n+2) .kanban-column-header { background: #FBECEF; }
-.kanban-column:nth-child(7n+3) .kanban-column-header { background: #F3EDF6; }
-.kanban-column:nth-child(7n+4) .kanban-column-header { background: #FDF0EB; }
-.kanban-column:nth-child(7n+5) .kanban-column-header { background: #E8F7F5; }
-.kanban-column:nth-child(7n+6) .kanban-column-header { background: #FBECEF; }
-.kanban-column:nth-child(7n+7) .kanban-column-header { background: #FDF0EB; }
+.kanban-column.stage-tone-aqua .kanban-column-header { background: #E8F7F5; border-top: 3px solid #54C9C4; }
+.kanban-column.stage-tone-teal .kanban-column-header { background: #dff4f3; border-top: 3px solid #2EA9A5; }
+.kanban-column.stage-tone-lavender .kanban-column-header { background: #F3EDF6; border-top: 3px solid #C5A6CC; }
+.kanban-column.stage-tone-purple .kanban-column-header { background: #f3e9f6; border-top: 3px solid #A77BB5; }
+.kanban-column.stage-tone-peach .kanban-column-header { background: #FDF0EB; border-top: 3px solid #E8A08A; }
+.kanban-column.stage-tone-pink .kanban-column-header { background: #FBECEF; border-top: 3px solid #C94D78; }
+.kanban-column.stage-tone-neutral .kanban-column-header { background: #f6f1ee; border-top: 3px solid #E8A08A; }
 
 .kanban-column.diversion-stage {
   background: #FDF0EB;
@@ -982,10 +998,10 @@
 }
 
 .kanban-column-header {
-  padding: 14px 16px;
+  padding: 14px 16px 12px;
   background: var(--deals-light-surface, #E8F7F5);
   border-bottom: 1px solid var(--deals-border, #D8E7E6);
-  border-radius: 10px 10px 0 0;
+  border-radius: 12px 12px 0 0;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -1030,11 +1046,19 @@
 
 .kanban-empty {
   text-align: center;
-  padding: 24px;
+  padding: 28px 12px;
   color: #65777D;
   font-size: 14px;
   position: relative;
   z-index: 1;
+}
+
+.kanban-empty h3 {
+  font-size: 14px;
+}
+
+.kanban-empty p {
+  font-size: 12px;
 }
 
 .kanban-empty-state {
@@ -1058,11 +1082,11 @@
   position: relative;
   background: #fff;
   border: 1px solid #D8E7E6;
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: 12px;
+  padding: 14px 14px 12px;
   cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  box-shadow: 0 2px 8px rgba(36, 52, 61, 0.05);
   z-index: 10;
   overflow: hidden;
 }
@@ -1099,10 +1123,10 @@
 }
 
 .kanban-card:hover {
-  box-shadow: 0 4px 12px rgba(46, 169, 165, 0.12);
+  box-shadow: 0 10px 22px rgba(46, 169, 165, 0.12);
   transform: translateY(-2px);
   border-color: #54C9C4;
-  background: #E8F7F5;
+  background: #fff;
 }
 
 .kanban-card.selected {
@@ -1149,11 +1173,12 @@
 }
 
 .kanban-card-name {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 650;
   color: #24343D;
   margin-bottom: 8px;
-  line-height: 1.4;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
 }
 
 .kanban-card-rsp {
@@ -1716,7 +1741,13 @@
 }
 
 .modal-content {
-  background: #fff;
+  background: linear-gradient(
+    180deg,
+    #54C9C4 0%,
+    #67CCC8 22%,
+    #A77BB5 62%,
+    #C94D78 100%
+  );
   border-radius: 12px;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   width: 100%;
@@ -1724,6 +1755,7 @@
   max-height: 90vh;
   overflow-y: auto;
   animation: modalSlideIn 0.2s ease-out;
+  color: #ffffff;
 }
 
 @keyframes modalSlideIn {
@@ -1742,14 +1774,14 @@
   justify-content: space-between;
   align-items: center;
   padding: 24px;
-  border-bottom: 1px solid #D8E7E6;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.28);
 }
 
 .modal-title {
   margin: 0;
   font-size: 20px;
   font-weight: 700;
-  color: #24343D;
+  color: #ffffff;
 }
 
 .modal-close {
@@ -1758,7 +1790,7 @@
   border: none;
   background: transparent;
   font-size: 24px;
-  color: #65777D;
+  color: #ffffff;
   cursor: pointer;
   border-radius: 6px;
   display: flex;
@@ -1768,8 +1800,8 @@
 }
 
 .modal-close:hover {
-  background: #FFF7F5;
-  color: #24343D;
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
 }
 
 .modal-form {
@@ -1792,6 +1824,10 @@
   font-size: 14px;
   font-weight: 500;
   color: #2EA9A5;
+}
+
+.modal-content .form-label {
+  color: #ffffff;
 }
 
 .form-input {
@@ -1935,7 +1971,7 @@
   gap: 12px;
   justify-content: flex-end;
   padding-top: 24px;
-  border-top: 1px solid #D8E7E6;
+  border-top: 1px solid rgba(255, 255, 255, 0.28);
   margin-top: 24px;
 }
 
@@ -1950,24 +1986,24 @@
 }
 
 .modal-btn-cancel {
-  border: 1px solid #D8E7E6;
-  background: #fff;
-  color: #2EA9A5;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
 }
 
 .modal-btn-cancel:hover {
-  background: #FFF7F5;
-  border-color: #65777D;
+  background: rgba(255, 255, 255, 0.28);
+  border-color: #ffffff;
 }
 
 .modal-btn-submit {
   border: none;
-  background: #C94D78;
-  color: #fff;
+  background: #ffffff;
+  color: #C94D78;
 }
 
 .modal-btn-submit:hover {
-  background: #B52F58;
+  background: #FFF7F5;
 }
 
 .calendar-sync-hint {

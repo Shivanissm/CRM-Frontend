@@ -178,12 +178,38 @@ const DEAL_SUB_SOURCE_OPTIONS: Array<{ value: DealSubSource; label: string }> = 
 
 // Helper function to map stage names for display
 // Maps "Meeting Done" to "Contract Shared" for display purposes
+const STAGE_DISPLAY_NAMES: Record<string, string> = {
+  'lead in': 'New Enquiry',
+  'lead-in': 'New Enquiry',
+  qualified: 'Number Received',
+  'contacted': 'Number Received',
+  'contact made': 'Contact Made',
+  'requirement shared': 'Contact Made',
+  'follow up': 'Follow-up',
+  'follow-up': 'Follow-up',
+  'meeting scheduled': 'Proposal Sent',
+  'meeting done': 'Contract Shared',
+  'contract shared': 'Contract Shared',
+  'booking confirmed': 'Contract Shared',
+  diversion: 'Diversion',
+  'not proceeding': 'Diversion',
+};
+
 const getDisplayStageName = (stageName: string | null | undefined): string => {
   if (!stageName) return '';
-  if (stageName.toLowerCase().trim() === 'meeting done') {
-    return 'Contract Shared';
-  }
-  return stageName;
+  const key = stageName.toLowerCase().trim();
+  return STAGE_DISPLAY_NAMES[key] || stageName;
+};
+
+const getStageTone = (stageName: string | null | undefined): string => {
+  const label = getDisplayStageName(stageName).toLowerCase();
+  if (label.includes('enquiry') || label.includes('lead')) return 'aqua';
+  if (label.includes('number received') || label.includes('qualified')) return 'teal';
+  if (label.includes('contact made') || label.includes('requirement')) return 'lavender';
+  if (label.includes('proposal')) return 'purple';
+  if (label.includes('follow')) return 'peach';
+  if (label.includes('booking') || label.includes('contract')) return 'pink';
+  return 'neutral';
 };
 
 // Unused - kept for potential future use
@@ -2371,12 +2397,6 @@ const Deals = () => {
     return map;
   }, [organizations]);
 
-  const selectedOrganizationForForm = formData.organizationId
-    ? organizationsById.get(Number(formData.organizationId)) ?? null
-    : null;
-  const selectedOrgCalendarEmail = selectedOrganizationForForm?.googleCalendarId?.trim() || '';
-  const hasCalendarSyncForForm = Boolean(selectedOrgCalendarEmail);
-
   const personsById = useMemo(() => {
     const map = new Map<number, Person>();
     persons.forEach((person) => map.set(person.id, person));
@@ -2901,6 +2921,18 @@ const Deals = () => {
     return { totalValue, weightedValue, dealCount };
   }, [filteredDeals, selectedPipelineId, selectedPipeline]);
 
+  const pipelineMetrics = useMemo(() => {
+    const relevantDeals = selectedPipelineId
+      ? filteredDeals.filter((deal) => deal.pipelineId === selectedPipelineId)
+      : filteredDeals;
+    const active = relevantDeals.filter((deal) => deal.status === 'IN_PROGRESS').length;
+    const won = relevantDeals.filter((deal) => deal.status === 'WON').length;
+    const lost = relevantDeals.filter((deal) => deal.status === 'LOST').length;
+    const total = active + won + lost;
+    const conversion = total > 0 ? Math.round((won / total) * 100) : 0;
+    return { total, active, won, lost, conversion };
+  }, [filteredDeals, selectedPipelineId]);
+
   // Get stages for selected pipeline, sorted by order
   const pipelineStages = useMemo(() => {
     if (!selectedPipeline) return [];
@@ -2997,43 +3029,6 @@ const Deals = () => {
     });
     return totals;
   }, [dealsByStage, pipelineStages]);
-
-  // Get all stages from all pipelines (for form dropdown)
-
-  const stageOptionsForForm = useMemo(() => {
-    // If no pipeline is selected, return empty array
-    if (!formData.pipelineId || formData.pipelineId === '') {
-      return [];
-    }
-    
-    // Get stages from the selected pipeline
-    const selectedPipelineId = Number(formData.pipelineId);
-    
-    // Check if conversion was successful
-    if (isNaN(selectedPipelineId)) {
-      return [];
-    }
-    
-    // Try to find pipeline in pipelinesById first, then in allPipelines
-    let selectedPipeline = pipelinesById.get(selectedPipelineId);
-    
-    // If not found in pipelinesById, try allPipelines (for diverted deals)
-    if (!selectedPipeline) {
-      selectedPipeline = allPipelines.find(p => p.id === selectedPipelineId);
-    }
-    
-    if (!selectedPipeline) {
-      return [];
-    }
-    
-    // Check if stages exist and are loaded
-    if (!selectedPipeline.stages || selectedPipeline.stages.length === 0) {
-      return [];
-    }
-    
-    // Return stages from the selected pipeline, sorted by order
-    return [...selectedPipeline.stages].sort((a, b) => a.order - b.order);
-  }, [formData.pipelineId, pipelinesById, allPipelines]);
 
   const handleOpenModal = () => {
     // Check if person name was passed from Person page
@@ -3444,7 +3439,7 @@ const Deals = () => {
 
     const payload: any = {
       name: formData.name.trim(),
-      status: formData.status,
+      status: 'IN_PROGRESS',
       personId: personId,
       pipelineId: formData.pipelineId ? Number(formData.pipelineId) : undefined,
       stageId: stageId, // This should be set based on phone number
@@ -3973,7 +3968,34 @@ const Deals = () => {
         </div>,
         document.body
       )}
-      <h1 className="deals-page-title">Deals</h1>
+      <div className="deals-page-heading">
+        <div>
+          <h1 className="deals-page-title">Deals</h1>
+          <p className="deals-page-subtitle">Track enquiries, opportunities and conversions.</p>
+        </div>
+      </div>
+      <div className="hb-stat-row deals-metric-row">
+        <div className="hb-stat-card tone-aqua">
+          <div className="label">Total Deals</div>
+          <div className="value">{pipelineMetrics.total}</div>
+        </div>
+        <div className="hb-stat-card tone-lavender">
+          <div className="label">Active Deals</div>
+          <div className="value">{pipelineMetrics.active}</div>
+        </div>
+        <div className="hb-stat-card tone-pink">
+          <div className="label">Won</div>
+          <div className="value">{pipelineMetrics.won}</div>
+        </div>
+        <div className="hb-stat-card tone-peach">
+          <div className="label">Lost</div>
+          <div className="value">{pipelineMetrics.lost}</div>
+        </div>
+        <div className="hb-stat-card tone-aqua">
+          <div className="label">Conversion</div>
+          <div className="value">{pipelineMetrics.conversion}%</div>
+        </div>
+      </div>
       <div className="deals-header">
         <div className="deals-header-top">
           <div className="deals-header-left">
@@ -4004,7 +4026,7 @@ const Deals = () => {
             </div>
             <div className="deals-add-button-container">
               <button className="deals-add-btn" onClick={handleOpenModal}>
-                + Deal
+                + New Deal
               </button>
             </div>
           </div>
@@ -4621,7 +4643,7 @@ const Deals = () => {
                   const totals = stageTotals.get(stage.id) || { total: 0, count: 0 };
                   const isDiversionStage = stage.name?.toLowerCase() === 'diversion';
                   return (
-                    <div key={stage.id} className={`kanban-column ${isDiversionStage ? 'diversion-stage' : ''}`}>
+                    <div key={stage.id} className={`kanban-column stage-tone-${getStageTone(stage.name)} ${isDiversionStage ? 'diversion-stage' : ''}`}>
                       <div className="kanban-column-header">
                         <h3 className="kanban-column-title">{getDisplayStageName(stage.name)}</h3>
                         <div className="kanban-column-summary">
@@ -4654,7 +4676,7 @@ const Deals = () => {
                         }}
                       >
                         {stageDeals.length === 0 ? (
-                          <div className="kanban-empty">No deals</div>
+                          <div className="kanban-empty" />
                         ) : (
                           stageDeals.map((deal) => {
                             const personName = deal.personId
@@ -5356,96 +5378,52 @@ const Deals = () => {
             </div>
             <form className="modal-form" onSubmit={handleSubmit}>
               <div className="form-group">
-                <label className="form-label">Deal Name *</label>
-                <input
-                  type="text"
-                  name="name"
-                  className="form-input"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  required
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Deal Value</label>
+                <label className="form-label">Contact Person <span style={{ color: '#ef4444' }}>*</span></label>
+                <div style={{ position: 'relative' }}>
                   <input
-                    type="number"
-                    name="value"
+                    ref={personInputRef}
+                    type="text"
+                    name="personName"
                     className="form-input"
-                    value={formData.value}
+                    value={formData.personName}
                     onChange={handleInputChange}
-                    min="0"
-                    step="0.01"
-                    disabled={isSubmitting}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Status *</label>
-                  <select
-                    name="status"
-                    className="form-input"
-                    value={formData.status}
-                    onChange={handleInputChange}
+                    onFocus={() => {
+                      const hasAnyPersonQuery =
+                        (formData.personName && formData.personName.trim().length > 0) ||
+                        (formData.personPhone && formData.personPhone.trim().length > 0) ||
+                        (formData.personInstagramId && formData.personInstagramId.trim().length > 0);
+                      if (hasAnyPersonQuery && filteredPersons.length > 0) {
+                        setShowPersonSuggestions(true);
+                      }
+                    }}
                     required
                     disabled={isSubmitting}
-                  >
-                    <option value="IN_PROGRESS">Open deals</option>
-                    <option value="WON">Won</option>
-                    <option value="LOST">Lost</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Contact Person <span style={{ color: '#ef4444' }}>*</span></label>
-                  <div style={{ position: 'relative' }}>
-                    <input
-                      ref={personInputRef}
-                      type="text"
-                      name="personName"
-                      className="form-input"
-                      value={formData.personName}
-                      onChange={handleInputChange}
-                      onFocus={() => {
-                        const hasAnyPersonQuery =
-                          (formData.personName && formData.personName.trim().length > 0) ||
-                          (formData.personPhone && formData.personPhone.trim().length > 0) ||
-                          (formData.personInstagramId && formData.personInstagramId.trim().length > 0);
-                        if (hasAnyPersonQuery && filteredPersons.length > 0) {
-                          setShowPersonSuggestions(true);
-                        }
-                      }}
-                      required
-                      disabled={isSubmitting}
-                      placeholder="Enter contact person name"
-                    />
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                    placeholder="Enter contact person name"
+                  />
+                  <div className="form-row" style={{ marginTop: '8px' }}>
+                    <div className="form-group">
                       <input
                         type="text"
                         name="personPhone"
                         className="form-input"
-                        style={{ flex: 1 }}
                         value={formData.personPhone}
                         onChange={handleInputChange}
                         disabled={isSubmitting}
-                        placeholder="Enter phone number (optional)"
+                        placeholder="Enter phone number"
                       />
+                    </div>
+                    <div className="form-group">
                       <input
                         type="text"
                         name="personInstagramId"
                         className="form-input"
-                        style={{ flex: 1 }}
                         value={formData.personInstagramId}
                         onChange={handleInputChange}
                         disabled={isSubmitting}
-                        placeholder="Enter Instagram ID (optional)"
+                        placeholder="Enter Instagram ID"
                       />
                     </div>
+                  </div>
                     {showPersonSuggestions && (
                       <div
                         ref={personSuggestionsRef}
@@ -5538,6 +5516,34 @@ const Deals = () => {
                   </div>
                 </div>
 
+              <div className="form-group">
+                <label className="form-label">Deal Name *</label>
+                <input
+                  type="text"
+                  name="name"
+                  className="form-input"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  required
+                  disabled={isSubmitting}
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Deal Value</label>
+                  <input
+                    type="number"
+                    name="value"
+                    className="form-input"
+                    value={formData.value}
+                    onChange={handleInputChange}
+                    min="0"
+                    step="0.01"
+                    disabled={isSubmitting}
+                  />
+                </div>
+
                 <div className="form-group">
                   <label className="form-label">Organization</label>
                   <select
@@ -5555,84 +5561,37 @@ const Deals = () => {
                       </option>
                     ))}
                   </select>
-                  <div className={`calendar-sync-hint ${hasCalendarSyncForForm ? 'active' : ''}`}>
-                    {selectedOrganizationForForm ? (
-                      hasCalendarSyncForForm ? (
-                        <>
-                          Calendar sync on — events will post to{' '}
-                          <strong>{selectedOrgCalendarEmail}</strong>.
-                        </>
-                      ) : (
-                        'This organization lacks a calendar email, so events stay inside the CRM.'
-                      )
-                    ) : (
-                      'Select an organization to see whether calendar sync is enabled.'
-                    )}
-                  </div>
                 </div>
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Pipeline</label>
-                  <select
-                    name="pipelineId"
-                    className="form-input"
-                    value={formData.pipelineId}
-                    onChange={handleInputChange}
-                    disabled={isSubmitting || loadingAvailablePipelines}
-                  >
-                    {loadingAvailablePipelines ? (
-                      <option value="" disabled>
-                        Loading pipelines...
-                      </option>
-                    ) : allPipelines.length === 0 && formData.label === 'DIVERT' && formData.referencedDealId ? (
-                      <option value="" disabled>
-                        No available pipelines (deal already diverted to all pipelines)
-                      </option>
-                    ) : (
-                      <>
-                        <option value="">Select Pipeline</option>
-                        {allPipelines.map((pipeline) => (
-                        <option key={pipeline.id} value={pipeline.id}>
-                          {pipeline.name}
-                        </option>
-                        ))}
-                      </>
-                    )}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Stage</label>
-                  <select
-                    name="stageId"
-                    className="form-input"
-                    value={formData.stageId}
-                    onChange={handleInputChange}
-                    disabled={isSubmitting || !formData.pipelineId}
-                    title={!formData.pipelineId ? 'Please select a pipeline first' : ''}
-                  >
-                    <option value="">
-                      {!formData.pipelineId ? 'Select Pipeline First' : 'Select Stage'}
+              <div className="form-group">
+                <label className="form-label">Pipeline</label>
+                <select
+                  name="pipelineId"
+                  className="form-input"
+                  value={formData.pipelineId}
+                  onChange={handleInputChange}
+                  disabled={isSubmitting || loadingAvailablePipelines}
+                >
+                  {loadingAvailablePipelines ? (
+                    <option value="" disabled>
+                      Loading pipelines...
                     </option>
-                    {stageOptionsForForm.map((stage) => (
-                      <option key={stage.id} value={stage.id}>
-                        {getDisplayStageName(stage.name)}
+                  ) : allPipelines.length === 0 && formData.label === 'DIVERT' && formData.referencedDealId ? (
+                    <option value="" disabled>
+                      No available pipelines (deal already diverted to all pipelines)
+                    </option>
+                  ) : (
+                    <>
+                      <option value="">Select Pipeline</option>
+                      {allPipelines.map((pipeline) => (
+                      <option key={pipeline.id} value={pipeline.id}>
+                        {pipeline.name}
                       </option>
-                    ))}
-                  </select>
-                  {!formData.pipelineId && (
-                    <div style={{ 
-                      fontSize: '12px', 
-                      color: '#ef4444', 
-                      marginTop: '4px',
-                      fontStyle: 'italic'
-                    }}>
-                      Please select a pipeline first
-                    </div>
+                      ))}
+                    </>
                   )}
-                </div>
+                </select>
               </div>
 
               <div className="form-row">
@@ -5985,9 +5944,6 @@ const Deals = () => {
                       + Add Date
                     </button>
                   </div>
-                  <span className="calendar-sync-hint subtle">
-                    Use YYYY-MM-DD format. Google Calendar will create separate events for each date. You can set a specific event type for each date.
-                  </span>
                 </div>
               </div>
 

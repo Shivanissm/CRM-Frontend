@@ -1,7 +1,7 @@
 .set-target-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(36, 52, 61, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -12,9 +12,10 @@
 .set-target-modal {
   background: #fff;
   border-radius: 16px;
+  border: 1px solid #D8E7E6;
   max-width: 720px;
   width: 100%;
-  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.25);
+  box-shadow: 0 24px 60px rgba(36, 52, 61, 0.16);
   animation: setTargetFadeIn 0.25s ease;
   max-height: 90vh;
   overflow-y: auto;
@@ -25,8 +26,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 20px 28px;
-  background: #e4e7ec;
-  border-bottom: 1px solid #d9dde5;
+  background: #E8F7F5;
+  border-bottom: 1px solid #D8E7E6;
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
 }
@@ -34,7 +35,9 @@
 .set-target-modal-header h2 {
   margin: 0;
   font-size: 22px;
-  color: #0f172a;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #24343D;
 }
 
 .set-target-close {
@@ -43,20 +46,20 @@
   font-size: 28px;
   line-height: 1;
   cursor: pointer;
-  color: #475569;
+  color: #65777D;
+}
+
+.set-target-error {
+  background: #F6DCE5;
+  border: 1px solid #E6A0B8;
+  color: #B52F58;
+  padding: 10px 14px;
+  border-radius: 12px;
+  margin-bottom: 16px;
 }
 
 .set-target-form {
   padding: 16px 28px 28px;
-}
-
-.set-target-error {
-  background: #fee2e2;
-  border: 1px solid #fecaca;
-  color: #b91c1c;
-  padding: 10px 14px;
-  border-radius: 8px;
-  margin-bottom: 16px;
 }
 
 .set-target-grid {
@@ -74,30 +77,31 @@
 .set-target-field span {
   font-size: 13px;
   font-weight: 600;
-  color: #475569;
+  color: #65777D;
 }
 
 .set-target-field select,
 .set-target-field input {
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   border-radius: 10px;
   padding: 10px 12px;
+  min-height: 40px;
   font-size: 14px;
-  color: #475569;
+  color: #24343D;
   font-weight: 600;
   background: #fff;
-  transition: border 0.2s;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .set-target-field input::placeholder {
-  color: #94a3b8;
+  color: #65777D;
 }
 
 .set-target-field select:focus,
 .set-target-field input:focus {
-  border-color: #2563eb;
+  border-color: #54C9C4;
   outline: none;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  box-shadow: 0 0 0 3px rgba(84, 201, 196, 0.18);
 }
 
 .set-target-multi {
@@ -107,13 +111,13 @@
 .set-target-multi-trigger {
   width: 100%;
   min-height: 42px;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  border: 1px solid #D8E7E6;
+  border-radius: 10px;
   padding: 10px 36px 10px 12px;
   background: #fff;
   text-align: left;
   font-size: 14px;
-  color: #475569;
+  color: #24343D;
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -123,13 +127,13 @@
 }
 
 .set-target-multi-trigger.placeholder {
-  color: #94a3b8;
+  color: #65777D;
 }
 
 .set-target-multi-caret {
   position: absolute;
   right: 12px;
-  color: #94a3b8;
+  color: #65777D;
   font-size: 12px;
 }
 
@@ -140,21 +144,21 @@
 }
 
 .set-target-tag {
-  background: #eff6ff;
+  background: #F3EDF6;
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 12px;
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #1d4ed8;
+  color: #7A4E8A;
 }
 
 .set-target-tag-remove {
   border: none;
   background: transparent;
   font-size: 12px;
-  color: #1d4ed8;
+  color: #7A4E8A;
   cursor: pointer;
   line-height: 1;
   padding: 0;
@@ -165,7 +169,7 @@
 }
 
 .set-target-tag-remove:hover {
-  color: #dc2626;
+  color: #B52F58;
 }
 
 .set-target-multi-dropdown {
@@ -175,9 +179,9 @@
   left: 0;
   right: 0;
   background: #fff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   border-radius: 12px;
-  box-shadow: 0 20px 35px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 20px 35px rgba(36, 52, 61, 0.16);
   max-height: 300px;
   display: flex;
   flex-direction: column;
@@ -185,13 +189,13 @@
 
 .set-target-multi-search {
   padding: 12px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #D8E7E6;
 }
 
 .set-target-multi-search input {
   width: 100%;
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   padding: 8px 10px;
   font-size: 13px;
 }
@@ -212,34 +216,34 @@
   background: transparent;
   cursor: pointer;
   font-size: 14px;
-  color: #0f172a;
+  color: #24343D;
   text-align: left;
 }
 
 .set-target-multi-option:hover {
-  background: #f1f5f9;
+  background: #F7FCFB;
 }
 
 .set-target-multi-option.selected {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #F3EDF6;
+  color: #7A4E8A;
 }
 
 .set-target-multi-option.special {
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #D8E7E6;
   font-weight: 600;
 }
 
 .set-target-check {
   font-size: 13px;
-  color: #1d4ed8;
+  color: #C94D78;
   font-weight: 600;
 }
 
 .set-target-empty {
   padding: 12px 16px;
   font-size: 13px;
-  color: #94a3b8;
+  color: #65777D;
 }
 
 .set-target-duration-inputs {
@@ -249,7 +253,7 @@
 }
 
 .set-target-duration-sep {
-  color: #94a3b8;
+  color: #65777D;
   font-weight: 600;
 }
 
@@ -263,7 +267,7 @@
   display: flex;
   gap: 6px;
   font-size: 14px;
-  color: #0f172a;
+  color: #24343D;
   align-items: center;
 }
 
@@ -282,17 +286,17 @@
 
 .set-target-hint {
   font-size: 11px;
-  color: #94a3b8;
+  color: #65777D;
 }
 
 .set-target-readonly {
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   border-radius: 10px;
   padding: 10px 12px;
   font-size: 14px;
-  color: #475569;
+  color: #65777D;
   font-weight: 500;
-  background: #f8fafc;
+  background: #E8F7F5;
 }
 
 .set-target-actions {
@@ -306,26 +310,38 @@
 .set-target-save {
   border: none;
   border-radius: 10px;
-  font-size: 15px;
+  font-size: 14px;
   padding: 10px 22px;
+  min-height: 40px;
   cursor: pointer;
   font-weight: 600;
 }
 
 .set-target-cancel {
-  background: #edf2f7;
-  color: #475569;
+  background: #ffffff;
+  color: #24343D;
+  border: 1px solid #D8E7E6;
+}
+
+.set-target-cancel:hover {
+  background: #E8F7F5;
 }
 
 .set-target-save {
   background: #C94D78;
   color: #fff;
   min-width: 110px;
+  box-shadow: 0 4px 12px rgba(201, 77, 120, 0.22);
+}
+
+.set-target-save:hover:not(:disabled) {
+  background: #B52F58;
 }
 
 .set-target-save:disabled {
   background: #94a3b8;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 @media (max-width: 640px) {
