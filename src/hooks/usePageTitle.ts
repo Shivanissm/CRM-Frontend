@@ -6,8 +6,8 @@ const routeTitleMap: Record<string, string> = {
   '/login': 'Login - Houseofbarqat',
   '/accept-invitation': 'Accept Invitation - Houseofbarqat',
   '/reset-password': 'Reset Password - Houseofbarqat',
-  '/persons': 'Persons - Houseofbarqat',
-  '/activities': 'Activities - Houseofbarqat',
+  '/persons': 'Lead - Houseofbarqat',
+  '/activities': 'Tasks - Houseofbarqat',
   '/pipelines': 'Pipelines - Houseofbarqat',
   '/teams': 'Teams - Houseofbarqat',
   '/calendar': 'Calendar - Houseofbarqat',
@@ -15,9 +15,9 @@ const routeTitleMap: Record<string, string> = {
   '/deals': 'Deals - Houseofbarqat',
   '/users': 'Users - Houseofbarqat',
   '/targets': 'Targets - Houseofbarqat',
-  '/dashboard/sales': 'Sales Dashboard - Houseofbarqat',
+  '/dashboard/sales': 'Deals - Houseofbarqat',
   '/dashboard/category-manager': 'Category Manager Dashboard - Houseofbarqat',
-  '/dashboard/pre-sales': 'Pre-Sales Dashboard - Houseofbarqat',
+  '/dashboard/pre-sales': 'Deals - Houseofbarqat',
 };
 
 // Default title

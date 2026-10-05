@@ -16,6 +16,7 @@ import type { User } from '../types/user';
 import { getStoredUser } from '../utils/authToken';
 import '../components/SetTargetModal.css';
 import '../components/ActivityModal.css';
+import './ActivitiesList.css';
 
 const tabOptions = ['All', 'To‑do', 'Overdue', 'Today', 'Tomorrow', 'This week', 'Next week', 'This month', 'Prev month', 'This year', 'Select period', 'Select Date'] as const;
 const primaryTabs: Array<(typeof tabOptions)[number]> = ['All', 'Overdue', 'Today'];
@@ -3151,6 +3152,35 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
     return 'text-black';
   };
 
+  const getTypeChipClass = (value?: string | null) => {
+    const t = (value || '').toLowerCase();
+    if (t.includes('call')) return 'act-chip-call';
+    if (t.includes('meeting')) return 'act-chip-meeting';
+    if (t.includes('email')) return 'act-chip-email';
+    if (t.includes('follow')) return 'act-chip-follow';
+    if (t.includes('task')) return 'act-chip-task';
+    return 'act-chip-default';
+  };
+
+  const getOwnerInitials = (name?: string | null) => {
+    if (!name) return '?';
+    const parts = name.trim().split(/\s+/);
+    return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('') || '?';
+  };
+
+  const getStatusBadgeClass = (a: Activity) => {
+    if (a.done || (a.status || '').toLowerCase() === 'completed') return 'act-status-completed';
+    const ed = effectiveDate(a);
+    if (ed && ed.getTime() < today.getTime() && !a.done) return 'act-status-overdue';
+    if ((a.status || '').toLowerCase() === 'pending') return 'act-status-pending';
+    return 'act-status-upcoming';
+  };
+
+  const isActivityOverdue = (a: Activity) => {
+    const ed = effectiveDate(a);
+    return Boolean(ed && ed.getTime() < today.getTime() && !a.done);
+  };
+
   const shouldShow = (a: Activity) => {
     // Filter by activity type based on selected category tab
     // Activity tab should only show Activity type, Call tab only Call type, Meeting tab only Meeting type
@@ -3388,8 +3418,8 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         );
       case 'subject':
         return (
-          <span 
-            className={statusClass(a)} 
+          <span
+            className={`${statusClass(a)} act-cell-primary`}
             style={{ textDecoration: a.done ? 'line-through' : 'none' }}
           >
             {a.subject}
@@ -3399,9 +3429,8 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         // Prefer type field if present, fallback to category
         const typeDisplay = formatActivityTypeLabel(a.type || a.category);
         return (
-          <span 
-            className={statusClass(a)}
-            style={{ textDecoration: a.done ? 'line-through' : 'none' }}
+          <span
+            className={`act-type-chip ${getTypeChipClass(a.type || a.category)}`}
           >
             {typeDisplay}
           </span>
@@ -3457,21 +3486,18 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         );
       case 'dueDate':
         return (
-          <span 
-            className={statusClass(a)} 
-            style={{ textDecoration: a.done ? 'line-through' : 'none' }}
-          >
-            {a.dueDate || '-'}
+          <span className={`act-datetime ${isActivityOverdue(a) ? 'act-status-overdue' : ''}`}>
+            <strong>{a.dueDate || '-'}</strong>
           </span>
         );
       case 'assignedUser':
-        return (
-          <span 
-            className={statusClass(a)}
-            style={{ textDecoration: a.done ? 'line-through' : 'none' }}
-          >
-            {a.assignedUser || '-'}
+        return a.assignedUser ? (
+          <span className="act-owner">
+            <span className="act-avatar" aria-hidden="true">{getOwnerInitials(a.assignedUser)}</span>
+            <span className={statusClass(a)}>{a.assignedUser}</span>
           </span>
+        ) : (
+          <span className="act-cell-muted">-</span>
         );
       case 'priority':
         if (!a.priority) return '-';
@@ -3492,10 +3518,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         );
       case 'status':
         return (
-          <span 
-            className={statusClass(a)} 
-            style={{ textDecoration: a.done ? 'line-through' : 'none' }}
-          >
+          <span className={`act-status-badge ${getStatusBadgeClass(a)}`}>
             {a.status || '-'}
           </span>
         );
@@ -3709,63 +3732,50 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
     value: string | number;
     label: string;
     action: SummaryCardAction;
-    tone?: 'blue' | 'green' | 'yellow' | 'red';
-  };
-
-  const toneStyles: Record<
-    NonNullable<SummaryCard['tone']>,
-    { background: string; text: string }
-  > = {
-    blue: { background: '#E3F2FD', text: '#1D4ED8' },
-    green: { background: '#E6F4EA', text: '#15803D' },
-    yellow: { background: '#FEF7CD', text: '#B45309' },
-    red: { background: '#FEE2E2', text: '#B91C1C' },
+    tone?: 'aqua' | 'lavender' | 'pink' | 'peach' | 'warning';
+    icon: string;
   };
 
   const summaryCards: SummaryCard[] =
     category === 'Activity'
       ? [
-          { value: activityTotalCount, label: 'TOTAL ACTIVITIES', action: 'activityAll' as SummaryCardAction, tone: 'blue' },
-          { value: activityPendingCount, label: 'PENDING', action: 'activityPending' as SummaryCardAction, tone: 'yellow' },
-          { value: activityCompletedCount, label: 'COMPLETED', action: 'activityCompleted' as SummaryCardAction, tone: 'green' },
-          { value: callAssignedCount, label: 'Total\nAssign\u00A0Call', action: 'callAll' as SummaryCardAction, tone: 'blue' },
-          { value: meetingAssignedCount, label: 'Total\nMeeting\u00A0Scheduled', action: 'meetingAll' as SummaryCardAction, tone: 'blue' },
+          { value: activityTotalCount, label: 'TOTAL ACTIVITIES', action: 'activityAll' as SummaryCardAction, tone: 'aqua', icon: '◎' },
+          { value: activityPendingCount, label: 'PENDING', action: 'activityPending' as SummaryCardAction, tone: 'peach', icon: '◷' },
+          { value: activityCompletedCount, label: 'COMPLETED', action: 'activityCompleted' as SummaryCardAction, tone: 'pink', icon: '✓' },
+          { value: callAssignedCount, label: 'Total\nAssign\u00A0Call', action: 'callAll' as SummaryCardAction, tone: 'lavender', icon: '☎' },
+          { value: meetingAssignedCount, label: 'Total\nMeeting\u00A0Scheduled', action: 'meetingAll' as SummaryCardAction, tone: 'aqua', icon: '▣' },
         ]
       : category === 'Call'
         ? [
-          { value: callAssignedCount, label: 'Total\nAssign\u00A0Call', action: 'callAll' as SummaryCardAction, tone: 'blue' },
-          { value: callTakenCount, label: 'CALL TAKEN', action: 'callDone' as SummaryCardAction, tone: 'green' },
-            { value: callOverdueCount, label: 'CALL OVERDUE', action: 'overdue' as SummaryCardAction, tone: 'red' },
-            { value: formatDurationDisplay(totalCallDurationMinutes), label: 'Total\nCall\u00A0Duration', action: 'callAll' as SummaryCardAction, tone: 'yellow' },
+          { value: callAssignedCount, label: 'Total\nAssign\u00A0Call', action: 'callAll' as SummaryCardAction, tone: 'lavender', icon: '☎' },
+          { value: callTakenCount, label: 'CALL TAKEN', action: 'callDone' as SummaryCardAction, tone: 'pink', icon: '✓' },
+            { value: callOverdueCount, label: 'CALL OVERDUE', action: 'overdue' as SummaryCardAction, tone: 'warning', icon: '!' },
+            { value: formatDurationDisplay(totalCallDurationMinutes), label: 'Total\nCall\u00A0Duration', action: 'callAll' as SummaryCardAction, tone: 'peach', icon: '◷' },
           ]
         : [
-          { value: meetingAssignedCount, label: 'Total\nMeeting\u00A0Scheduled', action: 'meetingAll' as SummaryCardAction, tone: 'blue' },
-          { value: meetingDoneCount, label: 'MEETING DONE', action: 'meetingDone' as SummaryCardAction, tone: 'green' },
-            { value: meetingOverdueCount, label: 'MEETING OVERDUE', action: 'overdue' as SummaryCardAction, tone: 'red' },
+          { value: meetingAssignedCount, label: 'Total\nMeeting\u00A0Scheduled', action: 'meetingAll' as SummaryCardAction, tone: 'aqua', icon: '▣' },
+          { value: meetingDoneCount, label: 'MEETING DONE', action: 'meetingDone' as SummaryCardAction, tone: 'pink', icon: '✓' },
+            { value: meetingOverdueCount, label: 'MEETING OVERDUE', action: 'overdue' as SummaryCardAction, tone: 'warning', icon: '!' },
         ];
 
   return (
-    <div className="page">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, position: 'relative' }}>
-        <h2 style={{ margin: 0 }}>Activities</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button 
-            className="btn" 
+    <div className="page activities-workspace">
+      <div className="act-header">
+        <div>
+          <h2>Activities</h2>
+          <p className="act-header-copy">Stay organized and keep every customer interaction on track.</p>
+        </div>
+        <div className="act-header-actions">
+          <button
+            className="act-create-btn"
             onClick={() => setIsAddOpen(true)}
-            style={{
-              background: '#C94D78',
-              color: 'white',
-              border: 'none',
-              fontWeight: 600,
-            }}
           >
             + Activity
           </button>
           <div style={{ position: 'relative' }}>
             <button
-              className="btn"
+              className="act-ghost-btn"
               onClick={() => setIsTabDropdownOpen(prev => !prev)}
-              style={{ minWidth: 140, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
             >
               <span>{tab}</span>
               <span style={{ fontSize: 12 }}>▾</span>
@@ -3776,35 +3786,12 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
                   style={{ position: 'fixed', inset: 0, zIndex: 990 }}
                   onClick={() => setIsTabDropdownOpen(false)}
                 />
-                <div
-                  style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 4px)',
-                    right: 0,
-                    background: '#fff',
-                    border: '1px solid #e0e0e0',
-                    borderRadius: 6,
-                    boxShadow: '0 8px 20px rgba(0,0,0,0.12)',
-                    minWidth: 220,
-                    zIndex: 1000,
-                    padding: 8,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4,
-                  }}
-                >
+                <div className="act-menu">
                   {tabOptions.map(option => (
                     <button
                       key={option}
                       onClick={() => handleTabSelection(option)}
-                      className="btn"
-                      style={{
-                        width: '100%',
-                        justifyContent: 'flex-start',
-                        background: tab === option ? '#e3f2fd' : '#fff',
-                        border: '1px solid transparent',
-                        color: '#111',
-                      }}
+                      className={`act-menu-item${tab === option ? ' is-active' : ''}`}
                     >
                       {option}
                     </button>
@@ -3814,8 +3801,8 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
             )}
           </div>
           <div style={{ position: 'relative' }}>
-            <button 
-              className="btn" 
+            <button
+              className="act-ghost-btn"
               onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
             >
               Filters
@@ -3849,10 +3836,9 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
       </div>
 
       {activeCustomFilters.length > 0 && (
-        <div style={{ marginBottom: 12, padding: 8, background: '#e3f2fd', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>Active filter: {activeFilterName}</span>
-          <button 
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#666' }}
+        <div className="act-active-filter">
+          <span>Active filter: {activeFilterName}</span>
+          <button
             onClick={() => {
               setActiveCustomFilters([]);
               setActiveFilterName(null);
@@ -3865,19 +3851,11 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
       )}
 
       {/* Summary Boxes */}
-      <div className="summary-boxes-container">
-        {summaryCards.map((card) => {
-          const tone = card.tone ? toneStyles[card.tone] : null;
-          return (
+      <div className="act-summary">
+        {summaryCards.map((card) => (
             <div
               key={card.label}
-              className="summary-box"
-              style={{
-                flex: summaryCards.length > 4 ? '0 1 160px' : undefined,
-                cursor: 'pointer',
-                border: '1px solid transparent',
-                backgroundColor: tone?.background ?? '#fff',
-              }}
+              className={`act-summary-card tone-${card.tone ?? 'aqua'}`}
               onClick={() => applyCardFilter(card.action)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -3888,32 +3866,26 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
               role="button"
               tabIndex={0}
             >
-              <div
-                className="summary-number"
-                style={{ color: tone?.text ?? '#2563eb' }}
-              >
-                {String(card.value)}
-        </div>
-              <div
-                className="summary-label"
-                style={{ color: tone?.text ?? '#C94D78', textAlign: 'center' }}
-              >
+              <div className="act-summary-top">
+                <span className="act-summary-icon" aria-hidden="true">{card.icon}</span>
+                <div className="act-summary-value">{String(card.value)}</div>
+              </div>
+              <div className="act-summary-label">
                 {card.label.includes('\n') ? (
                   <>
                     {card.label.split('\n').map((line, idx) => (
-                      <div key={idx} style={{ whiteSpace: 'nowrap' }}>{line}</div>
+                      <div key={idx}>{line}</div>
                     ))}
                   </>
                 ) : (
                   card.label
                 )}
-        </div>
-        </div>
-          );
-        })}
+              </div>
+            </div>
+        ))}
       </div>
 
-      <div className="toolbar">
+      <div className="act-toolbar">
         <div className="toolbar-left">
           <button
             className={`btn ${category === 'Activity' ? 'active' : ''}`}
@@ -4235,7 +4207,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           )}
         </div>
       </div>
-      <div className="tabs">
+      <div className="act-tabs">
         {primaryTabs.map((t) => (
           <span 
             key={t} 
@@ -4248,34 +4220,18 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
       </div>
       {/* Bulk Edit Bar */}
       {selectedActivities.size > 0 && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          padding: '12px 16px',
-          background: '#e3f2fd',
-          borderRadius: '4px',
-          marginBottom: '16px',
-        }}>
-          <span style={{ fontSize: '14px', color: '#1976d2', fontWeight: 500 }}>
+        <div className="act-bulk">
+          <span>
             {selectedActivities.size} selected
           </span>
           <button
+            className="act-bulk-edit"
             onClick={() => setIsBulkEditOpen(true)}
-            style={{
-              padding: '8px 16px',
-              background: '#007bff',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: 500,
-            }}
           >
             Bulk edit
           </button>
           <button
+            className="act-bulk-delete"
             onClick={async () => {
               if (confirm(`Are you sure you want to delete ${selectedActivities.size} activity(ies)?`)) {
                 try {
@@ -4288,16 +4244,6 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
                   alert(`Failed to delete activities: ${error?.response?.data?.message || error?.message || 'Unknown error'}`);
                 }
               }
-            }}
-            style={{
-              padding: '8px 16px',
-              background: '#dc3545',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: 500,
             }}
           >
             Delete
@@ -4318,7 +4264,8 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
           }
         }
       `}</style>
-      <div className="table-wrap">
+      <div className="act-panel">
+      <div className="table-wrap act-table-desktop">
       <table className="table">
         <thead>
           <tr>
@@ -4383,6 +4330,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
                   activityRowRefs.current.delete(a.id);
                 }
               }}
+              className={`${a.done ? 'act-row-done' : ''} ${isActivityOverdue(a) ? 'act-row-overdue' : ''}`.trim() || undefined}
               onClick={() => handleRowClick(a)} 
               style={{ 
                 cursor: 'pointer',
@@ -4428,18 +4376,52 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         </tbody>
       </table>
       </div>
+      {(!data?.content || data.content.filter(shouldShow).length === 0) && !loadingMore && (
+        <div className="act-empty">
+          <h3>No activities yet</h3>
+          <p>Your upcoming calls, meetings and follow-ups will appear here.</p>
+          <button className="act-create-btn" onClick={() => setIsAddOpen(true)}>
+            + Activity
+          </button>
+        </div>
+      )}
+      <div className="act-card-list">
+        {data?.content?.filter(shouldShow).map((a) => (
+          <div
+            key={`card-${a.id}`}
+            className={`act-card${a.done ? ' is-done' : ''}${isActivityOverdue(a) ? ' is-overdue' : ''}`}
+            onClick={() => handleRowClick(a)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleRowClick(a);
+              }
+            }}
+          >
+            <div className="act-card-top">
+              <div className="act-card-title">{a.subject}</div>
+              <span className={`act-type-chip ${getTypeChipClass(a.type || a.category)}`}>
+                {formatActivityTypeLabel(a.type || a.category)}
+              </span>
+            </div>
+            <div className="act-card-meta">
+              <div>{a.dealName || (a.dealId ? dealsMap.get(a.dealId) : null) || '-'}</div>
+              <div>{a.dueDate || a.date || '-'}</div>
+              <div className="act-owner">
+                <span className="act-avatar" aria-hidden="true">{getOwnerInitials(a.assignedUser)}</span>
+                <span>{a.assignedUser || '-'}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
 
       {/* Infinite Scroll Loading Indicator */}
       {loadingMore && (
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: '20px',
-          borderTop: '1px solid #e5e7eb',
-          backgroundColor: '#f9fafb'
-        }}>
-          <div style={{ fontSize: '14px', color: '#6b7280' }}>Loading more activities...</div>
+        <div className="act-loading-more">
+          <div>Loading more activities...</div>
           </div>
       )}
       {data && data.content.length > 0 && (() => {
@@ -4462,23 +4444,16 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         });
         
         return (
-            <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: '20px',
-          borderTop: '1px solid #e5e7eb',
-          backgroundColor: '#f9fafb'
-        }}>
-          <div style={{ fontSize: '14px', color: '#6b7280' }}>
+            <div className="act-footer">
+          <div>
               Showing {visibleCount} of {totalExpected} {totalExpected === 1 ? 'activity' : 'activities'}
               {notLoaded > 0 && hasMore && (
-                <span style={{ marginLeft: '8px', color: '#9ca3af' }}>
+                <span>
                   ({notLoaded} more to load)
                 </span>
               )}
               {filteredOut > 0 && (
-                <span style={{ marginLeft: '8px', color: '#f59e0b' }}>
+                <span>
                   ({filteredOut} filtered out)
                 </span>
               )}
@@ -4486,6 +4461,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         </div>
         );
       })()}
+      </div>
 
       {rowMenu && (
         <div

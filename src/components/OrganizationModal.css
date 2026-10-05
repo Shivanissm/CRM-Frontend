@@ -66,7 +66,7 @@
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #2f4c3d;
+  color: #24343D;
 }
 
 .organization-modal-input,
@@ -81,8 +81,8 @@
 .organization-modal-input:focus,
 .organization-modal-textarea:focus {
   outline: none;
-  border-color: #C94D78;
-  box-shadow: 0 0 0 3px rgba(201, 77, 120, 0.18);
+  border-color: #54C9C4;
+  box-shadow: 0 0 0 3px rgba(84, 201, 196, 0.18);
 }
 
 .organization-modal-textarea {
@@ -123,12 +123,13 @@
 }
 
 .organization-modal-cancel {
-  background: #f1f3f5;
-  color: #495057;
+  background: #ffffff;
+  color: #2EA9A5;
+  border: 1px solid #B7E9E5;
 }
 
 .organization-modal-cancel:hover:not(:disabled) {
-  background: #e6eaee;
+  background: #E8F7F5;
 }
 
 .organization-modal-submit {

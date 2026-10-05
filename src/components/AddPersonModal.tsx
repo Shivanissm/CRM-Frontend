@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { Person, PersonOwner, PersonLabelOption, PersonRequest, FilterMeta, PersonCategory } from '../types/person';
+import type { Person, PersonOwner, PersonRequest, FilterMeta, PersonCategory } from '../types/person';
 import { personsApi } from '../services/api';
 import { organizationsApi } from '../services/organizations';
 import { dealsApi } from '../services/deals';
@@ -64,7 +64,6 @@ export default function AddPersonModal({
 
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [owners, setOwners] = useState<PersonOwner[]>([]);
-  const [labels, setLabels] = useState<PersonLabelOption[]>([]);
   const [categories, setCategories] = useState<PersonCategory[]>([]);
   const [sources, setSources] = useState<Array<{ code: string; label: string }>>([]);
   const [subSources, setSubSources] = useState<Array<{ code: string; label: string }>>([]);
@@ -74,10 +73,9 @@ export default function AddPersonModal({
 
     const loadOptions = async () => {
       try {
-        const [orgs, ownerOptions, labelOptions, categoryOptions, sourceOptions, subSourceOptions] = await Promise.all([
+        const [orgs, ownerOptions, categoryOptions, sourceOptions, subSourceOptions] = await Promise.all([
           organizationsApi.list(),
           personsApi.listOwners(),
-          personsApi.listLabels(),
           personsApi.listCategories().catch((err) => {
             console.error('Failed to load categories from API:', err);
             return [];
@@ -105,10 +103,15 @@ export default function AddPersonModal({
         ]);
         setOrganizations(orgs);
         setOwners(ownerOptions);
-        setLabels(labelOptions);
-        // Show all categories from backend
-        setCategories(categoryOptions);
-        setSources(sourceOptions);
+        setCategories(categoryOptions.filter((option) => {
+          const name = (option.name || '').trim().toLowerCase();
+          return name === 'photography' || name === 'makeup' || name === 'bts';
+        }));
+        setSources(sourceOptions.filter((option) => {
+          const code = (option.code || '').trim().toLowerCase();
+          const label = (option.label || '').trim().toLowerCase();
+          return code !== 'tbs' && label !== 'tbs';
+        }));
         setSubSources(subSourceOptions);
         console.log('Loaded deal sources:', sourceOptions);
         console.log('Loaded deal sub sources:', subSourceOptions);
@@ -338,19 +341,6 @@ export default function AddPersonModal({
                 </div>
 
           <div className="person-field-group">
-            <div className="person-field">
-              <label htmlFor="person-label">Labels</label>
-                  <select
-                id="person-label"
-                value={form.label}
-                onChange={(event) => handleChange('label', event.target.value)}
-              >
-                <option value="">Select label…</option>
-                {labels.map((option) => (
-                  <option key={option.code} value={option.code}>{option.label}</option>
-                    ))}
-                  </select>
-                </div>
             <div className="person-field">
               <label htmlFor="person-category">Category</label>
                   <select

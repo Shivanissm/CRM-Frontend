@@ -158,7 +158,11 @@ export default function PersonDetail() {
               label: typeof s === 'string' ? s : s.label || s.code || s.value,
             }))
           : [];
-        setSources(formattedSources);
+        setSources(formattedSources.filter((option) => {
+          const code = (option.code || '').trim().toLowerCase();
+          const label = (option.label || '').trim().toLowerCase();
+          return code !== 'tbs' && label !== 'tbs';
+        }));
       } else {
         console.error('Failed to load sources:', sourceOptions.reason);
         setSources([]);

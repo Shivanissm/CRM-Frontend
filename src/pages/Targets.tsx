@@ -346,11 +346,15 @@ export default function Targets() {
   }, [viewMode]);
 
   // For Pre-Sales users, always stay on the Pre-Sales layer.
+  // For Sales users, always stay on the Sales layer (no Pre-Sales toggle).
   useEffect(() => {
     if (isPreSales && !isAdmin && targetLayer !== 'PRESALES') {
       setTargetLayer('PRESALES');
     }
-  }, [isPreSales, isAdmin, targetLayer]);
+    if (isSales && !isAdmin && targetLayer !== 'SALES') {
+      setTargetLayer('SALES');
+    }
+  }, [isPreSales, isSales, isAdmin, targetLayer]);
 
   useEffect(() => {
     if (!categoryBreakdownParams || !categoryBreakdownCacheKey) {
@@ -1271,7 +1275,7 @@ export default function Targets() {
               })}
             </div>
           </div>
-          {!isPreSales && (
+          {(isAdmin || isCategoryManager) && (
             <div className="targets-layer-toggle">
               <div className="targets-view-toggle">
                 <button

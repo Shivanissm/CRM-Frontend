@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { personsApi } from '../services/api';
@@ -11,6 +11,7 @@ import BulkEditModal from '../components/BulkEditModal';
 import AddPersonModal from '../components/AddPersonModal';
 import Loader from '../components/Loader';
 import { clearAuthSession } from '../utils/authToken';
+import { isDirectGroupSource, isDivertSource, visibleLeadCategories, withoutTbsSources } from '../utils/personSources';
 import './PersonsList.css';
 
 const formatDateFromInput = (yyyyMMdd: string): string => {
@@ -70,19 +71,43 @@ const formatDaysAway = (days: number): string => {
 
 const FILTERS_STORAGE_KEY = 'persons-list-filters';
 
+const getThisMonthRange = () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+  const endDate = new Date(today);
+  endDate.setHours(23, 59, 59, 999);
+  return {
+    start: formatDateYYYYMMDD(startDate),
+    end: formatDateYYYYMMDD(endDate),
+  };
+};
+
 // Helper function to load filters from localStorage
 const loadFiltersFromStorage = (): PersonFilters => {
+  const thisMonth = getThisMonthRange();
+  const defaults: PersonFilters = {
+    page: 0,
+    size: 10,
+    leadFrom: formatDateFromInput(thisMonth.start),
+    leadTo: formatDateFromInput(thisMonth.end),
+  };
   try {
     const stored = localStorage.getItem(FILTERS_STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-      // Ensure page is reset to 0 on load (don't persist page number)
-      return { ...parsed, page: 0 };
+      return {
+        ...parsed,
+        page: 0,
+        categoryId: undefined,
+        leadFrom: defaults.leadFrom,
+        leadTo: defaults.leadTo,
+      };
     }
   } catch (error) {
     console.error('Failed to load filters from localStorage:', error);
   }
-  return { page: 0, size: 10 };
+  return defaults;
 };
 
 // Helper function to save filters to localStorage
@@ -133,65 +158,12 @@ export default function PersonsList() {
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [isOrganizationDropdownOpen, setIsOrganizationDropdownOpen] = useState(false);
   const [isManagerDropdownOpen, setIsManagerDropdownOpen] = useState(false);
-  const [isLabelDropdownOpen, setIsLabelDropdownOpen] = useState(false);
   // Tooltip states for multi-select
   const [tooltipContent, setTooltipContent] = useState<string | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
   // Date range filter states
-  const [dateRange, setDateRange] = useState<{ start: string; end: string }>(() => {
-    // Load from localStorage or default to "Last 7 days"
-    try {
-      const stored = localStorage.getItem(FILTERS_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.leadFrom && parsed.leadTo) {
-          // Convert DD/MM/YYYY to YYYY-MM-DD
-          const convertToYYYYMMDD = (ddmmyyyy: string): string => {
-            const parts = ddmmyyyy.split('/');
-            if (parts.length === 3) {
-              const [d, m, y] = parts;
-              return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-            }
-            return '';
-          };
-          return {
-            start: convertToYYYYMMDD(parsed.leadFrom),
-            end: convertToYYYYMMDD(parsed.leadTo),
-          };
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load date range from localStorage:', error);
-    }
-    // Default to "Last 7 days"
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const startDate = new Date(today);
-    startDate.setDate(startDate.getDate() - 7);
-    const endDate = new Date(today);
-    endDate.setHours(23, 59, 59, 999);
-    return {
-      start: formatDateYYYYMMDD(startDate),
-      end: formatDateYYYYMMDD(endDate),
-    };
-  });
-  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>(() => {
-    // Check if localStorage has a saved date range, otherwise default to "Last 7 days"
-    try {
-      const stored = localStorage.getItem(FILTERS_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.leadFrom && parsed.leadTo) {
-          // If there's a saved date range, don't set a preset option
-          return '';
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load date range option from localStorage:', error);
-    }
-    // Default to "Last 7 days"
-    return 'Last 7 days';
-  });
+  const [dateRange, setDateRange] = useState<{ start: string; end: string }>(getThisMonthRange);
+  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('This month');
   const [isDateRangeDropdownOpen, setIsDateRangeDropdownOpen] = useState(false);
   const [isDateRangeModalOpen, setIsDateRangeModalOpen] = useState(false);
   const dateRangeDropdownRef = useRef<HTMLDivElement>(null);
@@ -453,7 +425,6 @@ export default function PersonsList() {
         setIsCategoryDropdownOpen(false);
         setIsOrganizationDropdownOpen(false);
         setIsManagerDropdownOpen(false);
-        setIsLabelDropdownOpen(false);
       }
       // Close date range dropdown if clicking outside
       if (dateRangeDropdownRef.current && !dateRangeDropdownRef.current.contains(target)) {
@@ -461,41 +432,31 @@ export default function PersonsList() {
       }
     };
 
-    if (isCategoryDropdownOpen || isOrganizationDropdownOpen || isManagerDropdownOpen || isLabelDropdownOpen || isDateRangeDropdownOpen) {
+    if (isCategoryDropdownOpen || isOrganizationDropdownOpen || isManagerDropdownOpen || isDateRangeDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => {
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-  }, [isCategoryDropdownOpen, isOrganizationDropdownOpen, isManagerDropdownOpen, isLabelDropdownOpen, isDateRangeDropdownOpen]);
+  }, [isCategoryDropdownOpen, isOrganizationDropdownOpen, isManagerDropdownOpen, isDateRangeDropdownOpen]);
 
   // Close other dropdowns when opening a new one
   const handleCategoryDropdownToggle = () => {
     setIsCategoryDropdownOpen(!isCategoryDropdownOpen);
     setIsOrganizationDropdownOpen(false);
     setIsManagerDropdownOpen(false);
-    setIsLabelDropdownOpen(false);
   };
 
   const handleOrganizationDropdownToggle = () => {
     setIsOrganizationDropdownOpen(!isOrganizationDropdownOpen);
     setIsCategoryDropdownOpen(false);
     setIsManagerDropdownOpen(false);
-    setIsLabelDropdownOpen(false);
   };
 
   const handleManagerDropdownToggle = () => {
     setIsManagerDropdownOpen(!isManagerDropdownOpen);
     setIsCategoryDropdownOpen(false);
     setIsOrganizationDropdownOpen(false);
-    setIsLabelDropdownOpen(false);
-  };
-
-  const handleLabelDropdownToggle = () => {
-    setIsLabelDropdownOpen(!isLabelDropdownOpen);
-    setIsCategoryDropdownOpen(false);
-    setIsOrganizationDropdownOpen(false);
-    setIsManagerDropdownOpen(false);
   };
 
   // Helper function to format display text (first item + "...")
@@ -1373,24 +1334,28 @@ export default function PersonsList() {
     { field: 'label', label: 'Label', type: 'select' as const, options: filterMeta.labelOptions?.map(option => option.code) || [] },
     { field: 'instagramId', label: 'Instagram ID', type: 'text' as const },
     { field: 'phone', label: 'Phone', type: 'text' as const },
-    { field: 'source', label: 'Person Source', type: 'select' as const, options: Array.isArray(filterMeta.sourceOptions) ? filterMeta.sourceOptions.map(option => option.code) : [] },
+    { field: 'source', label: 'Person Source', type: 'select' as const, options: Array.isArray(filterMeta.sourceOptions) ? withoutTbsSources(filterMeta.sourceOptions).map(option => option.code) : [] },
   ] : [];
+
+  const leadStats = useMemo(() => ({
+    total: totalElements,
+    direct: persons.filter((person) => isDirectGroupSource(person.source)).length,
+    divert: persons.filter((person) => isDivertSource(person.source)).length,
+  }), [persons, totalElements]);
 
   return (
     <div className="persons-list-container">
       <header className="persons-header">
         <div>
-        <h1>Persons</h1>
-          {totalElements > 0 && (
-            <p className="persons-count">{totalElements} {totalElements === 1 ? 'person' : 'persons'}</p>
-          )}
+        <h1>Lead</h1>
+          <p className="persons-count">Keep track of customers, enquiries and important relationships.</p>
         </div>
         <div className="header-actions">
           <div className="person-button-container">
             <div className="person-button">
               <button className="person-button-main" onClick={handleAddPerson}>
                 <span className="person-plus-icon">+</span>
-                <span className="person-text">Person</span>
+                <span className="person-text">Add Person</span>
               </button>
               <div className="person-button-divider"></div>
               <button className="person-button-arrow" onClick={handlePersonDropdown}>
@@ -1406,6 +1371,21 @@ export default function PersonsList() {
         </div>
         </div>
       </header>
+
+      <div className="hb-stat-row">
+        <div className="hb-stat-card tone-aqua">
+          <div className="label">Total Leads</div>
+          <div className="value">{leadStats.total}</div>
+        </div>
+        <div className="hb-stat-card tone-pink">
+          <div className="label">Direct Leads</div>
+          <div className="value">{leadStats.direct}</div>
+        </div>
+        <div className="hb-stat-card tone-lavender">
+          <div className="label">Divert Leads</div>
+          <div className="value">{leadStats.divert}</div>
+        </div>
+      </div>
 
       {selectedPersons.size > 0 && (
         <div className="bulk-edit-bar">
@@ -1495,7 +1475,22 @@ export default function PersonsList() {
                       onClick={() => setIsCategoryDropdownOpen(false)}
                     />
                     <div className="multi-select-dropdown">
-                      {filterMeta?.categoryOptions?.map(cat => {
+                      <label className="multi-select-option">
+                        <input
+                          type="checkbox"
+                          checked={!filters.categoryId || (Array.isArray(filters.categoryId) && filters.categoryId.length === 0)}
+                          onChange={() => {
+                            setFilters((prev) => {
+                              const next = { ...prev };
+                              delete next.categoryId;
+                              return { ...next, page: 0 };
+                            });
+                            setCurrentPage(0);
+                          }}
+                        />
+                        <span>All Categories</span>
+                      </label>
+                      {visibleLeadCategories(filterMeta?.categoryOptions).map(cat => {
                         const selectedIds = Array.isArray(filters.categoryId) 
                           ? filters.categoryId 
                           : filters.categoryId ? [filters.categoryId] : [];
@@ -1672,74 +1667,6 @@ export default function PersonsList() {
               </div>
             </div>
 
-            {filterMeta.labelOptions && (
-              <div className="filter-group">
-                <label htmlFor="label-filter">Label</label>
-                <div className="multi-select-wrapper">
-                  <div 
-                    className="multi-select-trigger"
-                    onClick={handleLabelDropdownToggle}
-                    onMouseEnter={(e) => {
-                      const selectedLabels = Array.isArray(filters.label) 
-                        ? filters.label 
-                        : filters.label ? [filters.label] : [];
-                      if (selectedLabels.length === 0) return;
-                      const selectedNames = selectedLabels
-                        .map(code => filterMeta?.labelOptions?.find(opt => opt.code === code)?.label)
-                        .filter(Boolean) as string[];
-                      if (selectedNames.length > 1) {
-                        handleTooltipShow(e, selectedNames.join(', '));
-                      }
-                    }}
-                    onMouseLeave={handleTooltipHide}
-                  >
-                    <span className="multi-select-value">
-                      {(() => {
-                        const selectedLabels = Array.isArray(filters.label) 
-                          ? filters.label 
-                          : filters.label ? [filters.label] : [];
-                        if (selectedLabels.length === 0) return 'All Labels';
-                        const selectedNames = selectedLabels
-                          .map(code => filterMeta?.labelOptions?.find(opt => opt.code === code)?.label)
-                          .filter(Boolean) as string[];
-                        if (selectedNames.length === 0) return 'All Labels';
-                        return formatMultiSelectDisplay(selectedNames);
-                      })()}
-                    </span>
-                    <span className="multi-select-arrow">▼</span>
-                  </div>
-                  {isLabelDropdownOpen && (
-                    <>
-                      <div 
-                        className="multi-select-overlay"
-                        onClick={() => setIsLabelDropdownOpen(false)}
-                      />
-                      <div className="multi-select-dropdown">
-                        {filterMeta.labelOptions.map(option => {
-                          const selectedLabels = Array.isArray(filters.label) 
-                            ? filters.label 
-                            : filters.label ? [filters.label] : [];
-                          const isChecked = selectedLabels.includes(option.code);
-                          return (
-                            <label key={option.code} className="multi-select-option">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={(e) => {
-                                  handleMultiSelectChange('label', option.code, e.target.checked);
-                                }}
-                              />
-                              <span>{option.label}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
             {filterMeta.sourceOptions && Array.isArray(filterMeta.sourceOptions) && filterMeta.sourceOptions.length > 0 && (
               <div className="filter-group">
                 <label htmlFor="source-filter">Source</label>
@@ -1750,7 +1677,7 @@ export default function PersonsList() {
                   className="filter-select"
                 >
                   <option value="">All Sources</option>
-                  {filterMeta.sourceOptions.map(option => (
+                  {withoutTbsSources(filterMeta.sourceOptions).map(option => (
                     <option key={option.code} value={option.code}>{option.label}</option>
                   ))}
                 </select>
@@ -2052,9 +1979,9 @@ export default function PersonsList() {
               {persons.length === 0 ? (
                 <tr>
                   <td colSpan={columnOrder.filter(c => !hiddenColumns.has(c)).length + 2} className="empty-state-cell">
-                    <div className="empty-state">
-                      <h3>No persons found</h3>
-                      <p>Try adjusting your filters or search criteria to find what you're looking for.</p>
+                    <div className="empty-state hb-empty">
+                      <h3>No leads yet</h3>
+                      <p>Add your first person to start tracking customers, enquiries and relationships.</p>
                     </div>
                   </td>
                 </tr>
