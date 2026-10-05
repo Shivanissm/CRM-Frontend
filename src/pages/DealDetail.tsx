@@ -9,7 +9,7 @@ import { activitiesApi, type Activity } from '../services/activities';
 import { usersApi } from '../services/users';
 import { teamsApi } from '../services/teams';
 import type { User } from '../types/user';
-import type { Team } from '../types/team';
+import type { Team, TeamUser } from '../types/team';
 import { clearAuthSession, getStoredUser } from '../utils/authToken';
 import { addToRecentlyViewed } from '../utils/recentlyViewed';
 import type { Deal, DealCreateRequest, DealUpdateRequest, DealSource, DealSubSource } from '../types/deal';
@@ -22,6 +22,7 @@ import MarkAsLostModal from '../components/MarkAsLostModal';
 import DealValueModal from '../components/DealValueModal';
 import { getAllEventDates, normalizeEventDatesForRequest } from '../utils/dealDates';
 import './DealDetail.css';
+import { getDisplayStageName } from '../utils/stageNames';
 
 type ActiveTab = 'Activity' | 'Notes' | 'Meeting scheduler' | 'Call' | 'Email' | 'Send quote' | 'Send Contract' | 'Share Worklinks';
 
@@ -1415,6 +1416,42 @@ export default function DealDetail() {
     return pipelines.find((p) => p.id === formData.pipelineId) || null;
   }, [formData.pipelineId, pipelines]);
 
+  const mapTeamUserToUser = (teamUser: TeamUser): User => ({
+    id: teamUser.id,
+    email: teamUser.email || '',
+    firstName: teamUser.firstName || '',
+    lastName: teamUser.lastName || '',
+    role: teamUser.role || '',
+    active: true,
+    passwordSet: true,
+    managerId: null,
+    managerName: null,
+    createdAt: '',
+    lastLoginAt: null,
+  });
+
+  const pipelineTeamUsers = useMemo(() => {
+    const pipeline = selectedPipeline || pipelines.find((p) => p.id === deal?.pipelineId);
+    const teamId = pipeline?.teamId || pipeline?.team?.id;
+    if (!teamId) {
+      return [];
+    }
+    const team = teams.find((t) => t.id === teamId);
+    if (!team) {
+      return [];
+    }
+    const byId = new Map<number, User>();
+    const add = (teamUser?: TeamUser | null) => {
+      if (!teamUser?.id || byId.has(teamUser.id)) {
+        return;
+      }
+      byId.set(teamUser.id, mapTeamUserToUser(teamUser));
+    };
+    add(team.manager);
+    (team.members || []).forEach(add);
+    return Array.from(byId.values());
+  }, [deal?.pipelineId, selectedPipeline, pipelines, teams]);
+
   const selectedStage = useMemo(() => {
     if (!formData.stageId || !selectedPipeline) return null;
     return selectedPipeline.stages?.find((s) => s.id === formData.stageId) || null;
@@ -1681,7 +1718,7 @@ export default function DealDetail() {
                 >
               <span className="deal-header-pipeline-name">{selectedPipeline?.name || '—'}</span>
               <span className="deal-header-arrow">→</span>
-              <span className="deal-header-stage-name">{selectedStage.name}</span>
+              <span className="deal-header-stage-name">{getDisplayStageName(selectedStage.name)}</span>
                   <svg 
                     width="12" 
                     height="12" 
@@ -1715,7 +1752,7 @@ export default function DealDetail() {
                             }
                           }}
                         >
-                          {stage.name}
+                          {getDisplayStageName(stage.name)}
                         </div>
                       ))}
             </div>
@@ -1735,7 +1772,7 @@ export default function DealDetail() {
                   }}
                 >
                   <div className="deal-header-stage-tooltip-title">
-                    {selectedPipeline.stages.find(s => s.id === hoveredStageId)?.name || 'Stage'}
+                    {getDisplayStageName(selectedPipeline.stages.find(s => s.id === hoveredStageId)?.name) || 'Stage'}
                   </div>
                   <div className="deal-header-stage-tooltip-content">
                     {(() => {
@@ -2170,14 +2207,14 @@ export default function DealDetail() {
                     >
                       <option value=""></option>
                       {selectedPipeline ? (selectedPipeline.stages || []).map((stage) => (
-                        <option key={stage.id} value={stage.id}>{stage.name}</option>
+                        <option key={stage.id} value={stage.id}>{getDisplayStageName(stage.name)}</option>
                       )) : pipelines.flatMap((p) => p.stages || []).map((stage) => (
-                        <option key={stage.id} value={stage.id}>{stage.name}</option>
+                        <option key={stage.id} value={stage.id}>{getDisplayStageName(stage.name)}</option>
                       ))}
                     </select>
                   ) : (
                       <span className="deal-field-text" onClick={() => setEditingField('stageId')} style={{ cursor: 'pointer' }}>
-                      {selectedStage ? selectedStage.name : ''}
+                      {selectedStage ? getDisplayStageName(selectedStage.name) : ''}
                       </span>
                   )}
                 </div>
@@ -2998,7 +3035,18 @@ export default function DealDetail() {
       <ActivityModal
         isOpen={isActivityModalOpen}
         onClose={() => setIsActivityModalOpen(false)}
-        initialOrganization={selectedOrganization?.name || ''}
+        initialOrganization={selectedOrganization?.name || deal?.organizationName || ''}
+        userOptions={pipelineTeamUsers}
+        dealData={deal ? {
+          dealId: deal.id,
+          dealName: deal.name || undefined,
+          personId: deal.personId || person?.id || undefined,
+          personName: person?.name || deal.personName || undefined,
+          organization: selectedOrganization?.name || deal.organizationName || undefined,
+          organizationId: deal.organizationId || selectedOrganization?.id || undefined,
+          phone: deal.phoneNumber || person?.phone || undefined,
+          instagramId: person?.instagramId || undefined,
+        } : undefined}
         onSave={async (v: ActivityFormValues) => {
           if (!v.subject || v.subject.trim() === '') {
             alert('Subject is required');

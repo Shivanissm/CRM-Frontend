@@ -19,7 +19,6 @@ public/
 node_modules/
 dist/
 wwwroot/
-reference/
 *.md
 .gitignore
 .deploymentignore

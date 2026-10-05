@@ -3,7 +3,7 @@
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  background: #f8fafc;
+  background: #FFF7F5;
   width: 100%;
   max-width: 100%;
 }
@@ -14,10 +14,10 @@
   align-items: flex-start;
   justify-content: flex-start;
   padding: 16px 24px;
-  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+  border-bottom: 1px solid #D8E7E6;
   flex-shrink: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 8px rgba(36, 52, 61, 0.04);
   gap: 16px;
   width: 100%;
   box-sizing: border-box;
@@ -42,26 +42,27 @@
   border: none;
   background: transparent;
   font-size: 20px;
-  font-weight: 600;
-  color: #1e293b;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #24343D;
   outline: none;
   padding: 6px 12px;
   min-width: 200px;
-  border-radius: 6px;
-  transition: background-color 0.2s;
+  border-radius: 10px;
+  transition: background-color 150ms ease;
 }
 
 .deal-header-name-input:hover {
-  background: #f1f5f9;
+  background: #E8F7F5;
 }
 
 .deal-header-name-input:focus {
   background: #ffffff;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px rgba(84, 201, 196, 0.18);
 }
 
 .deal-header-name-input::placeholder {
-  color: #94a3b8;
+  color: #65777D;
   font-weight: 400;
 }
 
@@ -71,23 +72,23 @@
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #64748b;
+  color: #65777D;
   margin-top: 4px;
   position: relative;
 }
 
 .deal-header-pipeline-name {
-  font-weight: 500;
-  color: #3b82f6;
+  font-weight: 600;
+  color: #2EA9A5;
 }
 
 .deal-header-arrow {
-  color: #94a3af;
+  color: #65777D;
 }
 
 .deal-header-stage-name {
-  font-weight: 500;
-  color: #1e293b;
+  font-weight: 600;
+  color: #24343D;
 }
 
 .deal-header-stage-display {
@@ -95,14 +96,14 @@
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border-radius: 6px;
-  transition: all 0.2s;
+  border-radius: 10px;
+  transition: all 150ms ease;
   border: 1px solid transparent;
 }
 
 .deal-header-stage-display:hover {
-  background-color: #f1f5f9;
-  border-color: #cbd5e1;
+  background-color: #E8F7F5;
+  border-color: #B7E9E5;
 }
 
 .deal-header-stage-display svg {
@@ -120,9 +121,9 @@
   left: 0;
   margin-top: 8px;
   background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid #D8E7E6;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(36, 52, 61, 0.12);
   z-index: 10000;
   min-width: 220px;
   max-height: 300px;
@@ -131,30 +132,30 @@
 
 .deal-header-stage-dropdown-title {
   padding: 12px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  color: #65777D;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid #e2e8f0;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid #D8E7E6;
 }
 
 .deal-header-stage-dropdown-item {
   padding: 10px 16px;
   font-size: 14px;
-  color: #1e293b;
+  color: #24343D;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 150ms ease;
 }
 
 .deal-header-stage-dropdown-item:hover {
-  background-color: #f1f5f9;
+  background-color: #E8F7F5;
 }
 
 .deal-header-stage-dropdown-item.active {
-  background-color: #eff6ff;
-  color: #3b82f6;
-  font-weight: 500;
+  background-color: #F3EDF6;
+  color: #7A4E8A;
+  font-weight: 600;
 }
 
 /* Stage Timeline - Similar to Kanban board */
@@ -177,8 +178,8 @@
   text-align: center;
   font-size: 13px;
   font-weight: 500;
-  color: #64748b;
-  background: #f8fafc;
+  color: #65777D;
+  background: #E8F7F5;
   transition: all 0.2s ease;
   position: relative;
   display: flex;
@@ -230,8 +231,8 @@
 }
 
 .deal-header-stage-timeline-item.visited {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: #B7E9E5;
+  color: #2EA9A5;
 }
 
 .deal-header-stage-timeline-item.current {
@@ -242,9 +243,8 @@
 }
 
 .deal-header-stage-timeline-item:hover:not(.current) {
-  background: #cbd5e1;
-  color: #475569;
-  /* Removed transform to prevent breaking clip-path */
+  background: #F3EDF6;
+  color: #7A4E8A;
 }
 
 .deal-header-stage-timeline-item.current:hover {
@@ -259,7 +259,7 @@
 
 /* Stage Tooltip */
 .deal-header-stage-tooltip {
-  background: #1e293b;
+  background: #24343D;
   color: white;
   padding: 8px 12px;
   border-radius: 6px;
@@ -277,7 +277,7 @@
 }
 
 .deal-header-stage-tooltip-content {
-  color: #cbd5e1;
+  color: #D8E7E6;
   line-height: 1.4;
 }
 
@@ -291,7 +291,7 @@
   height: 0;
   border-left: 4px solid transparent;
   border-right: 4px solid transparent;
-  border-bottom: 4px solid #1e293b;
+  border-bottom: 4px solid #24343D;
 }
 
 .deal-header-right {
@@ -329,23 +329,23 @@
 }
 
 .deal-status-btn-lost {
-  background: #ef4444;
+  background: #B52F58;
   color: #fff;
 }
 
 .deal-status-btn-lost:hover {
-  background: #dc2626;
+  background: #9a2749;
 }
 
 .deal-status-btn-reopen {
   background: #fff;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
+  color: #2EA9A5;
+  border: 1px solid #B7E9E5;
 }
 
 .deal-status-btn-reopen:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
+  background: #E8F7F5;
+  border-color: #54C9C4;
 }
 
 .deal-status-badge {
@@ -365,7 +365,7 @@
 }
 
 .deal-status-badge-lost {
-  background: #ef4444;
+  background: #B52F58;
   color: #fff;
 }
 
@@ -405,7 +405,7 @@
   top: calc(100% + 8px);
   right: 0;
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 1000;
@@ -421,13 +421,13 @@
   background: white;
   border: none;
   font-size: 14px;
-  color: #334155;
+  color: #24343D;
   cursor: pointer;
   transition: background-color 0.15s;
 }
 
 .deal-deal-dropdown-item:hover:not(:disabled) {
-  background: #f1f5f9;
+  background: #E8F7F5;
 }
 
 .deal-deal-dropdown-item:disabled {
@@ -446,19 +446,19 @@
   align-items: center;
   padding: 8px 16px;
   background: #ffffff;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border: 1px solid #D8E7E6;
+  border-radius: 10px;
   font-size: 13px;
   font-weight: 500;
-  color: #1e293b;
+  color: #24343D;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 150ms ease;
   white-space: nowrap;
 }
 
 .deal-owner-button:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
+  background: #E8F7F5;
+  border-color: #54C9C4;
 }
 
 .deal-owner-dropdown {
@@ -466,7 +466,7 @@
   top: calc(100% + 8px);
   right: 0;
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 10000;
@@ -479,20 +479,20 @@
   padding: 12px 16px;
   font-size: 14px;
   font-weight: 600;
-  color: #1e293b;
-  border-bottom: 1px solid #e2e8f0;
+  color: #24343D;
+  border-bottom: 1px solid #D8E7E6;
 }
 
 .deal-owner-dropdown-search {
   position: relative;
   padding: 12px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #D8E7E6;
 }
 
 .deal-owner-search-input {
   width: 100%;
   padding: 8px 12px 8px 36px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   border-radius: 6px;
   font-size: 13px;
   outline: none;
@@ -500,8 +500,8 @@
 }
 
 .deal-owner-search-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: #54C9C4;
+  box-shadow: 0 0 0 3px rgba(84, 201, 196, 0.18);
 }
 
 .deal-owner-dropdown-list {
@@ -516,7 +516,7 @@
   padding: 12px 16px;
   cursor: pointer;
   transition: background-color 0.2s;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid #E8F7F5;
 }
 
 .deal-owner-dropdown-item:last-child {
@@ -524,11 +524,11 @@
 }
 
 .deal-owner-dropdown-item:hover {
-  background-color: #f8fafc;
+  background-color: #E8F7F5;
 }
 
 .deal-owner-dropdown-item.selected {
-  background-color: #eff6ff;
+  background-color: #E8F7F5;
 }
 
 .deal-owner-item-content {
@@ -539,13 +539,13 @@
 .deal-owner-item-name {
   font-size: 13px;
   font-weight: 500;
-  color: #1e293b;
+  color: #24343D;
   margin-bottom: 2px;
 }
 
 .deal-owner-item-email {
   font-size: 12px;
-  color: #64748b;
+  color: #65777D;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -555,7 +555,7 @@
   background: transparent;
   border: none;
   font-size: 28px;
-  color: #64748b;
+  color: #65777D;
   cursor: pointer;
   padding: 6px;
   line-height: 1;
@@ -569,8 +569,8 @@
 }
 
 .deal-close-button:hover {
-  color: #1e293b;
-  background: #f1f5f9;
+  color: #24343D;
+  background: #E8F7F5;
 }
 
 /* Main Content - Two Halves */
@@ -585,13 +585,13 @@
   flex: 0 0 30%;
   background: #ffffff;
   overflow-y: auto;
-  border-right: 1px solid #e2e8f0;
+  border-right: 1px solid #D8E7E6;
   padding: 0;
 }
 
 /* Sections */
 .deal-section {
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #D8E7E6;
   background: #ffffff;
 }
 
@@ -606,13 +606,13 @@
 }
 
 .deal-section-header:hover {
-  background: #f8fafc;
+  background: #E8F7F5;
 }
 
 .deal-section-title {
   font-weight: 600;
   font-size: 13px;
-  color: #475569;
+  color: #65777D;
   user-select: none;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -632,7 +632,7 @@
 .deal-section-icon {
   font-size: 16px;
   cursor: pointer;
-  color: #64748b;
+  color: #65777D;
   padding: 6px;
   user-select: none;
   border-radius: 4px;
@@ -640,8 +640,8 @@
 }
 
 .deal-section-icon:hover {
-  color: #1e293b;
-  background: #f1f5f9;
+  color: #24343D;
+  background: #E8F7F5;
 }
 
 .deal-section-menu-overlay {
@@ -658,7 +658,7 @@
   top: calc(100% + 8px);
   right: 0;
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 999;
@@ -669,17 +669,17 @@
 .deal-section-menu-item {
   padding: 12px 16px;
   font-size: 14px;
-  color: #334155;
+  color: #24343D;
   cursor: pointer;
   transition: background-color 0.15s;
 }
 
 .deal-section-menu-item:hover {
-  background: #f1f5f9;
+  background: #E8F7F5;
 }
 
 .deal-section-menu-item:not(:last-child) {
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid #E8F7F5;
 }
 
 .deal-section-content {
@@ -701,14 +701,14 @@
 .deal-field-label {
   min-width: 140px;
   font-size: 13px;
-  color: #64748b;
+  color: #65777D;
   font-weight: 500;
   flex-shrink: 0;
 }
 
 .deal-field-icon {
   font-size: 18px;
-  color: #64748b;
+  color: #65777D;
   min-width: 24px;
   display: inline-flex;
   align-items: center;
@@ -720,7 +720,7 @@
 .deal-field-input {
   flex: 1;
   padding: 10px 14px;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid #D8E7E6;
   border-radius: 8px;
   font-size: 14px;
   outline: none;
@@ -729,20 +729,20 @@
   min-width: 200px;
   text-align: left;
   box-sizing: border-box;
-  color: #1e293b;
+  color: #24343D;
 }
 
 .deal-field-input:hover {
-  border-color: #cbd5e1;
+  border-color: #D8E7E6;
 }
 
 .deal-field-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: #54C9C4;
+  box-shadow: 0 0 0 3px rgba(84, 201, 196, 0.18);
 }
 
 .deal-field-input::placeholder {
-  color: #94a3b8;
+  color: #65777D;
 }
 
 .deal-field-with-edit {
@@ -756,7 +756,7 @@
 
 .deal-edit-icon {
   font-size: 16px;
-  color: #64748b;
+  color: #65777D;
   cursor: pointer;
   padding: 6px;
   border-radius: 6px;
@@ -765,8 +765,8 @@
 }
 
 .deal-edit-icon:hover {
-  background-color: #eff6ff;
-  color: #3b82f6;
+  background-color: #E8F7F5;
+  color: #C94D78;
 }
 
 .deal-add-button {
@@ -779,7 +779,7 @@
   border-radius: 0;
   cursor: pointer;
   font-size: 14px;
-  color: #3b82f6;
+  color: #C94D78;
   transition: color 0.2s;
   width: 100%;
   justify-content: flex-start;
@@ -788,7 +788,7 @@
 }
 
 .deal-add-button:hover {
-  color: #2563eb;
+  color: #2EA9A5;
   background: transparent;
 }
 
@@ -800,7 +800,7 @@
 .deal-field-text {
   flex: 1;
   font-size: 14px;
-  color: #1e293b;
+  color: #24343D;
   padding: 10px 14px;
   display: flex;
   align-items: center;
@@ -814,8 +814,8 @@
 }
 
 .deal-field-text:hover {
-  background-color: #f8fafc;
-  border-color: #e2e8f0;
+  background-color: #E8F7F5;
+  border-color: #D8E7E6;
 }
 
 .deal-field-display {
@@ -829,8 +829,8 @@
 }
 
 .deal-field-display:hover .deal-field-text {
-  background-color: #f8fafc;
-  border-color: #e2e8f0;
+  background-color: #E8F7F5;
+  border-color: #D8E7E6;
 }
 
 .deal-field-with-icon-input {
@@ -850,7 +850,7 @@
 
 .deal-field-value {
   font-size: 14px;
-  color: #64748b;
+  color: #65777D;
   text-align: left;
   flex: 1;
   min-width: 0;
@@ -875,22 +875,22 @@
 }
 
 .deal-field-clickable:hover {
-  background: #f8fafc;
-  border-color: #e2e8f0;
+  background: #E8F7F5;
+  border-color: #D8E7E6;
 }
 
 .deal-field-placeholder {
-  color: #94a3b8;
+  color: #65777D;
   font-style: italic;
 }
 
 .deal-source-badge {
   display: inline-block;
   padding: 6px 14px;
-  background: #f1f5f9;
+  background: #E8F7F5;
   border-radius: 6px;
   font-size: 13px;
-  color: #334155;
+  color: #24343D;
   font-weight: 500;
 }
 
@@ -918,7 +918,7 @@
   top: calc(100% + 8px);
   right: 0;
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
   z-index: 999;
@@ -935,18 +935,18 @@
 
 .deal-date-picker-nav {
   background: transparent;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   border-radius: 6px;
   padding: 6px 12px;
   cursor: pointer;
   font-size: 13px;
-  color: #64748b;
+  color: #65777D;
   transition: all 0.2s;
 }
 
 .deal-date-picker-nav:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
+  background: #E8F7F5;
+  border-color: #D8E7E6;
 }
 
 .deal-date-picker-month {
@@ -955,12 +955,12 @@
   gap: 8px;
   font-weight: 600;
   font-size: 16px;
-  color: #1e293b;
+  color: #24343D;
 }
 
 .deal-date-picker-dropdown {
   font-size: 13px;
-  color: #64748b;
+  color: #65777D;
   cursor: pointer;
 }
 
@@ -975,7 +975,7 @@
   text-align: center;
   font-size: 12px;
   font-weight: 600;
-  color: #64748b;
+  color: #65777D;
   padding: 8px 4px;
 }
 
@@ -993,27 +993,27 @@
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s;
-  color: #1e293b;
+  color: #24343D;
 }
 
 .deal-date-picker-day.other-month {
-  color: #cbd5e1;
+  color: #D8E7E6;
 }
 
 .deal-date-picker-day.today {
-  border: 1.5px solid #3b82f6;
+  border: 1.5px solid #54C9C4;
   font-weight: 600;
-  background: #eff6ff;
+  background: #E8F7F5;
 }
 
 .deal-date-picker-day.selected {
-  background: #3b82f6;
+  background: #C94D78;
   color: white;
   font-weight: 600;
 }
 
 .deal-date-picker-day:hover:not(.selected) {
-  background: #f1f5f9;
+  background: #E8F7F5;
 }
 
 .deal-date-picker-footer {
@@ -1021,14 +1021,14 @@
   justify-content: space-between;
   gap: 8px;
   padding-top: 16px;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid #E8F7F5;
 }
 
 .deal-date-picker-clear,
 .deal-date-picker-today {
   background: transparent;
   border: none;
-  color: #3b82f6;
+  color: #C94D78;
   cursor: pointer;
   font-size: 13px;
   padding: 6px 12px;
@@ -1039,7 +1039,7 @@
 
 .deal-date-picker-clear:hover,
 .deal-date-picker-today:hover {
-  background: #f1f5f9;
+  background: #E8F7F5;
 }
 
 /* Deals Section */
@@ -1054,11 +1054,11 @@
   justify-content: space-between;
   padding: 10px 0;
   font-size: 14px;
-  color: #64748b;
+  color: #65777D;
 }
 
 .deals-value {
-  color: #94a3b8;
+  color: #65777D;
   font-weight: 500;
 }
 
@@ -1076,7 +1076,7 @@
 .deal-tabs {
   display: flex;
   gap: 0;
-  border-bottom: 2px solid #e2e8f0;
+  border-bottom: 2px solid #D8E7E6;
   padding: 0 16px;
   overflow-x: auto;
   flex-shrink: 0;
@@ -1089,22 +1089,22 @@
   border: none;
   border-bottom: 2px solid transparent;
   font-size: 14px;
-  color: #64748b;
+  color: #65777D;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.2s;
+  transition: all 150ms ease;
   margin-bottom: -2px;
   font-weight: 500;
 }
 
 .deal-tab:hover {
-  color: #1e293b;
-  background: #f8fafc;
+  color: #24343D;
+  background: #E8F7F5;
 }
 
 .deal-tab.active {
-  color: #3b82f6;
-  border-bottom-color: #3b82f6;
+  color: #C94D78;
+  border-bottom-color: #C94D78;
   font-weight: 600;
 }
 
@@ -1119,29 +1119,29 @@
 .deal-activity-placeholder {
   width: 100%;
   min-height: 150px;
-  border: 2px dashed #cbd5e1;
+  border: 2px dashed #D8E7E6;
   border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f8fafc;
-  color: #64748b;
+  background: #FFF7F5;
+  color: #65777D;
   font-size: 14px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 150ms ease;
   font-weight: 500;
 }
 
 .deal-activity-placeholder:hover {
-  border-color: #3b82f6;
-  background: #eff6ff;
-  color: #3b82f6;
+  border-color: #54C9C4;
+  background: #E8F7F5;
+  color: #2EA9A5;
 }
 
 /* Focus Section */
 .deal-focus-section {
   padding: 24px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid #D8E7E6;
   flex-shrink: 0;
   background: #ffffff;
 }
@@ -1156,7 +1156,7 @@
 .deal-focus-title {
   font-weight: 600;
   font-size: 15px;
-  color: #1e293b;
+  color: #24343D;
 }
 
 .deal-expand-checkbox {
@@ -1164,40 +1164,39 @@
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #64748b;
+  color: #65777D;
   cursor: pointer;
 }
 
 .deal-focus-content {
-  color: #64748b;
+  color: #65777D;
   font-size: 14px;
   line-height: 1.6;
 }
 
 .deal-schedule-button {
   margin-top: 16px;
-  padding: 10px 20px;
-  background: #3b82f6;
+  padding: 0 16px;
+  min-height: 40px;
+  background: #C94D78;
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: background 150ms ease, box-shadow 150ms ease;
+  box-shadow: 0 4px 12px rgba(201, 77, 120, 0.22);
 }
 
 .deal-schedule-button:hover {
-  background: #2563eb;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  transform: translateY(-1px);
+  background: #B52F58;
 }
 
 /* History Section */
 .deal-history-section {
   padding: 24px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid #D8E7E6;
   flex: 1;
   background: #ffffff;
 }
@@ -1210,12 +1209,12 @@
 .deal-history-title {
   font-weight: 600;
   font-size: 15px;
-  color: #1e293b;
+  color: #24343D;
   user-select: none;
 }
 
 .deal-history-content {
-  color: #64748b;
+  color: #65777D;
   font-size: 14px;
 }
 
@@ -1233,7 +1232,7 @@
   padding: 16px;
   border-radius: 12px;
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   transition: all 0.2s;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
@@ -1258,7 +1257,7 @@
 
 .deal-activity-item.deal-activity-future {
   background: white;
-  border-color: #e2e8f0;
+  border-color: #D8E7E6;
 }
 
 .deal-activity-checkbox {
@@ -1274,14 +1273,14 @@
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
-  border: 2px solid #cbd5e1;
+  border: 2px solid #D8E7E6;
   background: white;
   position: relative;
   transition: all 0.2s;
 }
 
 .deal-activity-checkbox input[type="checkbox"]:hover {
-  border-color: #94a3b8;
+  border-color: #65777D;
 }
 
 .deal-activity-checkbox input[type="checkbox"]:checked {
@@ -1320,7 +1319,7 @@
 .deal-activity-subject {
   font-weight: 600;
   font-size: 15px;
-  color: #1e293b;
+  color: #24343D;
   margin-bottom: 6px;
 }
 
@@ -1330,7 +1329,7 @@
   flex-wrap: wrap;
   gap: 6px;
   font-size: 13px;
-  color: #64748b;
+  color: #65777D;
 }
 
 .deal-activity-date,
@@ -1344,7 +1343,7 @@
 }
 
 .deal-activity-separator {
-  color: #cbd5e1;
+  color: #D8E7E6;
   margin: 0 6px;
 }
 
@@ -1376,7 +1375,7 @@
   position: relative;
   width: 7px;
   height: 12px;
-  border: 1.5px solid #64748b;
+  border: 1.5px solid #65777D;
   border-radius: 1px;
   display: flex;
   flex-wrap: wrap;
@@ -1387,7 +1386,7 @@
 .icon-building-left .icon-window {
   width: 2px;
   height: 2px;
-  background: #64748b;
+  background: #65777D;
   border-radius: 0.5px;
 }
 
@@ -1395,7 +1394,7 @@
   position: relative;
   width: 5px;
   height: 9px;
-  border: 1.5px solid #64748b;
+  border: 1.5px solid #65777D;
   border-radius: 1px;
   display: flex;
   flex-direction: column;
@@ -1406,13 +1405,13 @@
 .icon-building-right .icon-line {
   width: 100%;
   height: 0.8px;
-  background: #64748b;
+  background: #65777D;
   border-radius: 0.5px;
 }
 
 .deal-activity-deal-icon {
   font-size: 14px;
-  color: #1e293b;
+  color: #24343D;
   font-weight: 600;
   filter: grayscale(0%);
   opacity: 1;
@@ -1425,7 +1424,7 @@
 
 .deal-activity-menu {
   font-size: 18px;
-  color: #94a3b8;
+  color: #65777D;
   cursor: pointer;
   padding: 6px;
   flex-shrink: 0;
@@ -1434,8 +1433,8 @@
 }
 
 .deal-activity-menu:hover {
-  color: #1e293b;
-  background: #f1f5f9;
+  color: #24343D;
+  background: #E8F7F5;
 }
 
 .deal-activity-menu-dropdown {
@@ -1443,7 +1442,7 @@
   top: calc(100% + 8px);
   right: 0;
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 1000;
@@ -1456,16 +1455,16 @@
   padding: 12px 16px;
   cursor: pointer;
   font-size: 14px;
-  color: #334155;
+  color: #24343D;
   transition: background-color 0.15s;
 }
 
 .deal-activity-menu-item:hover {
-  background-color: #f1f5f9;
+  background-color: #E8F7F5;
 }
 
 .deal-activity-menu-item:not(:last-child) {
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid #E8F7F5;
 }
 
 /* History List Styles */
@@ -1484,7 +1483,7 @@
   top: 0;
   bottom: 0;
   width: 2px;
-  background: #e2e8f0;
+  background: #D8E7E6;
 }
 
 .deal-history-item {
@@ -1494,7 +1493,7 @@
   padding: 16px;
   border-radius: 12px;
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   position: relative;
   transition: all 0.2s;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
@@ -1520,7 +1519,7 @@
 
 .deal-history-item.deal-activity-future {
   background: white;
-  border-color: #e2e8f0;
+  border-color: #D8E7E6;
 }
 
 .deal-history-timeline {
@@ -1538,9 +1537,9 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #94a3b8;
+  background: #65777D;
   border: 2px solid white;
-  box-shadow: 0 0 0 2px #e2e8f0;
+  box-shadow: 0 0 0 2px #D8E7E6;
 }
 
 .deal-history-checkbox {
@@ -1557,14 +1556,14 @@
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
-  border: 2px solid #cbd5e1;
+  border: 2px solid #D8E7E6;
   background: white;
   position: relative;
   transition: all 0.2s;
 }
 
 .deal-history-checkbox input[type="checkbox"]:hover {
-  border-color: #94a3b8;
+  border-color: #65777D;
 }
 
 .deal-history-checkbox input[type="checkbox"]:checked {
@@ -1616,7 +1615,7 @@
 .deal-history-subject {
   font-weight: 600;
   font-size: 15px;
-  color: #1e293b;
+  color: #24343D;
 }
 
 .deal-history-meta {
@@ -1625,7 +1624,7 @@
   flex-wrap: wrap;
   gap: 6px;
   font-size: 13px;
-  color: #64748b;
+  color: #65777D;
 }
 
 .deal-history-date,
@@ -1639,7 +1638,7 @@
 }
 
 .deal-history-separator {
-  color: #cbd5e1;
+  color: #D8E7E6;
   margin: 0 6px;
 }
 
@@ -1671,7 +1670,7 @@
   position: relative;
   width: 7px;
   height: 12px;
-  border: 1.5px solid #64748b;
+  border: 1.5px solid #65777D;
   border-radius: 1px;
   display: flex;
   flex-wrap: wrap;
@@ -1682,7 +1681,7 @@
 .deal-history-org-icon .icon-building-left .icon-window {
   width: 2px;
   height: 2px;
-  background: #64748b;
+  background: #65777D;
   border-radius: 0.5px;
 }
 
@@ -1690,7 +1689,7 @@
   position: relative;
   width: 5px;
   height: 9px;
-  border: 1.5px solid #64748b;
+  border: 1.5px solid #65777D;
   border-radius: 1px;
   display: flex;
   flex-direction: column;
@@ -1701,13 +1700,13 @@
 .deal-history-org-icon .icon-building-right .icon-line {
   width: 100%;
   height: 0.8px;
-  background: #64748b;
+  background: #65777D;
   border-radius: 0.5px;
 }
 
 .deal-history-deal-icon {
   font-size: 14px;
-  color: #1e293b;
+  color: #24343D;
   font-weight: 600;
   filter: grayscale(0%);
   opacity: 1;
@@ -1720,7 +1719,7 @@
 
 .deal-history-menu {
   font-size: 18px;
-  color: #94a3b8;
+  color: #65777D;
   cursor: pointer;
   padding: 6px;
   flex-shrink: 0;
@@ -1729,8 +1728,8 @@
 }
 
 .deal-history-menu:hover {
-  color: #1e293b;
-  background: #f1f5f9;
+  color: #24343D;
+  background: #E8F7F5;
 }
 
 .deal-history-menu-dropdown {
@@ -1738,7 +1737,7 @@
   top: calc(100% + 8px);
   right: 0;
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   z-index: 1000;
@@ -1751,16 +1750,16 @@
   padding: 12px 16px;
   cursor: pointer;
   font-size: 14px;
-  color: #334155;
+  color: #24343D;
   transition: background-color 0.15s;
 }
 
 .deal-history-menu-item:hover {
-  background-color: #f1f5f9;
+  background-color: #E8F7F5;
 }
 
 .deal-history-menu-item:not(:last-child) {
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid #E8F7F5;
 }
 
 /* Footer */
@@ -1770,26 +1769,26 @@
   gap: 12px;
   padding: 20px 24px;
   background: #ffffff;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid #D8E7E6;
   flex-shrink: 0;
 }
 
 .deal-cancel-button {
   padding: 12px 24px;
   background: white;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid #D8E7E6;
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
-  color: #64748b;
+  color: #65777D;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .deal-cancel-button:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #1e293b;
+  background: #E8F7F5;
+  border-color: #D8E7E6;
+  color: #24343D;
 }
 
 .deal-cancel-button:disabled {
@@ -1829,7 +1828,7 @@
   justify-content: center;
   height: 100vh;
   font-size: 18px;
-  color: #64748b;
+  color: #65777D;
   font-weight: 500;
 }
 
@@ -1858,7 +1857,7 @@
   top: calc(100% + 8px);
   left: 0;
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #D8E7E6;
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
   z-index: 999;
@@ -1873,13 +1872,13 @@
   display: flex;
   align-items: center;
   padding: 16px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid #E8F7F5;
   gap: 10px;
 }
 
 .deal-labels-search-icon {
   font-size: 18px;
-  color: #64748b;
+  color: #65777D;
 }
 
 .deal-labels-search-input {
@@ -1887,12 +1886,12 @@
   border: none;
   outline: none;
   font-size: 14px;
-  color: #1e293b;
+  color: #24343D;
   background: transparent;
 }
 
 .deal-labels-search-input::placeholder {
-  color: #94a3b8;
+  color: #65777D;
 }
 
 .deal-labels-list {
@@ -1939,14 +1938,14 @@
 }
 
 .deal-label-placeholder {
-  color: #94a3b8;
+  color: #65777D;
   font-size: 14px;
   flex: 1;
   text-align: left;
 }
 
 .deal-label-chevron {
-  color: #64748b;
+  color: #65777D;
   font-size: 12px;
   flex-shrink: 0;
 }
@@ -1957,9 +1956,9 @@
   gap: 8px;
   padding: 14px 16px;
   border: none;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid #E8F7F5;
   background: transparent;
-  color: #3b82f6;
+  color: #C94D78;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -1969,7 +1968,7 @@
 }
 
 .deal-add-label-button:hover {
-  background: #f8fafc;
+  background: #E8F7F5;
 }
 
 .deal-add-label-button span {
@@ -2009,7 +2008,7 @@
 .deal-modal-title {
   font-size: 20px;
   font-weight: 600;
-  color: #1e293b;
+  color: #24343D;
   margin: 0 0 24px 0;
 }
 
@@ -2021,29 +2020,29 @@
   display: block;
   font-size: 14px;
   font-weight: 500;
-  color: #475569;
+  color: #65777D;
   margin-bottom: 10px;
 }
 
 .deal-modal-input {
   width: 100%;
   padding: 12px 16px;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid #D8E7E6;
   border-radius: 8px;
   font-size: 14px;
   outline: none;
   box-sizing: border-box;
   transition: all 0.2s;
-  color: #1e293b;
+  color: #24343D;
 }
 
 .deal-modal-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: #54C9C4;
+  box-shadow: 0 0 0 3px rgba(84, 201, 196, 0.18);
 }
 
 .deal-modal-input::placeholder {
-  color: #94a3b8;
+  color: #65777D;
 }
 
 .deal-color-picker {
@@ -2070,8 +2069,8 @@
 }
 
 .deal-color-option.selected {
-  border-color: #1e293b;
-  box-shadow: 0 0 0 2px white, 0 0 0 4px #1e293b;
+  border-color: #24343D;
+  box-shadow: 0 0 0 2px white, 0 0 0 4px #24343D;
 }
 
 .deal-color-checkmark {
@@ -2091,15 +2090,15 @@
   gap: 12px;
   margin-top: 32px;
   padding-top: 20px;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid #E8F7F5;
 }
 
 .deal-modal-cancel {
   padding: 10px 20px;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid #D8E7E6;
   border-radius: 8px;
   background: white;
-  color: #64748b;
+  color: #65777D;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -2107,9 +2106,9 @@
 }
 
 .deal-modal-cancel:hover {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #1e293b;
+  background: #E8F7F5;
+  border-color: #D8E7E6;
+  color: #24343D;
 }
 
 .deal-modal-save {
@@ -2132,7 +2131,7 @@
 }
 
 .deal-modal-save:disabled {
-  background: #cbd5e1;
+  background: #D8E7E6;
   cursor: not-allowed;
 }
 
@@ -2148,12 +2147,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #64748b;
+  color: #65777D;
 }
 
 .deal-refresh-icon:hover {
-  background-color: #f1f5f9;
-  color: #1e293b;
+  background-color: #E8F7F5;
+  color: #24343D;
 }
 
 .deal-info-icon {
@@ -2161,8 +2160,8 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background-color: #e2e8f0;
-  color: #64748b;
+  background-color: #D8E7E6;
+  color: #65777D;
   font-size: 12px;
   line-height: 18px;
   text-align: center;
@@ -2173,8 +2172,8 @@
 }
 
 .deal-info-icon:hover {
-  background-color: #cbd5e1;
-  color: #475569;
+  background-color: #D8E7E6;
+  color: #65777D;
 }
 
 .deal-field-value-container {
@@ -2189,14 +2188,14 @@
 
 .deal-field-value {
   font-size: 14px;
-  color: #1e293b;
+  color: #24343D;
   font-weight: 600;
 }
 
 .deal-progress-bar {
   width: 80%;
   height: 8px;
-  background-color: #e2e8f0;
+  background-color: #D8E7E6;
   border-radius: 4px;
   overflow: hidden;
 }
@@ -2216,18 +2215,18 @@
 
 .deal-detail-left::-webkit-scrollbar-track,
 .deal-detail-right::-webkit-scrollbar-track {
-  background: #f8fafc;
+  background: #E8F7F5;
 }
 
 .deal-detail-left::-webkit-scrollbar-thumb,
 .deal-detail-right::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #D8E7E6;
   border-radius: 4px;
 }
 
 .deal-detail-left::-webkit-scrollbar-thumb:hover,
 .deal-detail-right::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #65777D;
 }
 
 /* Toast Notification Styles */
