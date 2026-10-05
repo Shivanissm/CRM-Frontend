@@ -24,6 +24,7 @@ import Loader from '../components/Loader';
 import axios from 'axios';
 import { getStoredToken } from '../utils/authToken';
 import { withApiBase } from '../config/api';
+import { getDisplayStageName } from '../utils/stageNames';
 
 // ==================== Label Types & Constants ====================
 
@@ -175,31 +176,6 @@ const DEAL_SUB_SOURCE_OPTIONS: Array<{ value: DealSubSource; label: string }> = 
   { value: 'Landing Page', label: 'Landing Page' },
   { value: 'Email', label: 'Email' },
 ];
-
-// Helper function to map stage names for display
-// Maps "Meeting Done" to "Contract Shared" for display purposes
-const STAGE_DISPLAY_NAMES: Record<string, string> = {
-  'lead in': 'New Enquiry',
-  'lead-in': 'New Enquiry',
-  qualified: 'Number Received',
-  'contacted': 'Number Received',
-  'contact made': 'Contact Made',
-  'requirement shared': 'Contact Made',
-  'follow up': 'Follow-up',
-  'follow-up': 'Follow-up',
-  'meeting scheduled': 'Proposal Sent',
-  'meeting done': 'Contract Shared',
-  'contract shared': 'Contract Shared',
-  'booking confirmed': 'Contract Shared',
-  diversion: 'Diversion',
-  'not proceeding': 'Diversion',
-};
-
-const getDisplayStageName = (stageName: string | null | undefined): string => {
-  if (!stageName) return '';
-  const key = stageName.toLowerCase().trim();
-  return STAGE_DISPLAY_NAMES[key] || stageName;
-};
 
 const getStageTone = (stageName: string | null | undefined): string => {
   const label = getDisplayStageName(stageName).toLowerCase();
@@ -396,10 +372,10 @@ const Deals = () => {
   const [showVenueSuggestions, setShowVenueSuggestions] = useState(false);
   const venueSuggestionsRef = useRef<HTMLDivElement>(null);
   const [draggedDealId, setDraggedDealId] = useState<number | null>(null);
-  const [isDragOverDeleteZone, setIsDragOverDeleteZone] = useState(false);
   const [isDragOverWonZone, setIsDragOverWonZone] = useState(false);
   const [isDragOverLostZone, setIsDragOverLostZone] = useState(false);
   const kanbanBoardRef = useRef<HTMLDivElement>(null);
+  const dragStartYRef = useRef<number | null>(null);
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
   const autoScrollAnimationRef = useRef<number | null>(null);
   const [deleteConfirmDeal, setDeleteConfirmDeal] = useState<Deal | null>(null);
@@ -1098,11 +1074,9 @@ const Deals = () => {
       if (selectedPipelineId) {
         apiParams.pipelineId = selectedPipelineId;
       }
-      
-      // Add status filter
-      if (filterStatus !== 'all') {
-        apiParams.status = filterStatus;
-      }
+
+      // Status (Open / Won / Lost) is applied on the board only.
+      // Summary cards always count every status for the current pipeline/filters.
       
       // Add organization filter
       if (filterOrganization !== null) {
@@ -1169,7 +1143,7 @@ const Deals = () => {
       setLoading(false);
       hasCompletedInitialDealsLoad.current = true;
     }
-  }, [sortField, sortDirection, selectedPipelineId, filterStatus, filterOrganization, filterCategory, filterManager, dateRange, searchQuery, categoryOptions, loadActivities]);
+  }, [sortField, sortDirection, selectedPipelineId, filterOrganization, filterCategory, filterManager, dateRange, searchQuery, categoryOptions, loadActivities]);
 
   // Initial load
   useEffect(() => {
@@ -1184,7 +1158,7 @@ const Deals = () => {
       loadDeals();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPipelineId, filterStatus, filterOrganization, filterCategory, filterManager, dateRange, searchQuery]);
+  }, [selectedPipelineId, filterOrganization, filterCategory, filterManager, dateRange, searchQuery]);
 
   const hasHandledOpenModal = useRef(false);
   const hasCompletedInitialDealsLoad = useRef(false);
@@ -2320,6 +2294,7 @@ const Deals = () => {
     }
 
     const handleDrag = (e: DragEvent) => {
+      if (e.clientX === 0 && e.clientY === 0) return;
       setDragPosition({ x: e.clientX, y: e.clientY });
     };
 
@@ -2328,6 +2303,16 @@ const Deals = () => {
       document.removeEventListener('dragover', handleDrag);
     };
   }, [draggedDealId]);
+
+  const showWonLostDropZones = Boolean(
+    draggedDealId &&
+    dragPosition &&
+    dragPosition.y > 0 &&
+    (
+      (dragStartYRef.current != null && dragPosition.y > dragStartYRef.current + 48) ||
+      dragPosition.y > window.innerHeight - 220
+    )
+  );
 
   // Sort options configuration
   const sortOptions: Array<{ value: DealSortField; label: string }> = [
@@ -2923,15 +2908,15 @@ const Deals = () => {
 
   const pipelineMetrics = useMemo(() => {
     const relevantDeals = selectedPipelineId
-      ? filteredDeals.filter((deal) => deal.pipelineId === selectedPipelineId)
-      : filteredDeals;
+      ? deals.filter((deal) => deal.pipelineId === selectedPipelineId)
+      : deals;
     const active = relevantDeals.filter((deal) => deal.status === 'IN_PROGRESS').length;
     const won = relevantDeals.filter((deal) => deal.status === 'WON').length;
     const lost = relevantDeals.filter((deal) => deal.status === 'LOST').length;
     const total = active + won + lost;
     const conversion = total > 0 ? Math.round((won / total) * 100) : 0;
     return { total, active, won, lost, conversion };
-  }, [filteredDeals, selectedPipelineId]);
+  }, [deals, selectedPipelineId]);
 
   // Get stages for selected pipeline, sorted by order
   const pipelineStages = useMemo(() => {
@@ -4484,74 +4469,15 @@ const Deals = () => {
         )}
         {viewMode === 'pipeline' ? (
           <>
-            {/* Status Zones - appear when dragging a deal */}
-            {draggedDealId && (
-              <>
-                {/* Delete Zone - Leftmost */}
+            {showWonLostDropZones && (
+              <div className="kanban-status-drop-row">
                 <div
-                  className={`kanban-delete-zone ${isDragOverDeleteZone ? 'drag-over' : ''}`}
+                  className={`kanban-status-chip kanban-won-zone ${isDragOverWonZone ? 'drag-over' : ''}`}
                   onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragPosition({ x: e.clientX, y: e.clientY });
-                    setIsDragOverDeleteZone(true);
-                    setIsDragOverWonZone(false);
-                    setIsDragOverLostZone(false);
-                  }}
-                  onDragLeave={(e) => {
-                    e.preventDefault();
-                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                      setIsDragOverDeleteZone(false);
-                    }
-                  }}
-                  onDrop={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    setIsDragOverDeleteZone(false);
-                    // Get the deal ID from the dataTransfer or state
-                    const dealIdFromData = e.dataTransfer.getData('text/plain');
-                    const dealId = dealIdFromData ? Number(dealIdFromData) : draggedDealId;
-                    
-                    if (dealId) {
-                      const deal = deals.find(d => d.id === dealId);
-                      if (deal) {
-                        // Clear dragged state first
-                        setDraggedDealId(null);
-                        setDragPosition(null);
-                        // Set flag to prevent immediate closing
-                        deleteModalJustOpened.current = true;
-                        // Use setTimeout to ensure all drag events are complete before showing modal
-                        setTimeout(() => {
-                          setDeleteConfirmDeal(deal);
-                          // Reset flag after modal is shown
-                          setTimeout(() => {
-                            deleteModalJustOpened.current = false;
-                          }, 100);
-                        }, 50);
-                      }
-                    }
-                  }}
-                >
-                  <div className="kanban-delete-zone-content">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    <p className="kanban-delete-zone-text">Delete</p>
-                  </div>
-                </div>
-
-                {/* WON Zone - Middle - Only show if dragged deal is not already WON */}
-                {(() => {
-                  const draggedDeal = draggedDealId ? deals.find(d => d.id === draggedDealId) : null;
-                  const isDraggedDealWon = draggedDeal?.status === 'WON';
-                  return !isDraggedDealWon ? (
-                <div
-                  className={`kanban-status-zone kanban-won-zone ${isDragOverWonZone ? 'drag-over' : ''}`}
-                  onDragOver={(e) => {
-                    e.preventDefault();
                     setDragPosition({ x: e.clientX, y: e.clientY });
                     setIsDragOverWonZone(true);
-                    setIsDragOverDeleteZone(false);
                     setIsDragOverLostZone(false);
                   }}
                   onDragLeave={(e) => {
@@ -4562,6 +4488,7 @@ const Deals = () => {
                   }}
                   onDrop={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     setIsDragOverWonZone(false);
                     if (draggedDealId) {
                       const deal = deals.find(d => d.id === draggedDealId);
@@ -4571,30 +4498,22 @@ const Deals = () => {
                     }
                     setDraggedDealId(null);
                     setDragPosition(null);
+                    dragStartYRef.current = null;
+                    setIsDragOverWonZone(false);
+                    setIsDragOverLostZone(false);
                   }}
                 >
-                  <div className="kanban-status-zone-content">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    <p className="kanban-status-zone-text">Mark as WON</p>
-                  </div>
+                  <span className="kanban-status-chip-dot" />
+                  <span>Won</span>
                 </div>
-                  ) : null;
-                })()}
 
-                {/* LOST Zone - Rightmost - Only show if dragged deal is not already LOST */}
-                {(() => {
-                  const draggedDeal = draggedDealId ? deals.find(d => d.id === draggedDealId) : null;
-                  const isDraggedDealLost = draggedDeal?.status === 'LOST';
-                  return !isDraggedDealLost ? (
                 <div
-                  className={`kanban-status-zone kanban-lost-zone ${isDragOverLostZone ? 'drag-over' : ''}`}
+                  className={`kanban-status-chip kanban-lost-zone ${isDragOverLostZone ? 'drag-over' : ''}`}
                   onDragOver={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     setDragPosition({ x: e.clientX, y: e.clientY });
                     setIsDragOverLostZone(true);
-                    setIsDragOverDeleteZone(false);
                     setIsDragOverWonZone(false);
                   }}
                   onDragLeave={(e) => {
@@ -4605,6 +4524,7 @@ const Deals = () => {
                   }}
                   onDrop={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     setIsDragOverLostZone(false);
                     if (draggedDealId) {
                       const deal = deals.find(d => d.id === draggedDealId);
@@ -4614,18 +4534,15 @@ const Deals = () => {
                     }
                     setDraggedDealId(null);
                     setDragPosition(null);
+                    dragStartYRef.current = null;
+                    setIsDragOverWonZone(false);
+                    setIsDragOverLostZone(false);
                   }}
                 >
-                  <div className="kanban-status-zone-content">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    <p className="kanban-status-zone-text">Mark as LOST</p>
-                  </div>
+                  <span className="kanban-status-chip-dot" />
+                  <span>Lost</span>
                 </div>
-                  ) : null;
-                })()}
-              </>
+              </div>
             )}
             <div className="deals-kanban-board" ref={kanbanBoardRef}>
             {!selectedPipelineId ? (
@@ -4670,9 +4587,6 @@ const Deals = () => {
                             }
                           }
                           setDraggedDealId(null);
-                          setIsDragOverDeleteZone(false);
-                          setIsDragOverWonZone(false);
-                          setIsDragOverLostZone(false);
                         }}
                       >
                         {stageDeals.length === 0 ? (
@@ -4693,6 +4607,7 @@ const Deals = () => {
                                 draggable
                                 onDragStart={(e) => {
                                   setDraggedDealId(deal.id);
+                                  dragStartYRef.current = e.clientY;
                                   setDragPosition({ x: e.clientX, y: e.clientY });
                                   e.dataTransfer.effectAllowed = 'move';
                                   e.dataTransfer.setData('text/plain', deal.id.toString());
@@ -4704,12 +4619,13 @@ const Deals = () => {
                                   }, 0);
                                 }}
                                 onDrag={(e) => {
+                                  if (e.clientX === 0 && e.clientY === 0) return;
                                   setDragPosition({ x: e.clientX, y: e.clientY });
                                 }}
                                 onDragEnd={() => {
                                   setDraggedDealId(null);
                                   setDragPosition(null);
-                                  setIsDragOverDeleteZone(false);
+                                  dragStartYRef.current = null;
                                   setIsDragOverWonZone(false);
                                   setIsDragOverLostZone(false);
                                 }}
@@ -4881,9 +4797,6 @@ const Deals = () => {
                               }
                             }
                             setDraggedDealId(null);
-                            setIsDragOverDeleteZone(false);
-                            setIsDragOverWonZone(false);
-                            setIsDragOverLostZone(false);
                           }}
                         >
                           {unassignedDeals.map((deal) => {
@@ -4901,6 +4814,7 @@ const Deals = () => {
                                 draggable
                                 onDragStart={(e) => {
                                   setDraggedDealId(deal.id);
+                                  dragStartYRef.current = e.clientY;
                                   setDragPosition({ x: e.clientX, y: e.clientY });
                                   e.dataTransfer.effectAllowed = 'move';
                                   e.dataTransfer.setData('text/plain', deal.id.toString());
@@ -4911,12 +4825,13 @@ const Deals = () => {
                                   }, 0);
                                 }}
                                 onDrag={(e) => {
+                                  if (e.clientX === 0 && e.clientY === 0) return;
                                   setDragPosition({ x: e.clientX, y: e.clientY });
                                 }}
                                 onDragEnd={() => {
                                   setDraggedDealId(null);
                                   setDragPosition(null);
-                                  setIsDragOverDeleteZone(false);
+                                  dragStartYRef.current = null;
                                   setIsDragOverWonZone(false);
                                   setIsDragOverLostZone(false);
                                 }}

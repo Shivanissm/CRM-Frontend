@@ -14,10 +14,12 @@ export interface Deal {
   name: string;
   value: number;
   personId?: number | null;
+  personName?: string | null;
   pipelineId?: number | null;
   stageId?: number | null;
   sourceId?: number | null;
   organizationId?: number | null;
+  organizationName?: string | null;
   categoryId?: number | string | null;
   eventType?: string | null;
   status: DealStatus;

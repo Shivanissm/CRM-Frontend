@@ -1581,113 +1581,108 @@
   cursor: grabbing;
 }
 
-/* Status Zones (Delete, WON, LOST) */
-.kanban-status-zone,
-.kanban-delete-zone {
-  position: absolute;
-  bottom: 0;
-  width: calc((100% - 48px - 16px) / 3);
-  height: 75px;
-  border-radius: 8px;
+/* Status drop chips (Open / Won / Lost / Delete) */
+/* Status drop chips (Won / Lost) */
+.kanban-status-drop-row {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 14px;
   z-index: 10000;
-  transition: all 0.2s ease;
-  pointer-events: auto;
-  border: 1px solid #D8E7E6;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  pointer-events: none;
 }
 
-.kanban-status-zone-content,
-.kanban-delete-zone-content {
-  display: flex;
-  flex-direction: column;
+.kanban-status-chip {
+  pointer-events: auto;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
+  min-width: 168px;
+  height: 58px;
+  padding: 0 28px;
+  border-radius: 16px;
+  border: 1px solid transparent;
+  font-size: 16px;
+  font-weight: 700;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(36, 52, 61, 0.16);
+  cursor: copy;
+  animation: kanbanStatusFlicker 1.1s ease-in-out infinite;
+  transition: transform 150ms ease, box-shadow 150ms ease;
 }
 
-.kanban-status-zone-text,
-.kanban-delete-zone-text {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: #65777D;
+.kanban-status-chip-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
-/* Delete Zone - Leftmost */
-.kanban-delete-zone {
-  left: 24px;
-  background: #fee2e2;
-  border-color: #ef4444;
-  color: #dc2626;
+.kanban-status-chip.drag-over {
+  transform: translateY(-3px) scale(1.06);
+  box-shadow: 0 12px 26px rgba(36, 52, 61, 0.2);
+  animation: none;
 }
 
-.kanban-delete-zone.drag-over {
-  background: #fecaca;
-  border-color: #dc2626;
-  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.35);
-  transform: translateY(-2px) scale(1.05);
+@keyframes kanbanStatusFlicker {
+  0%, 100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    opacity: 0.78;
+    transform: translateY(-2px) scale(1.03);
+  }
 }
 
-.kanban-delete-zone-content {
-  color: #dc2626;
+.kanban-open-zone {
+  background: #FEF9C3;
+  border-color: #FACC15;
+  color: #A16207;
 }
 
-.kanban-delete-zone-text {
-  color: #dc2626;
+.kanban-open-zone.drag-over {
+  background: #FDE047;
 }
 
-.kanban-delete-zone svg {
-  color: #dc2626;
-}
-
-/* WON Zone - Middle */
 .kanban-won-zone {
-  left: calc(24px + (100% - 48px - 16px) / 3 + 8px);
-  background: #dcfce7;
-  border-color: #C94D78;
-  color: #B52F58;
+  background: #DCFCE7;
+  border-color: #22C55E;
+  color: #15803D;
 }
 
 .kanban-won-zone.drag-over {
-  background: #bbf7d0;
-  border-color: #B52F58;
-  box-shadow: 0 8px 20px rgba(34, 197, 94, 0.35);
-  transform: translateY(-2px) scale(1.05);
+  background: #86EFAC;
 }
 
-.kanban-won-zone svg {
-  color: #B52F58;
-}
-
-.kanban-won-zone .kanban-status-zone-text {
-  color: #B52F58;
-}
-
-/* LOST Zone - Rightmost */
 .kanban-lost-zone {
-  left: calc(24px + 2 * (100% - 48px - 16px) / 3 + 16px);
-  background: #fee2e2;
-  border-color: #ef4444;
-  color: #dc2626;
+  background: #FEE2E2;
+  border-color: #EF4444;
+  color: #B91C1C;
 }
 
 .kanban-lost-zone.drag-over {
-  background: #fecaca;
-  border-color: #dc2626;
-  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.35);
-  transform: translateY(-2px) scale(1.05);
+  background: #FECACA;
 }
 
-.kanban-lost-zone svg {
-  color: #dc2626;
+.kanban-delete-zone {
+  background: #F3F4F6;
+  border-color: #D1D5DB;
+  color: #4B5563;
 }
 
-.kanban-lost-zone .kanban-status-zone-text {
-  color: #dc2626;
+.kanban-delete-zone.drag-over {
+  background: #FECACA;
+  border-color: #EF4444;
+  color: #B91C1C;
+}
+
+.deals-kanban-board {
+  padding-bottom: 16px;
 }
 
 .kanban-card-tooltip::after {

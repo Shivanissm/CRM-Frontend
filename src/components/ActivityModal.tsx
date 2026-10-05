@@ -91,6 +91,7 @@ export default function ActivityModal({
     dealName?: string;
     personName?: string;
     organization?: string;
+    organizationId?: number;
     phone?: string;
     instagramId?: string;
     dealId?: number;
@@ -283,19 +284,20 @@ export default function ActivityModal({
       const instagramId = dealData?.instagramId || initialActivity?.instagramId || undefined;
       const dealId = dealData?.dealId || initialActivity?.dealId || undefined;
       const personId = dealData?.personId || initialActivity?.personId || undefined;
+      const defaultAssignee = (!initialActivity && userOptions.length > 0) ? userOptions[0] : null;
       
       setValues({
         subject: initialActivity?.subject || '',
         organization: organization,
-        organizationId: initialActivity?.organizationId || undefined,
+        organizationId: dealData?.organizationId || initialActivity?.organizationId || undefined,
         type: baseType,
         category: baseCategory,
         date: toInputDate(initialActivity?.date),
         startTime: initialActivity?.startTime || undefined,
         endTime: initialActivity?.endTime || undefined,
         priority: initialActivity?.priority || undefined,
-        assignedUser: initialActivity?.assignedUser || undefined,
-        assignedUserId: initialActivity?.assignedUserId || undefined,
+        assignedUser: initialActivity?.assignedUser || (defaultAssignee ? getUserDisplayName(defaultAssignee) : undefined),
+        assignedUserId: initialActivity?.assignedUserId || defaultAssignee?.id || undefined,
         phone: phone,
         instagramId: instagramId,
         notes: initialActivity?.notes || undefined,
@@ -309,7 +311,7 @@ export default function ActivityModal({
       void loadCategories();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, initialOrganization, initialCategory, initialActivity, initialServiceCategory, personOptions, dealOptions, dealData]);
+  }, [isOpen, initialOrganization, initialCategory, initialActivity, initialServiceCategory, personOptions, dealOptions, dealData, userOptions]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -355,15 +357,18 @@ export default function ActivityModal({
     };
   }, [isOpen]);
 
-  // Filter users when service category, organizations, or userOptions change
+  // Filter users when service category, organizations, or userOptions change.
+  // From deal details, keep the pipeline team list as-is (manager + members).
   useEffect(() => {
-    if (isOpen && organizations.length > 0 && userOptions.length > 0) {
-      filterUsersByCategory(serviceCategory, organizations, userOptions);
-    } else if (isOpen && userOptions.length > 0) {
-      // If organizations not loaded yet, show all users
-      setFilteredUserOptions(userOptions);
+    if (!isOpen) {
+      return;
     }
-  }, [serviceCategory, organizations, userOptions, isOpen]);
+    if (dealData || organizations.length === 0) {
+      setFilteredUserOptions(userOptions);
+      return;
+    }
+    filterUsersByCategory(serviceCategory, organizations, userOptions);
+  }, [serviceCategory, organizations, userOptions, isOpen, dealData]);
 
   // Close info popup when clicking outside
   useEffect(() => {
