@@ -1,5 +1,5 @@
 import type { OrganizationCategory } from '../types/organization';
-import type { TargetCategory } from '../types/target';
+import type { CategoryOption, TargetCategory } from '../types/target';
 
 const normalizeCategoryCode = (code: string): string =>
   code.replace(/[\s-]/g, '_').toUpperCase();
@@ -84,7 +84,7 @@ export function isFrontendTargetCategory(category: string): boolean {
   return FRONTEND_TARGET_CATEGORIES.some((code) => normalizeCategoryCode(code) === normalized);
 }
 
-export function getFrontendTargetCategoryOptions(): Array<{ code: TargetCategory; label: string }> {
+export function getFrontendTargetCategoryOptions(): CategoryOption[] {
   return FRONTEND_TARGET_CATEGORIES.map((code) => ({
     code,
     label: FRONTEND_TARGET_CATEGORY_LABELS[code] ?? code,
