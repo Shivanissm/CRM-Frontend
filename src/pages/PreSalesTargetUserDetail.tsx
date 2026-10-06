@@ -714,7 +714,7 @@ export default function PreSalesTargetUserDetail() {
     () =>
       FRONTEND_TARGET_CATEGORIES.map((code) => ({
         code,
-        label: code === 'PHOTOGRAPHY' ? 'Photography' : code.replace(/_/g, ' '),
+        label: code === 'PHOTOGRAPHY' ? 'Photography' : code === 'MAKEUP' ? 'Makeup' : code.replace(/_/g, ' '),
       })),
     [],
   );

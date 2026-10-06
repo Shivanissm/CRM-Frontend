@@ -202,6 +202,27 @@ export default function Organizations() {
     });
   }, [organizations, search]);
 
+  const organizationSummary = useMemo(() => {
+    let totalDeals = 0;
+    let won = 0;
+    let lost = 0;
+    let open = 0;
+    filteredOrganizations.forEach((org) => {
+      const counts = organizationDealCounts[org.id] || { total: 0, won: 0, lost: 0, open: 0 };
+      totalDeals += counts.total;
+      won += counts.won;
+      lost += counts.lost;
+      open += counts.open;
+    });
+    return {
+      organizations: filteredOrganizations.length,
+      totalDeals,
+      won,
+      lost,
+      open,
+    };
+  }, [filteredOrganizations, organizationDealCounts]);
+
   useEffect(() => {
     void loadOrganizations();
     void loadOwners();
@@ -409,12 +430,16 @@ export default function Organizations() {
   return (
     <div className="organizations-page">
       <header className="organizations-header">
-        <div>
+        <div className="organizations-header-copy">
           <h1>Organizations</h1>
           <p>Manage the company records that power dropdowns and ownership flows across CRM.</p>
         </div>
-        <div className="organizations-header-actions">
+        <div className="organizations-toolbar">
           <div className="organizations-search">
+            <svg className="organizations-search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.6" />
+              <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
             <input
               type="search"
               value={search}
@@ -422,43 +447,70 @@ export default function Organizations() {
               placeholder="Search organizations…"
             />
           </div>
-          <div style={{ position: 'relative' }} ref={dateRangeDropdownRef}>
-            <button
-              className="organizations-date-range-btn"
-              onClick={() => setIsDateRangeDropdownOpen(!isDateRangeDropdownOpen)}
-            >
-              <span>{getDateRangeDisplayText()}</span>
-              <span style={{ fontSize: '10px' }}>▾</span>
+          <div className="organizations-toolbar-actions">
+            <div className="organizations-date-wrap" ref={dateRangeDropdownRef}>
+              <button
+                className="organizations-date-range-btn"
+                onClick={() => setIsDateRangeDropdownOpen(!isDateRangeDropdownOpen)}
+              >
+                <span>{getDateRangeDisplayText()}</span>
+                <span className="organizations-date-caret">▾</span>
+              </button>
+              {isDateRangeDropdownOpen && (
+                <div className="organizations-date-menu">
+                  <button className="organizations-date-option" onClick={() => handleDateRangeOption('today')}>Today</button>
+                  <button className="organizations-date-option" onClick={() => handleDateRangeOption('yesterday')}>Yesterday</button>
+                  <button className="organizations-date-option" onClick={() => handleDateRangeOption('thisWeek')}>This week</button>
+                  <button className="organizations-date-option" onClick={() => handleDateRangeOption('lastWeek')}>Last week</button>
+                  <button className="organizations-date-option" onClick={() => handleDateRangeOption('thisMonth')}>This month</button>
+                  <button className="organizations-date-option" onClick={() => handleDateRangeOption('lastMonth')}>Last month</button>
+                  <button className="organizations-date-option" onClick={() => handleDateRangeOption('last30Days')}>Last 30 days</button>
+                  <div className="organizations-date-divider"></div>
+                  <button className="organizations-date-option" onClick={() => handleDateRangeOption('custom')}>Select date range</button>
+                </div>
+              )}
+            </div>
+            <button className="organizations-add" onClick={() => setModalState({ mode: 'create' })}>
+              + Organization
             </button>
-            {isDateRangeDropdownOpen && (
-              <div className="organizations-date-menu">
-                <button className="organizations-date-option" onClick={() => handleDateRangeOption('today')}>Today</button>
-                <button className="organizations-date-option" onClick={() => handleDateRangeOption('yesterday')}>Yesterday</button>
-                <button className="organizations-date-option" onClick={() => handleDateRangeOption('thisWeek')}>This week</button>
-                <button className="organizations-date-option" onClick={() => handleDateRangeOption('lastWeek')}>Last week</button>
-                <button className="organizations-date-option" onClick={() => handleDateRangeOption('thisMonth')}>This month</button>
-                <button className="organizations-date-option" onClick={() => handleDateRangeOption('lastMonth')}>Last month</button>
-                <button className="organizations-date-option" onClick={() => handleDateRangeOption('last30Days')}>Last 30 days</button>
-                <div className="organizations-date-divider"></div>
-                <button className="organizations-date-option" onClick={() => handleDateRangeOption('custom')}>Select date range</button>
-              </div>
-            )}
+            <button
+              className="organizations-refresh"
+              onClick={() => {
+                void refreshOrganizations();
+                void loadDeals();
+              }}
+              disabled={refreshing}
+            >
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
           </div>
-          <button className="organizations-add" onClick={() => setModalState({ mode: 'create' })}>
-            + Organization
-          </button>
-          <button
-            className="organizations-refresh"
-            onClick={() => {
-              void refreshOrganizations();
-              void loadDeals();
-            }}
-            disabled={refreshing}
-          >
-            {refreshing ? 'Refreshing…' : 'Refresh'}
-          </button>
         </div>
       </header>
+
+      {!loading && (
+        <section className="organizations-summary" aria-label="Organizations">
+          <article className="organizations-stat tone-teal">
+            <span className="organizations-stat-label">Organizations</span>
+            <strong className="organizations-stat-value">{organizationSummary.organizations}</strong>
+          </article>
+          <article className="organizations-stat tone-lavender">
+            <span className="organizations-stat-label">Total Deals</span>
+            <strong className="organizations-stat-value">{organizationSummary.totalDeals}</strong>
+          </article>
+          <article className="organizations-stat tone-peach">
+            <span className="organizations-stat-label">WON</span>
+            <strong className="organizations-stat-value">{organizationSummary.won}</strong>
+          </article>
+          <article className="organizations-stat tone-pink">
+            <span className="organizations-stat-label">LOST</span>
+            <strong className="organizations-stat-value">{organizationSummary.lost}</strong>
+          </article>
+          <article className="organizations-stat tone-open">
+            <span className="organizations-stat-label">Open</span>
+            <strong className="organizations-stat-value">{organizationSummary.open}</strong>
+          </article>
+        </section>
+      )}
 
       {error && <div className="organizations-error">{error}</div>}
 
@@ -502,7 +554,13 @@ export default function Organizations() {
                   <td><span className="organizations-name">{organization.name}</span></td>
                   <td>
                     {organization.category ? (
-                      <span className="organizations-category-chip">{organization.category}</span>
+                      <span
+                        className={`organizations-category-chip ${
+                          organization.category.toUpperCase().includes('MAKEUP') ? 'is-makeup' : 'is-photo'
+                        }`}
+                      >
+                        {organization.category}
+                      </span>
                     ) : (
                       <span className="organizations-muted">—</span>
                     )}

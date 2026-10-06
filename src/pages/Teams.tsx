@@ -28,6 +28,12 @@ const formatMemberLabel = (member: Team['members'][number]): string => {
   return `User ${member.id}`;
 };
 
+const getInitials = (label: string): string => {
+  const parts = label.trim().split(/\s+/).filter(Boolean);
+  const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('');
+  return initials || '?';
+};
+
 export default function Teams() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +46,20 @@ export default function Teams() {
     () => [...teams].sort((a, b) => a.name.localeCompare(b.name)),
     [teams],
   );
+
+  const teamsSummary = useMemo(() => {
+    const memberIds = new Set<number>();
+    const managerIds = new Set<number>();
+    sortedTeams.forEach((team) => {
+      if (team.manager?.id) managerIds.add(team.manager.id);
+      (team.members ?? []).forEach((member) => memberIds.add(member.id));
+    });
+    return {
+      teams: sortedTeams.length,
+      members: memberIds.size,
+      managers: managerIds.size,
+    };
+  }, [sortedTeams]);
 
   const loadTeams = async () => {
     setLoading(true);
@@ -111,19 +131,36 @@ export default function Teams() {
   return (
     <div className="teams-page">
       <header className="teams-header">
-        <div>
+        <div className="teams-header-copy">
           <h1>Teams</h1>
           <p>Organize managers and presales members into collaborative teams.</p>
         </div>
         <div className="teams-actions">
-          <button className="teams-action" onClick={() => setModalState({ mode: 'create' })}>
+          <button className="teams-action teams-action-primary" onClick={() => setModalState({ mode: 'create' })}>
             + Team
           </button>
-          <button className="teams-action" onClick={() => void refreshTeams()} disabled={refreshing}>
+          <button className="teams-action teams-action-secondary" onClick={() => void refreshTeams()} disabled={refreshing}>
             {refreshing ? 'Refreshing…' : 'Refresh'}
           </button>
         </div>
       </header>
+
+      {!loading && (
+        <section className="teams-summary" aria-label="Teams">
+          <article className="teams-stat tone-teal">
+            <span className="teams-stat-label">Teams</span>
+            <strong className="teams-stat-value">{teamsSummary.teams}</strong>
+          </article>
+          <article className="teams-stat tone-pink">
+            <span className="teams-stat-label">Members</span>
+            <strong className="teams-stat-value">{teamsSummary.members}</strong>
+          </article>
+          <article className="teams-stat tone-lavender">
+            <span className="teams-stat-label">Manager</span>
+            <strong className="teams-stat-value">{teamsSummary.managers}</strong>
+          </article>
+        </section>
+      )}
 
       {error && <div className="teams-error">{error}</div>}
 
@@ -133,19 +170,24 @@ export default function Teams() {
         <div className="teams-empty">
           <h2>No teams yet</h2>
           <p>Create your first team to assign managers and members.</p>
-          <button className="teams-action" onClick={() => setModalState({ mode: 'create' })}>
+          <button className="teams-action teams-action-primary" onClick={() => setModalState({ mode: 'create' })}>
             Create team
           </button>
         </div>
       ) : (
         <div className="teams-grid">
-          {sortedTeams.map((team) => (
-            <section key={team.id} className="team-card">
+          {sortedTeams.map((team, index) => {
+            const managerLabel = formatUserName(team.manager);
+            return (
+            <section key={team.id} className={`team-card accent-${index % 3}`}>
               <div className="team-card-header">
                 <div>
                   <h2>{team.name}</h2>
                   <div className="team-card-meta">
-                    <span>Manager: {formatUserName(team.manager)}</span>
+                    <span className="team-manager">
+                      <span className="team-manager-avatar" aria-hidden="true">{getInitials(managerLabel)}</span>
+                      <span>Manager: {managerLabel}</span>
+                    </span>
                     <span>Members: {team.members?.length ?? 0}</span>
                   </div>
                 </div>
@@ -160,11 +202,15 @@ export default function Teams() {
               </div>
               {team.members && team.members.length > 0 && (
                 <ul className="team-member-list">
-                  {team.members.map((member) => (
-                    <li key={member.id} className="team-member-chip">
-                      {formatMemberLabel(member)}
-                    </li>
-                  ))}
+                  {team.members.map((member) => {
+                    const memberLabel = formatMemberLabel(member);
+                    return (
+                      <li key={member.id} className="team-member-chip">
+                        <span className="team-member-avatar" aria-hidden="true">{getInitials(memberLabel)}</span>
+                        <span>{memberLabel}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
               <footer className="team-card-footer">
@@ -172,7 +218,8 @@ export default function Teams() {
                 <span>Updated: {team.updatedAt ? new Date(team.updatedAt).toLocaleString() : '—'}</span>
               </footer>
             </section>
-          ))}
+            );
+          })}
         </div>
       )}
 

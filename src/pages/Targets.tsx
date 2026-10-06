@@ -23,7 +23,9 @@ import Loader from '../components/Loader';
 import {
   FRONTEND_TARGET_CATEGORIES,
   FRONTEND_TARGET_CATEGORY,
+  FRONTEND_TARGET_CATEGORY_LABELS,
   filterTargetCategoryOptions,
+  getFrontendTargetCategoryOptions,
 } from '../constants/categories';
 
 type ViewMode = 'USERS' | 'MONTHLY_TOTALS' | 'MONTHLY_GRID';
@@ -181,7 +183,7 @@ export default function Targets() {
   const [breakdownError, setBreakdownError] = useState<string | null>(null);
   
   // Filter state
-  const [selectedCategory, setSelectedCategory] = useState<TargetCategory | 'all'>(FRONTEND_TARGET_CATEGORY);
+  const [selectedCategory, setSelectedCategory] = useState<TargetCategory | 'all'>('all');
   const [selectedTimePreset, setSelectedTimePreset] = useState<TimePreset>('THIS_MONTH');
   const [customMonth, setCustomMonth] = useState<number>(new Date().getMonth() + 1);
   const [customYear, setCustomYear] = useState<number>(new Date().getFullYear());
@@ -230,10 +232,11 @@ export default function Targets() {
 
   // Category order for display
   const categoryOrder: TargetCategory[] = FRONTEND_TARGET_CATEGORIES;
-  const targetCategoryOptions = useMemo(
-    () => filterTargetCategoryOptions(filtersMeta?.categories ?? []),
-    [filtersMeta],
-  );
+  const targetCategoryOptions = useMemo(() => {
+    const fromApi = filterTargetCategoryOptions(filtersMeta?.categories ?? []);
+    const fallback = getFrontendTargetCategoryOptions();
+    return fallback.map((option) => fromApi.find((item) => item.code === option.code) ?? option);
+  }, [filtersMeta]);
   const availableTimePresets = useMemo(
     () => filtersMeta?.presets.filter((preset) => !HIDDEN_TIME_PRESETS.includes(preset.code)) ?? [],
     [filtersMeta],
@@ -519,13 +522,13 @@ export default function Targets() {
     }
   };
 
+  const getNameInitials = (name: string): string => {
+    const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+    return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() || '').join('') || '?';
+  };
+
   const getCategoryLabel = (category: TargetCategory): string => {
-    const map: Record<TargetCategory, string> = {
-      PHOTOGRAPHY: 'Photography',
-      MAKEUP: 'Makeup',
-      PLANNING_AND_DECOR: 'Planning & Decor',
-    };
-    return map[category] || category;
+    return FRONTEND_TARGET_CATEGORY_LABELS[category] || category;
   };
 
   // Group deals by category (used for the Sales "Won Deals - {category}" tables)
@@ -537,7 +540,7 @@ export default function Targets() {
       PLANNING_AND_DECOR: [],
     };
     dashboardData.deals.forEach((deal) => {
-      if (deal.category === FRONTEND_TARGET_CATEGORY && grouped[deal.category]) {
+      if (FRONTEND_TARGET_CATEGORIES.includes(deal.category) && grouped[deal.category]) {
         grouped[deal.category].push(deal);
       }
     });
@@ -739,6 +742,28 @@ export default function Targets() {
     managedPreSalesIds,
     categoryOrder,
   ]);
+
+  const performanceSummary = useMemo(() => {
+    let totalTarget = 0;
+    let achieved = 0;
+    let totalDeals = 0;
+    let incentive = 0;
+    filteredCategoryTables.forEach((table) => {
+      table.rows.forEach((row) => {
+        totalTarget += safeNumber(row.totalTarget);
+        achieved += safeNumber(row.achieved);
+        totalDeals += safeNumber(row.totalDeals);
+        incentive += safeNumber(row.incentiveAmount);
+      });
+    });
+    return {
+      totalTarget,
+      achieved,
+      percent: totalTarget > 0 ? (achieved / totalTarget) * 100 : 0,
+      totalDeals,
+      incentive,
+    };
+  }, [filteredCategoryTables]);
 
   // For category manager, sales, and pre-sales users, restrict user dropdown to users that belong
   // to their visible category rows. For others, keep full list but append "- me"
@@ -1096,10 +1121,14 @@ export default function Targets() {
               disabled={
                 !!restrictedCategoryForCategoryManager ||
                 !!restrictedCategoryForSales ||
-                !!restrictedCategoryForPreSales ||
-                targetCategoryOptions.length <= 1
+                !!restrictedCategoryForPreSales
               }
             >
+              {!restrictedCategoryForCategoryManager &&
+                !restrictedCategoryForSales &&
+                !restrictedCategoryForPreSales && (
+                  <option value="all">All</option>
+                )}
               {targetCategoryOptions
                 .filter((cat) =>
                   restrictedCategoryForCategoryManager
@@ -1304,12 +1333,41 @@ export default function Targets() {
         </div>
       )}
 
+      {viewMode === 'USERS' && (
+        <section className="targets-summary" aria-label="Target Dashboard">
+          <article className="targets-stat tone-pink">
+            <span className="targets-stat-label">Target</span>
+            <strong className="targets-stat-value">
+              {targetLayer === 'PRESALES' ? performanceSummary.totalTarget : formatCurrency(performanceSummary.totalTarget)}
+            </strong>
+          </article>
+          <article className="targets-stat tone-teal">
+            <span className="targets-stat-label">Achieved</span>
+            <strong className="targets-stat-value">
+              {targetLayer === 'PRESALES' ? performanceSummary.achieved : formatCurrency(performanceSummary.achieved)}
+            </strong>
+          </article>
+          <article className="targets-stat tone-teal">
+            <span className="targets-stat-label">%</span>
+            <strong className="targets-stat-value">{formatPercent(performanceSummary.percent)}</strong>
+          </article>
+          <article className="targets-stat tone-lavender">
+            <span className="targets-stat-label">Total Deals</span>
+            <strong className="targets-stat-value">{performanceSummary.totalDeals}</strong>
+          </article>
+          <article className="targets-stat tone-peach">
+            <span className="targets-stat-label">Incentive</span>
+            <strong className="targets-stat-value">{formatCurrency(performanceSummary.incentive)}</strong>
+          </article>
+        </section>
+      )}
+
       {viewMode === 'USERS' ? (
         <>
           {targetLayer === 'SALES' && (
             <div className="targets-tables-container">
               {filteredCategoryTables.map((categoryTable) => (
-                <div key={categoryTable.category} className="targets-category-section">
+                <div key={categoryTable.category} className={`targets-category-section tone-${categoryTable.category.toLowerCase()}`}>
                   {/* Category Table - Sales */}
                   <div className="targets-table-wrapper">
                     <table className="targets-table">
@@ -1332,7 +1390,10 @@ export default function Targets() {
                         {categoryTable.rows.length === 0 ? (
                           <tr>
                             <td colSpan={6} className="targets-table-empty">
-                              No targets set for this category
+                              <div className="targets-empty-visual">
+                                <span className="targets-empty-icon" aria-hidden="true">◎</span>
+                                <span>No targets set for this category</span>
+                              </div>
                             </td>
                           </tr>
                         ) : (
@@ -1343,7 +1404,12 @@ export default function Targets() {
                               onClick={() => isAdmin && handleRowClick(row, categoryTable.category)}
                               style={isAdmin ? { cursor: 'pointer' } : {}}
                             >
-                              <td className="targets-table-cell targets-cell-name">{row.userName}</td>
+                              <td className="targets-table-cell targets-cell-name">
+                                <span className="targets-user">
+                                  <span className="targets-user-avatar" aria-hidden="true">{getNameInitials(row.userName)}</span>
+                                  <span>{row.userName}</span>
+                                </span>
+                              </td>
                               <td className="targets-table-cell targets-cell-target">
                                 {formatCurrency(row.totalTarget)}
                               </td>
@@ -1351,10 +1417,18 @@ export default function Targets() {
                                 {formatCurrency(row.achieved)}
                               </td>
                               <td className="targets-table-cell targets-cell-percent">
-                                {formatPercent(row.achievementPercent)}
+                                <span className={`targets-progress ${safeNumber(row.achievementPercent) >= 50 ? 'is-good' : 'is-low'}`}>
+                                  <span className="targets-progress-track">
+                                    <span
+                                      className="targets-progress-fill"
+                                      style={{ width: `${Math.min(100, Math.max(0, safeNumber(row.achievementPercent)))}%` }}
+                                    />
+                                  </span>
+                                  <span className="targets-progress-value">{formatPercent(row.achievementPercent)}</span>
+                                </span>
                               </td>
                               <td className="targets-table-cell targets-cell-deals">
-                                {row.totalDeals}
+                                <span className="targets-deals-chip">{row.totalDeals}</span>
                               </td>
                               <td className="targets-table-cell targets-cell-incentive">
                                 {formatCurrency(row.incentiveAmount)}
@@ -1437,7 +1511,7 @@ export default function Targets() {
           {targetLayer === 'PRESALES' && (
             <div className="targets-tables-container">
               {filteredCategoryTables.map((categoryTable) => (
-                <div key={categoryTable.category} className="targets-category-section">
+                <div key={categoryTable.category} className={`targets-category-section tone-${categoryTable.category.toLowerCase()}`}>
                   {/* Category Table for Pre-Sales */}
                   <div className="targets-table-wrapper">
                     <table className="targets-table">
@@ -1460,7 +1534,10 @@ export default function Targets() {
                         {categoryTable.rows.length === 0 ? (
                           <tr>
                             <td colSpan={6} className="targets-table-empty">
-                              No targets set for this category
+                              <div className="targets-empty-visual">
+                                <span className="targets-empty-icon" aria-hidden="true">◎</span>
+                                <span>No targets set for this category</span>
+                              </div>
                             </td>
                           </tr>
                         ) : (
@@ -1471,7 +1548,12 @@ export default function Targets() {
                               onClick={() => isAdmin && handleRowClick(row, categoryTable.category)}
                               style={isAdmin ? { cursor: 'pointer' } : {}}
                             >
-                              <td className="targets-table-cell targets-cell-name">{row.userName}</td>
+                              <td className="targets-table-cell targets-cell-name">
+                                <span className="targets-user">
+                                  <span className="targets-user-avatar" aria-hidden="true">{getNameInitials(row.userName)}</span>
+                                  <span>{row.userName}</span>
+                                </span>
+                              </td>
                               <td className="targets-table-cell targets-cell-target">
                                 {row.totalTarget}
                               </td>
@@ -1479,10 +1561,18 @@ export default function Targets() {
                                 {row.achieved}
                               </td>
                               <td className="targets-table-cell targets-cell-percent">
-                                {formatPercent(row.achievementPercent)}
+                                <span className={`targets-progress ${safeNumber(row.achievementPercent) >= 50 ? 'is-good' : 'is-low'}`}>
+                                  <span className="targets-progress-track">
+                                    <span
+                                      className="targets-progress-fill"
+                                      style={{ width: `${Math.min(100, Math.max(0, safeNumber(row.achievementPercent)))}%` }}
+                                    />
+                                  </span>
+                                  <span className="targets-progress-value">{formatPercent(row.achievementPercent)}</span>
+                                </span>
                               </td>
                               <td className="targets-table-cell targets-cell-deals">
-                                {row.totalDeals}
+                                <span className="targets-deals-chip">{row.totalDeals}</span>
                               </td>
                               <td className="targets-table-cell targets-cell-incentive">
                                 {formatCurrency(row.incentiveAmount)}
