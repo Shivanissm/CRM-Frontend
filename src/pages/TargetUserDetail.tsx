@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { filterTargetCategoryOptions, getFrontendTargetCategoryOptions } from '../constants/categories';
+import { getFrontendTargetCategoryOptions } from '../constants/categories';
 import { targetsApi } from '../services/targets';
 import SetTargetModal from '../components/SetTargetModal';
 import { getStoredUser } from '../utils/authToken';
@@ -285,7 +285,7 @@ export default function TargetUserDetail() {
   );
 
   const categoryOptions = useMemo<CategoryOption[]>(() => {
-    const normalizedFrom = (source?: Array<CategoryOption | TargetCategory | CategoryLike>) => {
+    const normalizedFrom = (source?: Array<CategoryOption | TargetCategory | CategoryLike>): CategoryOption[] => {
       if (!source || !source.length) return [];
       return source.reduce<CategoryOption[]>((acc, entry) => {
         const normalized = normalizeCategoryOption(entry);
@@ -302,16 +302,19 @@ export default function TargetUserDetail() {
       .map((cat: CategoryOption) => normalizeCategoryOption(cat))
       .filter((cat: CategoryOption | null): cat is CategoryOption => Boolean(cat));
 
-    const fromSource = availableCategories.length
+    const fromSource: CategoryOption[] = availableCategories.length
       ? availableCategories
       : legacyCategories.length
         ? legacyCategories
         : metaCategories;
 
-    const filtered = filterTargetCategoryOptions(fromSource);
-    return getFrontendTargetCategoryOptions().map(
-      (option) => filtered.find((item) => item.code === option.code) ?? option,
+    const byCode = new Map<TargetCategory, CategoryOption>(
+      fromSource.map((item) => [item.code, item]),
     );
+    return getFrontendTargetCategoryOptions().map((option) => ({
+      code: option.code,
+      label: byCode.get(option.code)?.label ?? option.label,
+    }));
   }, [userData, filtersMeta, normalizeCategoryOption]);
 
   useEffect(() => {
