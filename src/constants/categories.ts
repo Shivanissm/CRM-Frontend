@@ -10,7 +10,13 @@ export const FRONTEND_CATEGORY_LABELS = ['Photography', 'Makeup'] as const;
 
 export const FRONTEND_TARGET_CATEGORY: TargetCategory = 'PHOTOGRAPHY';
 
-export const FRONTEND_TARGET_CATEGORIES: TargetCategory[] = ['PHOTOGRAPHY'];
+export const FRONTEND_TARGET_CATEGORIES: TargetCategory[] = ['PHOTOGRAPHY', 'MAKEUP'];
+
+export const FRONTEND_TARGET_CATEGORY_LABELS: Record<TargetCategory, string> = {
+  PHOTOGRAPHY: 'Photography',
+  MAKEUP: 'Makeup',
+  PLANNING_AND_DECOR: 'Planning & Decor',
+};
 
 const normalizeCategoryLabel = (label: string): string =>
   label.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -74,5 +80,13 @@ export function filterTargetCategoryOptions<T extends { code: string }>(categori
 }
 
 export function isFrontendTargetCategory(category: string): boolean {
-  return normalizeCategoryCode(category) === FRONTEND_TARGET_CATEGORY;
+  const normalized = normalizeCategoryCode(category);
+  return FRONTEND_TARGET_CATEGORIES.some((code) => normalizeCategoryCode(code) === normalized);
+}
+
+export function getFrontendTargetCategoryOptions(): Array<{ code: TargetCategory; label: string }> {
+  return FRONTEND_TARGET_CATEGORIES.map((code) => ({
+    code,
+    label: FRONTEND_TARGET_CATEGORY_LABELS[code] ?? code,
+  }));
 }

@@ -236,6 +236,13 @@ const filteredUsers = useMemo(() => {
       });
   }, [users, search, roleFilter, statusFilter, sortKey, sortDirection]);
 
+  const usersSummary = useMemo(() => ({
+    users: users.length,
+    active: users.filter((user) => user.active).length,
+    inactive: users.filter((user) => !user.active).length,
+    admin: users.filter((user) => (user.role || '').toUpperCase() === 'ADMIN').length,
+  }), [users]);
+
   useEffect(() => {
     if (filteredUsers.length === 0) {
       if (selectedUser) {
@@ -664,10 +671,10 @@ const filteredUsers = useMemo(() => {
   return (
     <div className="users-page">
       <header className="users-header">
-        <div>
+        <div className="users-header-copy">
           <h1>Users</h1>
           <p>Review account access, roles, and activity across your team.</p>
-              </div>
+        </div>
         <div className="users-actions">
           <button
             className="users-refresh"
@@ -675,21 +682,48 @@ const filteredUsers = useMemo(() => {
             disabled={refreshing || loading}
           >
             {refreshing ? 'Refreshing…' : 'Refresh'}
-                </button>
+          </button>
           <button className="users-add" onClick={openInviteModal}>
             + Invite user
-                    </button>
-                  </div>
+          </button>
+        </div>
       </header>
 
+      {!loading && (
+        <section className="users-summary" aria-label="Users">
+          <article className="users-stat tone-lavender">
+            <span className="users-stat-label">Users</span>
+            <strong className="users-stat-value">{usersSummary.users}</strong>
+          </article>
+          <article className="users-stat tone-teal">
+            <span className="users-stat-label">Active</span>
+            <strong className="users-stat-value">{usersSummary.active}</strong>
+          </article>
+          <article className="users-stat tone-pink">
+            <span className="users-stat-label">Inactive</span>
+            <strong className="users-stat-value">{usersSummary.inactive}</strong>
+          </article>
+          <article className="users-stat tone-peach">
+            <span className="users-stat-label">Admin</span>
+            <strong className="users-stat-value">{usersSummary.admin}</strong>
+          </article>
+        </section>
+      )}
+
       <section className="users-filters">
-        <input
-          type="search"
-          placeholder="Search name, email, role, manager…"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          className="users-search"
-        />
+        <div className="users-search-wrap">
+          <svg className="users-search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.6" />
+            <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+          <input
+            type="search"
+            placeholder="Search name, email, role, manager…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            className="users-search"
+          />
+        </div>
         <div className="users-filter-group">
           <label htmlFor="users-role-filter">Role</label>
           <select
@@ -706,7 +740,7 @@ const filteredUsers = useMemo(() => {
               </option>
             ))}
           </select>
-              </div>
+        </div>
         <div className="users-filter-group">
           <label htmlFor="users-status-filter">Status</label>
           <select
@@ -718,7 +752,7 @@ const filteredUsers = useMemo(() => {
             <option value="ACTIVE">Active</option>
             <option value="INACTIVE">Inactive</option>
           </select>
-                    </div>
+        </div>
         <div className="users-filter-group">
           <label htmlFor="users-layout-filter">Layout</label>
           <select
@@ -806,11 +840,22 @@ const filteredUsers = useMemo(() => {
                     </div>
                   </td>
                   <td data-label="Role">
-                    <span className="users-role-pill">{getUserRoleLabel(user.role)}</span>
+                    <span className={`users-role-pill role-${(user.role || '').toLowerCase().replace(/_/g, '-')}`}>
+                      {getUserRoleLabel(user.role)}
+                    </span>
                   </td>
                   <td data-label="Manager">
                     {user.managerName ? (
-                      <span className="users-manager">{user.managerName}</span>
+                      <span className="users-manager">
+                        <span className="users-manager-avatar" aria-hidden="true">
+                          {user.managerName
+                            .split(/\s+/)
+                            .slice(0, 2)
+                            .map((part) => part[0]?.toUpperCase() || '')
+                            .join('') || '?'}
+                        </span>
+                        <span>{user.managerName}</span>
+                      </span>
                     ) : (
                       <span className="users-manager muted">—</span>
                     )}

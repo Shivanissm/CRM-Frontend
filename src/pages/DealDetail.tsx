@@ -1653,6 +1653,7 @@ export default function DealDetail() {
       )}
       {/* Top Header Bar - Full Width */}
       <div className="deal-detail-header-bar">
+        <div className="deal-header-top">
         <div className="deal-header-left">
           <input
             type="text"
@@ -1663,51 +1664,6 @@ export default function DealDetail() {
           />
           {!isNewDeal && selectedStage && selectedPipeline && (
             <>
-              {/* Stage Timeline - Similar to Kanban board */}
-              <div className="deal-header-stage-timeline">
-                {selectedPipeline.stages
-                  ?.sort((a, b) => a.order - b.order)
-                  .map((stage) => {
-                    const days = stageDurations[stage.id] ?? 0;
-                    const isCurrentStage = stage.id === formData.stageId;
-                    // A stage is considered visited if:
-                    // 1. It has a recorded duration > 0, OR
-                    // 2. It's the current stage, OR
-                    // 3. It comes before the current stage (deal must have passed through it)
-                    const currentStageOrder = selectedPipeline.stages?.find(s => s.id === formData.stageId)?.order ?? -1;
-                    const hasBeenInStage = days > 0 || isCurrentStage || (currentStageOrder > -1 && stage.order < currentStageOrder);
-                    
-                    return (
-                      <div
-                        key={stage.id}
-                        className={`deal-header-stage-timeline-item ${isCurrentStage ? 'current' : ''} ${hasBeenInStage ? 'visited' : ''}`}
-                        onMouseEnter={(e) => {
-                          setHoveredStageId(stage.id);
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setTooltipPosition({
-                            top: rect.bottom + 8,
-                            left: rect.left + rect.width / 2,
-                          });
-                        }}
-                        onMouseLeave={() => {
-                          setHoveredStageId(null);
-                          setTooltipPosition(null);
-                        }}
-                        onClick={() => {
-                          if (stage.id !== formData.stageId && deal && deal.id) {
-                            void handleStageUpdate(deal.id, stage.id);
-                          }
-                        }}
-                        style={{ cursor: stage.id !== formData.stageId ? 'pointer' : 'default' }}
-                      >
-                        <div className="deal-header-stage-timeline-days">
-                          {hasBeenInStage ? `${days} day${days !== 1 ? 's' : ''}` : '0 days'}
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-              
               {/* Stage Selector Dropdown */}
               <div className="deal-header-stage-info" ref={stageDropdownRef}>
                 <div 
@@ -1758,47 +1714,6 @@ export default function DealDetail() {
             </div>
                 )}
               </div>
-              
-              {/* Tooltip for stage duration */}
-              {hoveredStageId && tooltipPosition && selectedPipeline && createPortal(
-                <div
-                  className="deal-header-stage-tooltip"
-                  style={{
-                    position: 'fixed',
-                    top: `${tooltipPosition.top}px`,
-                    left: `${tooltipPosition.left}px`,
-                    transform: 'translateX(-50%)',
-                    zIndex: 10001,
-                  }}
-                >
-                  <div className="deal-header-stage-tooltip-title">
-                    {getDisplayStageName(selectedPipeline.stages.find(s => s.id === hoveredStageId)?.name) || 'Stage'}
-                  </div>
-                  <div className="deal-header-stage-tooltip-content">
-                    {(() => {
-                      const hoveredStage = selectedPipeline.stages?.find(s => s.id === hoveredStageId);
-                      const currentStage = selectedPipeline.stages?.find(s => s.id === formData.stageId);
-                      const currentStageOrder = currentStage?.order ?? -1;
-                      const hoveredStageOrder = hoveredStage?.order ?? -1;
-                      const days = stageDurations[hoveredStageId] ?? 0;
-                      
-                      // Check if deal has been in this stage
-                      const hasBeenInStage = days > 0 || hoveredStageId === formData.stageId || (currentStageOrder > -1 && hoveredStageOrder < currentStageOrder);
-                      
-                      if (days > 0) {
-                        return `This deal has been in this stage for ${days} day${days !== 1 ? 's' : ''}`;
-                      } else if (hoveredStageId === formData.stageId) {
-                        return 'This deal is currently in this stage';
-                      } else if (hasBeenInStage) {
-                        return 'This deal has been in this stage (duration not yet calculated)';
-                      } else {
-                        return 'This deal has not been in this stage yet';
-                      }
-                    })()}
-                  </div>
-                </div>,
-                document.body
-              )}
             </>
           )}
         </div>
@@ -1970,6 +1885,91 @@ export default function DealDetail() {
             ×
           </button>
         </div>
+        </div>
+
+        {!isNewDeal && selectedStage && selectedPipeline && (
+          <>
+            <div className="deal-pipeline-bar">
+              <div className="deal-header-stage-timeline">
+                {selectedPipeline.stages
+                  ?.sort((a, b) => a.order - b.order)
+                  .map((stage) => {
+                    const days = stageDurations[stage.id] ?? 0;
+                    const isCurrentStage = stage.id === formData.stageId;
+                    const currentStageOrder = selectedPipeline.stages?.find(s => s.id === formData.stageId)?.order ?? -1;
+                    const hasBeenInStage = days > 0 || isCurrentStage || (currentStageOrder > -1 && stage.order < currentStageOrder);
+
+                    return (
+                      <div
+                        key={stage.id}
+                        className={`deal-header-stage-timeline-item ${isCurrentStage ? 'current' : ''} ${hasBeenInStage ? 'visited' : ''}`}
+                        onMouseEnter={(e) => {
+                          setHoveredStageId(stage.id);
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setTooltipPosition({
+                            top: rect.bottom + 8,
+                            left: rect.left + rect.width / 2,
+                          });
+                        }}
+                        onMouseLeave={() => {
+                          setHoveredStageId(null);
+                          setTooltipPosition(null);
+                        }}
+                        onClick={() => {
+                          if (stage.id !== formData.stageId && deal && deal.id) {
+                            void handleStageUpdate(deal.id, stage.id);
+                          }
+                        }}
+                        style={{ cursor: stage.id !== formData.stageId ? 'pointer' : 'default' }}
+                      >
+                        <div className="deal-header-stage-timeline-name">{getDisplayStageName(stage.name)}</div>
+                        <div className="deal-header-stage-timeline-days">
+                          {hasBeenInStage ? `${days} day${days !== 1 ? 's' : ''}` : '0 days'}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+            {hoveredStageId && tooltipPosition && selectedPipeline && createPortal(
+              <div
+                className="deal-header-stage-tooltip"
+                style={{
+                  position: 'fixed',
+                  top: `${tooltipPosition.top}px`,
+                  left: `${tooltipPosition.left}px`,
+                  transform: 'translateX(-50%)',
+                  zIndex: 10001,
+                }}
+              >
+                <div className="deal-header-stage-tooltip-title">
+                  {getDisplayStageName(selectedPipeline.stages.find(s => s.id === hoveredStageId)?.name) || 'Stage'}
+                </div>
+                <div className="deal-header-stage-tooltip-content">
+                  {(() => {
+                    const hoveredStage = selectedPipeline.stages?.find(s => s.id === hoveredStageId);
+                    const currentStage = selectedPipeline.stages?.find(s => s.id === formData.stageId);
+                    const currentStageOrder = currentStage?.order ?? -1;
+                    const hoveredStageOrder = hoveredStage?.order ?? -1;
+                    const days = stageDurations[hoveredStageId] ?? 0;
+                    const hasBeenInStage = days > 0 || hoveredStageId === formData.stageId || (currentStageOrder > -1 && hoveredStageOrder < currentStageOrder);
+
+                    if (days > 0) {
+                      return `This deal has been in this stage for ${days} day${days !== 1 ? 's' : ''}`;
+                    } else if (hoveredStageId === formData.stageId) {
+                      return 'This deal is currently in this stage';
+                    } else if (hasBeenInStage) {
+                      return 'This deal has been in this stage (duration not yet calculated)';
+                    } else {
+                      return 'This deal has not been in this stage yet';
+                    }
+                  })()}
+                </div>
+              </div>,
+              document.body
+            )}
+          </>
+        )}
       </div>
 
       {/* Main Content - Two Halves */}
@@ -1977,7 +1977,7 @@ export default function DealDetail() {
         {/* Left Sidebar */}
         <div className="deal-detail-left">
           {/* Summary Section */}
-          <div className="deal-section">
+          <div className="deal-section deal-card deal-card-summary">
             <div className="deal-section-header" onClick={() => setSummaryExpanded(!summaryExpanded)}>
               <span className="deal-section-title">
                 {summaryExpanded ? '▼' : '▶'} Summary
@@ -2130,7 +2130,7 @@ export default function DealDetail() {
           </div>
 
           {/* Associations Section */}
-          <div className="deal-section">
+          <div className="deal-section deal-card deal-card-associations">
             <div className="deal-section-header" onClick={() => setAssociationsExpanded(!associationsExpanded)}>
               <span className="deal-section-title">
                 {associationsExpanded ? '▼' : '▶'} ASSOCIATIONS
@@ -2223,7 +2223,7 @@ export default function DealDetail() {
           </div>
 
           {/* Event Information Section */}
-          <div className="deal-section">
+          <div className="deal-section deal-card deal-card-event">
             <div className="deal-section-header" onClick={() => setEventInfoExpanded(!eventInfoExpanded)}>
               <span className="deal-section-title">
                 {eventInfoExpanded ? '▼' : '▶'} EVENT INFORMATION
@@ -2391,7 +2391,7 @@ export default function DealDetail() {
 
           {/* Created By Section */}
           {!isNewDeal && deal && (
-            <div className="deal-section">
+            <div className="deal-section deal-card deal-card-created">
               <div className="deal-section-header">
                 <span className="deal-section-title">CREATED BY</span>
               </div>
@@ -2438,7 +2438,7 @@ export default function DealDetail() {
           )}
 
           {/* Additional Information Section */}
-          <div className="deal-section">
+          <div className="deal-section deal-card deal-card-additional">
             <div className="deal-section-header" onClick={() => setAdditionalInfoExpanded(!additionalInfoExpanded)}>
               <span className="deal-section-title">
                 {additionalInfoExpanded ? '▼' : '▶'} ADDITIONAL INFORMATION
@@ -2535,7 +2535,7 @@ export default function DealDetail() {
 
           {/* Overview Section */}
           {!isNewDeal && (
-          <div className="deal-section">
+          <div className="deal-section deal-card deal-card-overview">
             <div className="deal-section-header" onClick={() => setOverviewExpanded(!overviewExpanded)}>
               <span className="deal-section-title">
                 {overviewExpanded ? '▼' : '▶'} Overview
@@ -2600,7 +2600,7 @@ export default function DealDetail() {
         </div>
 
         {/* Right Main Content */}
-        <div className="deal-detail-right">
+        <div className="deal-detail-right deal-activity-workspace">
           {/* Tabs */}
           <div className="deal-tabs">
             {(['Activity', 'Notes', 'Meeting scheduler', 'Call', 'Email', 'Send quote', 'Send Contract', 'Share Worklinks'] as ActiveTab[]).map((tab) => (
@@ -2620,6 +2620,16 @@ export default function DealDetail() {
               className="deal-activity-placeholder"
               onClick={() => setIsActivityModalOpen(true)}
             >
+              <span className="deal-activity-placeholder-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="3" y="4.5" width="18" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.6"/>
+                  <path d="M8 3.5V6.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                  <path d="M16 3.5V6.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                  <path d="M3.5 9.5H20.5" stroke="currentColor" strokeWidth="1.6"/>
+                  <path d="M12 12.5V17.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                  <path d="M9.5 15H14.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                </svg>
+              </span>
               Click here to add an activity...
             </div>
           </div>
@@ -2640,8 +2650,8 @@ export default function DealDetail() {
             <div className="deal-focus-content">
               {loadingActivities ? (
                 <div>Loading activities...</div>
-              ) : getFocusActivities().length === 0 ? (
-                <div>No focus items yet. Scheduled activities, pinned notes, email drafts and scheduled emails will appear here.</div>
+                ) : getFocusActivities().length === 0 ? (
+                <div className="deal-focus-empty">No focus items yet. Scheduled activities, pinned notes, email drafts and scheduled emails will appear here.</div>
               ) : (
                 <div className="deal-activity-list">
                   {getFocusActivities().map((activity) => (
@@ -2804,7 +2814,7 @@ export default function DealDetail() {
                 {loadingActivities ? (
                   <div>Loading history...</div>
                 ) : getHistoryActivities().length === 0 ? (
-                  <div>No history yet.</div>
+                  <div className="deal-history-empty">No history yet.</div>
                 ) : (
                   <div className="deal-history-list">
                     {getHistoryActivities().map((activity) => (
