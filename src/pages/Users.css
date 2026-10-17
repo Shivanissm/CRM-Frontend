@@ -397,6 +397,24 @@
 
 .users-actions-cell {
   text-align: right;
+  white-space: nowrap;
+}
+
+.users-edit {
+  border: 1px solid var(--users-pink);
+  border-radius: 999px;
+  background: var(--users-white);
+  color: var(--users-pink-deep);
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 180ms ease, color 180ms ease;
+  margin-right: 8px;
+}
+
+.users-edit:hover:not(:disabled) {
+  background: var(--users-pink-soft);
 }
 
 .users-delete {

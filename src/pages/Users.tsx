@@ -89,6 +89,11 @@ export default function Users() {
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
   const [showDuplicateEmailToast, setShowDuplicateEmailToast] = useState(false);
   const [inviteForm, setInviteForm] = useState(INVITE_FORM_INITIAL);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editUserId, setEditUserId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState(INVITE_FORM_INITIAL);
   const hasHandledOpenModal = useRef(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isDetailVisible, setIsDetailVisible] = useState(false);
@@ -184,6 +189,27 @@ const managerOptions = useMemo(() => {
   const requiresManager = useMemo(
     () => INVITE_ROLE_OPTIONS.find((option) => option.value === inviteForm.role)?.requiresManager ?? false,
     [inviteForm.role],
+  );
+
+  const editManagerOptions = useMemo(() => {
+    switch (editForm.role) {
+      case 'PRESALES':
+        return users
+          .filter((user) => user.active && user.role === 'SALES' && user.id !== editUserId)
+          .slice()
+          .sort((a, b) => {
+            const nameA = `${a.firstName ?? ''} ${a.lastName ?? ''}`.trim().toLowerCase();
+            const nameB = `${b.firstName ?? ''} ${b.lastName ?? ''}`.trim().toLowerCase();
+            return nameA.localeCompare(nameB);
+          });
+      default:
+        return [];
+    }
+  }, [users, editForm.role, editUserId]);
+
+  const editRequiresManager = useMemo(
+    () => ROLE_OPTIONS.find((option) => option.value === editForm.role)?.requiresManager ?? false,
+    [editForm.role],
   );
 
 const filteredUsers = useMemo(() => {
@@ -430,6 +456,83 @@ const filteredUsers = useMemo(() => {
       setDeleteError(message);
     } finally {
       setDeleteLoadingId(null);
+    }
+  };
+
+  const handleEditFieldChange = (key: keyof typeof editForm, value: string) => {
+    if (key === 'role') {
+      setEditForm((prev) => ({
+        ...prev,
+        role: value as AllowedRole,
+        managerId: '',
+      }));
+      return;
+    }
+    setEditForm((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const openEditModal = (user: User) => {
+    setEditUserId(user.id);
+    setEditForm({
+      firstName: user.firstName ?? '',
+      lastName: user.lastName ?? '',
+      email: user.email ?? '',
+      role: (user.role as AllowedRole) ?? 'SALES',
+      managerId: user.managerId ? String(user.managerId) : '',
+    });
+    setEditError(null);
+    setEditOpen(true);
+  };
+
+  const closeEditModal = (force = false) => {
+    if (editLoading && !force) return;
+    setEditOpen(false);
+    setEditError(null);
+    setEditUserId(null);
+    setEditForm({ ...INVITE_FORM_INITIAL });
+  };
+
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (editUserId == null) return;
+    if (!editForm.firstName.trim() || !editForm.lastName.trim()) {
+      setEditError('First and last name are required.');
+      return;
+    }
+    if (!editForm.email.trim()) {
+      setEditError('Email address is required.');
+      return;
+    }
+    if (!editForm.email.includes('@')) {
+      setEditError('Please enter a valid email address.');
+      return;
+    }
+    if (editRequiresManager && !editForm.managerId) {
+      setEditError('Select a manager for this role.');
+      return;
+    }
+
+    setEditLoading(true);
+    setEditError(null);
+    try {
+      const payload = {
+        email: editForm.email.trim(),
+        firstName: editForm.firstName.trim(),
+        lastName: editForm.lastName.trim(),
+        role: editForm.role,
+        managerId: editForm.managerId ? Number(editForm.managerId) : undefined,
+      };
+      await usersApi.updateUser(editUserId, payload);
+      closeEditModal(true);
+      await loadUsers();
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || 'Failed to update user.';
+      setEditError(message);
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -869,6 +972,16 @@ const filteredUsers = useMemo(() => {
                   <td data-label="Last login">{formatDate(user.lastLoginAt)}</td>
                   {showActionsColumn && (
                     <td data-label="Actions" className="users-actions-cell">
+                      <button
+                        type="button"
+                        className="users-edit"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openEditModal(user);
+                        }}
+                      >
+                        Edit
+                      </button>
                       {currentUser?.userId === user.id ? (
                         <span className="users-action-placeholder">—</span>
                       ) : (
@@ -1026,6 +1139,129 @@ const filteredUsers = useMemo(() => {
             </div>
           </div>
         )}
+
+      {editOpen && (
+        <div className="users-modal-overlay" onClick={() => closeEditModal(false)}>
+          <div className="users-modal" onClick={(event) => event.stopPropagation()}>
+            <header className="users-modal-header">
+              <h2>Edit user</h2>
+              <button
+                type="button"
+                className="users-modal-close"
+                onClick={() => closeEditModal(false)}
+                disabled={editLoading}
+              >
+                ×
+              </button>
+            </header>
+            <p className="users-modal-subtitle">
+              Update the user’s details, role, and manager.
+            </p>
+            <form className="users-modal-form" onSubmit={handleEditSubmit}>
+              <label className="users-modal-label">
+                First name
+                <input
+                  type="text"
+                  value={editForm.firstName}
+                  onChange={(event) => handleEditFieldChange('firstName', event.target.value)}
+                  placeholder="Taylor"
+                  disabled={editLoading}
+                  required
+                />
+              </label>
+              <label className="users-modal-label">
+                Last name
+                <input
+                  type="text"
+                  value={editForm.lastName}
+                  onChange={(event) => handleEditFieldChange('lastName', event.target.value)}
+                  placeholder="Jordan"
+                  disabled={editLoading}
+                  required
+                />
+              </label>
+              <label className="users-modal-label">
+                Email
+                <input
+                  type="email"
+                  value={editForm.email}
+                  onChange={(event) => handleEditFieldChange('email', event.target.value)}
+                  placeholder="taylor.jordan@example.com"
+                  disabled={editLoading}
+                  required
+                />
+              </label>
+              <label className="users-modal-label">
+                Role
+                <select
+                  value={editForm.role}
+                  onChange={(event) => handleEditFieldChange('role', event.target.value)}
+                  disabled={editLoading}
+                >
+                  {ROLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="users-modal-label">
+                Manager
+                {editRequiresManager ? (
+                  <>
+                    <select
+                      value={editForm.managerId}
+                      onChange={(event) => handleEditFieldChange('managerId', event.target.value)}
+                      disabled={editLoading || editManagerOptions.length === 0}
+                      required
+                    >
+                      <option value="">
+                        {editManagerOptions.length === 0
+                          ? 'No eligible managers available'
+                          : 'Select manager'}
+                      </option>
+                      {editManagerOptions.map((manager) => (
+                        <option key={manager.id} value={manager.id}>
+                          {[manager.firstName, manager.lastName].filter(Boolean).join(' ') || manager.email} ·{' '}
+                          {getUserRoleLabel(manager.role)}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="users-modal-hint">
+                      {editManagerOptions.length > 0
+                        ? 'Assign a Sales user who this pre-sales member supports.'
+                        : 'No eligible managers found. Add one first.'}
+                    </span>
+                  </>
+                ) : (
+                  <input type="text" value="Not required" disabled />
+                )}
+              </label>
+              {editError && <div className="users-modal-error">{editError}</div>}
+              <div className="users-modal-actions">
+                <button
+                  type="button"
+                  className="users-modal-cancel"
+                  onClick={() => closeEditModal(false)}
+                  disabled={editLoading}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="users-modal-submit" disabled={editLoading}>
+                  {editLoading ? (
+                    <span className="users-modal-submit-content">
+                      <span className="users-button-spinner" />
+                      Saving…
+                    </span>
+                  ) : (
+                    'Save changes'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Duplicate Email Toast Notification */}
       {showDuplicateEmailToast && createPortal(
