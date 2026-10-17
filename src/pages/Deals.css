@@ -919,6 +919,7 @@
   padding: 0 32px 24px 32px;
   position: relative;
   z-index: 1;
+  overflow-x: auto;
 }
 
 .deals-grid {
@@ -931,17 +932,20 @@
 /* Kanban Board Styles */
 .deals-kanban-board {
   display: flex;
+  flex-wrap: nowrap;
   gap: 12px;
   overflow-x: auto;
+  overflow-y: hidden;
   padding-bottom: 16px;
   width: 100%;
+  min-width: 0;
   min-height: 600px;
 }
 
 .kanban-column {
-  flex: 1 1 220px;
-  min-width: 220px;
-  width: auto;
+  flex: 1 0 280px;
+  min-width: 280px;
+  width: 280px;
   background: var(--deals-very-light-surface, #FFF7F5);
   border: 1px solid var(--deals-border, #D8E7E6);
   border-radius: 14px;
@@ -1039,7 +1043,6 @@
   gap: 12px;
   position: relative;
   z-index: 1;
-  contain: layout style;
   min-height: 200px;
   background: var(--deals-very-light-surface, #FFF7F5);
 }
@@ -1088,7 +1091,8 @@
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
   box-shadow: 0 2px 8px rgba(36, 52, 61, 0.05);
   z-index: 10;
-  overflow: hidden;
+  overflow: visible;
+  min-width: 0;
 }
 
 /* Deal Source Indicator Line */
@@ -1179,12 +1183,18 @@
   margin-bottom: 8px;
   line-height: 1.35;
   letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .kanban-card-rsp {
   font-size: 12px;
   color: #65777D;
   margin-bottom: 6px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .kanban-card-date {
@@ -1194,21 +1204,26 @@
 }
 
 .kanban-card-value {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   color: #24343D;
   margin-top: 8px;
   padding-top: 8px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .kanban-card-date {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 400;
   color: #65777D;
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid #FFF7F5;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .kanban-card-header {
@@ -1216,6 +1231,7 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 8px;
+  min-width: 0;
 }
 
 .kanban-card-content {
