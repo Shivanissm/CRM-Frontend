@@ -14,6 +14,7 @@ import { dealsApi } from '../services/deals';
 import type { Organization } from '../types/organization';
 import type { User } from '../types/user';
 import { getStoredUser } from '../utils/authToken';
+import { shouldPromptNewActivityAfterDone } from '../utils/dealActivities';
 import '../components/SetTargetModal.css';
 import '../components/ActivityModal.css';
 import './ActivitiesList.css';
@@ -115,6 +116,16 @@ useEffect(() => {
   const [activeFilterName, setActiveFilterName] = useState<string | null>(null);
   const [activeCustomFilters, setActiveCustomFilters] = useState<FilterCondition[]>([]);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [followUpDealData, setFollowUpDealData] = useState<{
+    dealId?: number;
+    dealName?: string;
+    personId?: number;
+    personName?: string;
+    organization?: string;
+    organizationId?: number;
+    phone?: string;
+    instagramId?: string;
+  } | null>(null);
   const [showActivityConfirmation, setShowActivityConfirmation] = useState(false);
   const hasHandledOpenModal = useRef(false);
   const [columnMenu, setColumnMenu] = useState<{
@@ -2827,8 +2838,10 @@ useEffect(() => {
     }
   };
 
-  const completeToggleDone = async (id: number, value: boolean, durationMinutes?: number) => {
+  const completeToggleDone = async (id: number, value: boolean, durationMinutes?: number, dealId?: number | null) => {
     try {
+      const sourceActivity = data?.content.find((a) => a.id === id);
+      const resolvedDealId = dealId ?? sourceActivity?.dealId;
       await activitiesApi.markDone(id, value, durationMinutes);
       setData((prev) =>
         prev
@@ -2839,6 +2852,21 @@ useEffect(() => {
           : prev
       );
       loadCounts(filters);
+      if (value && resolvedDealId) {
+        const shouldOpen = await shouldPromptNewActivityAfterDone(resolvedDealId, id);
+        if (shouldOpen) {
+          setFollowUpDealData({
+            dealId: resolvedDealId,
+            dealName: sourceActivity?.dealName || undefined,
+            personId: sourceActivity?.personId || undefined,
+            organization: sourceActivity?.organization || undefined,
+            organizationId: sourceActivity?.organizationId || undefined,
+            phone: sourceActivity?.phone || undefined,
+            instagramId: sourceActivity?.instagramId || undefined,
+          });
+          setIsAddOpen(true);
+        }
+      }
     } catch (e) {
       console.error('Failed to toggle done', e);
     }
@@ -2918,7 +2946,7 @@ useEffect(() => {
         );
       }
       // Pass duration_minutes to markDone API call
-      await completeToggleDone(pendingDoneActivity.id, pendingDoneValue, durationMinutes ?? undefined);
+      await completeToggleDone(pendingDoneActivity.id, pendingDoneValue, durationMinutes ?? undefined, pendingDoneActivity.dealId);
       handlePendingDoneCancel();
     } catch (error: any) {
       console.error('Failed to save call duration:', error);
@@ -3024,7 +3052,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
 
   const toggleDone = async (activity: Activity, value: boolean) => {
     // Mark the activity done directly (no call-completion modal).
-    await completeToggleDone(activity.id, value);
+    await completeToggleDone(activity.id, value, undefined, activity.dealId);
   };
 
   // Open screenshot viewer
@@ -4564,6 +4592,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         isOpen={isAddOpen}
         onClose={() => {
           setIsAddOpen(false);
+          setFollowUpDealData(null);
           hasHandledOpenModal.current = false;
           // Clear location state to prevent modal from reopening
           navigate(location.pathname, { replace: true, state: {} });
@@ -4571,6 +4600,7 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
         initialCategory={category}
         initialServiceCategory={DEFAULT_CATEGORY_OPTIONS[0].code}
         userOptions={managerOptions}
+        dealData={followUpDealData || undefined}
         onSave={async (v) => {
           if (!v.subject || v.subject.trim() === '') {
             alert('Subject is required');
@@ -4638,12 +4668,17 @@ const handleEditSave = async (value: ActivityFormValues & { id?: number }) => {
               activityData.assignedUserId = v.assignedUserId;
             }
             
+            if ((!v.dealId || v.dealId <= 0) && followUpDealData?.dealId) {
+              activityData.dealId = followUpDealData.dealId;
+            }
+
             const created = await activitiesApi.create(activityData);
             if (created?.id && v.serviceCategory) {
               updateServiceCategory(created.id, v.serviceCategory);
             }
             // Close modal first
             setIsAddOpen(false);
+            setFollowUpDealData(null);
             // Show confirmation popup
             setShowActivityConfirmation(true);
             

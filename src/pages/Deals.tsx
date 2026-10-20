@@ -25,6 +25,7 @@ import axios from 'axios';
 import { getStoredToken } from '../utils/authToken';
 import { withApiBase } from '../config/api';
 import { getDisplayStageName } from '../utils/stageNames';
+import { shouldPromptNewActivityAfterDone } from '../utils/dealActivities';
 
 // ==================== Label Types & Constants ====================
 
@@ -555,14 +556,22 @@ const Deals = () => {
   }, [pendingAttachmentPreview]);
 
   // Complete toggle done (without modal)
-  const completeToggleDone = useCallback(async (id: number, value: boolean) => {
+  const completeToggleDone = useCallback(async (id: number, value: boolean, dealId?: number | null) => {
     try {
       await activitiesApi.markDone(id, value);
       await loadActivities();
+      if (value && dealId) {
+        const shouldOpen = await shouldPromptNewActivityAfterDone(dealId, id);
+        if (shouldOpen) {
+          setEditingActivity(null);
+          setActivityDealId(dealId);
+          setIsActivityModalOpen(true);
+        }
+      }
     } catch (e) {
       console.error('Failed to toggle done', e);
     }
-  }, []);
+  }, [loadActivities]);
 
   // Handle pending done confirm
   const handlePendingDoneConfirm = useCallback(async () => {
@@ -615,7 +624,7 @@ const Deals = () => {
           : formatMinutesToHHMM(durationMinutes);
         setDurationEntries((prev) => ({ ...prev, [pendingDoneActivity.id]: durationDisplay }));
       }
-      await completeToggleDone(pendingDoneActivity.id, pendingDoneValue);
+      await completeToggleDone(pendingDoneActivity.id, pendingDoneValue, pendingDoneActivity.dealId);
       handlePendingDoneCancel();
     } catch (error: any) {
       console.error('Failed to save call duration:', error);
@@ -631,7 +640,7 @@ const Deals = () => {
   // Toggle done with call activity check
   const toggleDone = useCallback(async (activity: Activity, value: boolean, _clickPosition?: { top: number; left: number }) => {
     // Mark the activity done directly (no call-completion modal).
-    await completeToggleDone(activity.id, value);
+    await completeToggleDone(activity.id, value, activity.dealId);
   }, [completeToggleDone]);
 
   // Open screenshot viewer
