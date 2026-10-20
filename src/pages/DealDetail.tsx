@@ -21,6 +21,7 @@ import Loader from '../components/Loader';
 import MarkAsLostModal from '../components/MarkAsLostModal';
 import DealValueModal from '../components/DealValueModal';
 import { getAllEventDates, normalizeEventDatesForRequest } from '../utils/dealDates';
+import { shouldPromptNewActivityAfterDone } from '../utils/dealActivities';
 import './DealDetail.css';
 import { getDisplayStageName } from '../utils/stageNames';
 
@@ -67,6 +68,7 @@ export default function DealDetail() {
   const [showMarkAsLostModal, setShowMarkAsLostModal] = useState(false);
   const [showDealValueModal, setShowDealValueModal] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
   const [_focusedActivities, _setFocusedActivities] = useState<Set<number>>(new Set());
@@ -678,6 +680,12 @@ export default function DealDetail() {
       // When marking as undone, it will automatically move to Focus
       // The getFocusActivities and getHistoryActivities functions handle this based on done status
       setOpenMenuId(null); // Close menu after action
+      if (done && id && !isNewDeal) {
+        const shouldOpen = await shouldPromptNewActivityAfterDone(Number(id), activityId);
+        if (shouldOpen) {
+          openCreateActivityModal();
+        }
+      }
     } catch (error) {
       console.error('Failed to update activity:', error);
       alert('Failed to update activity');
@@ -765,6 +773,17 @@ export default function DealDetail() {
     // Mark the activity done directly (no call-completion modal).
     setOpenMenuId(null);
     await completeToggleDone(activityId, done);
+  };
+
+  const openCreateActivityModal = () => {
+    setEditingActivity(null);
+    setIsActivityModalOpen(true);
+  };
+
+  const handleEditActivity = (activity: Activity) => {
+    setOpenMenuId(null);
+    setEditingActivity(activity);
+    setIsActivityModalOpen(true);
   };
 
   // Delete activity
@@ -2618,7 +2637,7 @@ export default function DealDetail() {
           <div className="deal-activity-input-area">
             <div 
               className="deal-activity-placeholder"
-              onClick={() => setIsActivityModalOpen(true)}
+              onClick={openCreateActivityModal}
             >
               <span className="deal-activity-placeholder-icon" aria-hidden="true">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -2780,6 +2799,12 @@ export default function DealDetail() {
                             >
                               {activity.done ? 'Mark as undone' : 'Mark as done'}
                             </div>
+                            <div
+                              className="deal-activity-menu-item"
+                              onClick={() => handleEditActivity(activity)}
+                            >
+                              Edit
+                            </div>
                             <div 
                               className="deal-activity-menu-item"
                               onClick={() => handleDeleteActivity(activity.id)}
@@ -2796,7 +2821,7 @@ export default function DealDetail() {
             </div>
             <button 
               className="deal-schedule-button"
-              onClick={() => setIsActivityModalOpen(true)}
+              onClick={openCreateActivityModal}
             >
               + Schedule an activity
             </button>
@@ -2943,6 +2968,12 @@ export default function DealDetail() {
                               >
                                 {activity.done ? 'Mark as undone' : 'Mark as done'}
                               </div>
+                              <div
+                                className="deal-history-menu-item"
+                                onClick={() => handleEditActivity(activity)}
+                              >
+                                Edit
+                              </div>
                               <div 
                                 className="deal-history-menu-item"
                                 onClick={() => handleDeleteActivity(activity.id)}
@@ -3043,9 +3074,15 @@ export default function DealDetail() {
 
       {/* Activity Modal */}
       <ActivityModal
+        key={editingActivity?.id ?? 'new-activity'}
         isOpen={isActivityModalOpen}
-        onClose={() => setIsActivityModalOpen(false)}
-        initialOrganization={selectedOrganization?.name || deal?.organizationName || ''}
+        onClose={() => {
+          setIsActivityModalOpen(false);
+          setEditingActivity(null);
+        }}
+        initialOrganization={editingActivity?.organization || selectedOrganization?.name || deal?.organizationName || ''}
+        initialCategory={normalizeCategoryLabel(editingActivity?.category)}
+        initialActivity={editingActivity}
         userOptions={pipelineTeamUsers}
         dealData={deal ? {
           dealId: deal.id,
@@ -3057,7 +3094,7 @@ export default function DealDetail() {
           phone: deal.phoneNumber || person?.phone || undefined,
           instagramId: person?.instagramId || undefined,
         } : undefined}
-        onSave={async (v: ActivityFormValues) => {
+        onSave={async (v: ActivityFormValues & { id?: number }) => {
           if (!v.subject || v.subject.trim() === '') {
             alert('Subject is required');
             return;
@@ -3127,16 +3164,29 @@ export default function DealDetail() {
               type: selectedType,
               dateTime: isoDateForDateTime ? `${isoDateForDateTime}T${v.startTime || '00:00'}:00` : undefined,
             };
+
+            const activityId = v.id ?? editingActivity?.id;
+            if (activityId) {
+              await activitiesApi.update(activityId, activityData as any);
+              setIsActivityModalOpen(false);
+              setEditingActivity(null);
+              if (id && !isNewDeal) {
+                await loadActivities(Number(id));
+              }
+              alert('Activity updated successfully');
+              return;
+            }
             
             await activitiesApi.create(activityData as any);
             setIsActivityModalOpen(false);
+            setEditingActivity(null);
             if (id && !isNewDeal) {
               await loadActivities(Number(id));
             }
             alert('Activity created successfully');
           } catch (error) {
-            console.error('Failed to create activity:', error);
-            alert('Failed to create activity');
+            console.error('Failed to save activity:', error);
+            alert(editingActivity ? 'Failed to update activity' : 'Failed to create activity');
           }
         }}
       />
