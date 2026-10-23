@@ -375,6 +375,7 @@ const Deals = () => {
   const [draggedDealId, setDraggedDealId] = useState<number | null>(null);
   const [isDragOverWonZone, setIsDragOverWonZone] = useState(false);
   const [isDragOverLostZone, setIsDragOverLostZone] = useState(false);
+  const [isDragOverDeleteZone, setIsDragOverDeleteZone] = useState(false);
   const kanbanBoardRef = useRef<HTMLDivElement>(null);
   const dragStartYRef = useRef<number | null>(null);
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null);
@@ -4488,6 +4489,7 @@ const Deals = () => {
                     setDragPosition({ x: e.clientX, y: e.clientY });
                     setIsDragOverWonZone(true);
                     setIsDragOverLostZone(false);
+                    setIsDragOverDeleteZone(false);
                   }}
                   onDragLeave={(e) => {
                     e.preventDefault();
@@ -4510,6 +4512,7 @@ const Deals = () => {
                     dragStartYRef.current = null;
                     setIsDragOverWonZone(false);
                     setIsDragOverLostZone(false);
+                    setIsDragOverDeleteZone(false);
                   }}
                 >
                   <span className="kanban-status-chip-dot" />
@@ -4524,6 +4527,7 @@ const Deals = () => {
                     setDragPosition({ x: e.clientX, y: e.clientY });
                     setIsDragOverLostZone(true);
                     setIsDragOverWonZone(false);
+                    setIsDragOverDeleteZone(false);
                   }}
                   onDragLeave={(e) => {
                     e.preventDefault();
@@ -4546,10 +4550,47 @@ const Deals = () => {
                     dragStartYRef.current = null;
                     setIsDragOverWonZone(false);
                     setIsDragOverLostZone(false);
+                    setIsDragOverDeleteZone(false);
                   }}
                 >
                   <span className="kanban-status-chip-dot" />
                   <span>Lost</span>
+                </div>
+
+                <div
+                  className={`kanban-status-chip kanban-delete-zone ${isDragOverDeleteZone ? 'drag-over' : ''}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragPosition({ x: e.clientX, y: e.clientY });
+                    setIsDragOverDeleteZone(true);
+                    setIsDragOverWonZone(false);
+                    setIsDragOverLostZone(false);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setIsDragOverDeleteZone(false);
+                    }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDragOverDeleteZone(false);
+                    const dealToDelete = draggedDealId ? deals.find(d => d.id === draggedDealId) : null;
+                    setDraggedDealId(null);
+                    setDragPosition(null);
+                    dragStartYRef.current = null;
+                    setIsDragOverWonZone(false);
+                    setIsDragOverLostZone(false);
+                    setIsDragOverDeleteZone(false);
+                    if (dealToDelete) {
+                      void handleDeleteDeal(dealToDelete);
+                    }
+                  }}
+                >
+                  <span className="kanban-status-chip-dot" />
+                  <span>Delete</span>
                 </div>
               </div>
             )}
@@ -4637,6 +4678,7 @@ const Deals = () => {
                                   dragStartYRef.current = null;
                                   setIsDragOverWonZone(false);
                                   setIsDragOverLostZone(false);
+                                  setIsDragOverDeleteZone(false);
                                 }}
                                 onClick={(e) => {
                                   // Don't navigate if clicking on the action button or dropdown
@@ -4843,6 +4885,7 @@ const Deals = () => {
                                   dragStartYRef.current = null;
                                   setIsDragOverWonZone(false);
                                   setIsDragOverLostZone(false);
+                                  setIsDragOverDeleteZone(false);
                                 }}
                                 onClick={(e) => {
                                   // Don't navigate if clicking on the action button or dropdown
