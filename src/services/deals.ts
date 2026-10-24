@@ -107,6 +107,8 @@ export interface DealListParams {
   dateFrom?: string; // YYYY-MM-DD format
   dateTo?: string; // YYYY-MM-DD format
   search?: string;
+  limit?: number;
+  offset?: number;
 }
 
 export const dealsApi = {
@@ -139,8 +141,29 @@ export const dealsApi = {
     if (params?.search) {
       queryParams.search = params.search;
     }
+    if (params?.limit !== undefined) {
+      queryParams.limit = String(params.limit);
+    }
+    if (params?.offset !== undefined) {
+      queryParams.offset = String(params.offset);
+    }
     const response = await api.get('', { params: queryParams });
     return normalizeDealList(response.data);
+  },
+
+  listAll: async (params?: DealListParams): Promise<Deal[]> => {
+    const pageSize = params?.limit && params.limit > 0 ? params.limit : 500;
+    const deals: Deal[] = [];
+    let offset = params?.offset && params.offset > 0 ? params.offset : 0;
+    while (offset < 20000) {
+      const page = await dealsApi.list({ ...params, limit: pageSize, offset });
+      deals.push(...page);
+      if (page.length < pageSize) {
+        break;
+      }
+      offset += pageSize;
+    }
+    return deals;
   },
 
   listCategories: async (): Promise<DealCategory[]> => {
