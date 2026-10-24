@@ -1117,9 +1117,8 @@ const Deals = () => {
         apiParams.search = searchQuery.trim();
       }
       
-      // Load deals with filters applied
-      const data = await dealsApi.list(apiParams);
-      const dealList = Array.isArray(data) ? data : [];
+      // The board and the summary cards both use this list, so load every page.
+      const dealList = await dealsApi.listAll(apiParams);
       setDeals(dealList);
       setSelectedDealIds((prev) => {
         if (prev.size === 0) return prev;
@@ -1971,7 +1970,7 @@ const Deals = () => {
         // Reload both persons and deals to ensure we have the latest data
         const [personsPage, dealsData] = await Promise.all([
           personsApi.list({ page: 0, size: 200, sort: 'name,asc' }),
-          dealsApi.list()
+          dealsApi.listAll()
         ]);
         
         setPersons(personsPage.content ?? []);
