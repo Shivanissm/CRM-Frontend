@@ -15,8 +15,7 @@ export function areAllActivitiesDone(
 }
 
 export async function fetchDealActivities(dealId: number): Promise<Activity[]> {
-  const response = await activitiesApi.list({ page: 0, size: 10000 });
-  return (response.content || []).filter((activity) => activity.dealId === dealId);
+  return activitiesApi.listByDeal(dealId);
 }
 
 export async function shouldPromptNewActivityAfterDone(

@@ -155,6 +155,7 @@ export interface ActivityFilters {
   status?: ActivityStatus;
   callType?: ActivityCallType;
   done?: boolean;
+  dealId?: number;
   page?: number;
   size?: number;
   sort?: string;
@@ -181,6 +182,22 @@ export const activitiesApi = {
   // Accept an optional AbortSignal so callers can cancel in‑flight requests
   list: (params: ActivityFilters, options?: { signal?: AbortSignal }) =>
     api.get<PageResponse<Activity>>('', { params, signal: options?.signal }).then(r => r.data),
+  listByDeal: async (dealId: number): Promise<Activity[]> => {
+    const pageSize = 200;
+    const activities: Activity[] = [];
+    let page = 0;
+    while (page < 20) {
+      const response = await activitiesApi.list({ dealId, page, size: pageSize });
+      const rows = response.content || [];
+      activities.push(...rows);
+      const totalPages = response.totalPages ?? 1;
+      if (rows.length < pageSize || page + 1 >= totalPages) {
+        break;
+      }
+      page += 1;
+    }
+    return activities;
+  },
   // Aggregated counts for summary cards/badges.
   summary: (params: ActivityFilters, options?: { signal?: AbortSignal }) =>
     api.get<ActivitiesSummary>('/summary', { params, signal: options?.signal }).then(r => r.data),

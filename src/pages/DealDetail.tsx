@@ -438,11 +438,7 @@ export default function DealDetail() {
   const loadActivities = async (dealId: number) => {
     setLoadingActivities(true);
     try {
-      const response = await activitiesApi.list({ page: 0, size: 100 });
-      // Filter to ensure only activities for this specific deal are shown
-      const dealActivities = (response.content || []).filter(
-        (activity) => activity.dealId === dealId
-      );
+      const dealActivities = await activitiesApi.listByDeal(dealId);
       setActivities(dealActivities);
     } catch (error) {
       console.error('Failed to load activities:', error);
@@ -866,11 +862,7 @@ export default function DealDetail() {
     if (!isQualified) return false;
 
     try {
-      // Get all activities - we'll filter by dealId in the response
-      const activitiesResponse = await activitiesApi.list({ page: 0, size: 1000 });
-      const allActivities = activitiesResponse.content || [];
-      // Filter activities for this deal
-      const dealActivities = allActivities.filter(activity => activity.dealId === deal.id);
+      const dealActivities = await activitiesApi.listByDeal(deal.id);
 
       // Check for the two required activities
       const requiredActivities = ['Make first call', 'Send Quotes'];
@@ -999,22 +991,14 @@ export default function DealDetail() {
     if (deal.personId) {
       person = persons.find(p => p.id === deal.personId) || null;
       if (!person || !person.phone) {
-        console.log(`[createQualifiedStageActivities] Person not found in local array or missing phone, fetching from API...`);
         try {
-          const personsResponse = await personsApi.list({ page: 0, size: 1000 });
-          const allPersons = personsResponse.content || [];
-          const foundPerson = allPersons.find(p => p.id === deal.personId);
-          if (foundPerson) {
-            person = foundPerson;
-            console.log(`[createQualifiedStageActivities] Found person in API response:`, { id: person.id, name: person.name, phone: person.phone });
-          } else {
-            console.warn(`[createQualifiedStageActivities] Person ${deal.personId} not found in API response`);
-          }
+          person = await personsApi.get(deal.personId);
         } catch (err) {
-          console.warn(`[createQualifiedStageActivities] Failed to fetch persons from API:`, err);
+          console.warn(`[createQualifiedStageActivities] Failed to fetch person ${deal.personId}:`, err);
         }
       }
     }
+    const activityPhone = (person?.phone || deal.phoneNumber || '').trim();
     console.log(`[createQualifiedStageActivities] Person for deal ${deal.id}:`, person ? { id: person.id, name: person.name, phone: person.phone } : 'not found');
     const organization = organizations.find(o => o.id === deal.organizationId);
     console.log(`[createQualifiedStageActivities] Organization for deal ${deal.id}:`, organization ? { id: organization.id, name: organization.name } : 'not found');
@@ -1022,9 +1006,7 @@ export default function DealDetail() {
     // Check if activities already exist
     let dealActivities: Activity[] = [];
     try {
-      const activitiesResponse = await activitiesApi.list({ page: 0, size: 1000 });
-      const allActivities = activitiesResponse.content || [];
-      dealActivities = allActivities.filter(activity => activity.dealId === deal.id);
+      dealActivities = await activitiesApi.listByDeal(deal.id);
       const hasMakeFirstCall = dealActivities.some(a => a.subject === 'Make first call');
       const hasSendQuotes = dealActivities.some(a => a.subject === 'Send Quotes');
       
@@ -1037,8 +1019,8 @@ export default function DealDetail() {
       console.warn(`[createQualifiedStageActivities] Failed to check existing activities, proceeding with creation:`, checkErr);
     }
 
-    // Create activities only if person has a phone number
-    if (person && person.phone && person.phone.trim() !== '') {
+    // Create activities when the client or the deal has a phone number
+    if (activityPhone) {
       const today = new Date();
       const day = String(today.getDate()).padStart(2, '0');
       const month = String(today.getMonth() + 1).padStart(2, '0');
@@ -1057,6 +1039,7 @@ export default function DealDetail() {
           organization: organization?.name || null,
           assignedUser: assignedUserName,
           assignedUserId: assignedUserId || undefined,
+          phone: activityPhone,
           date: todayStr,
           dueDate: todayStr,
         });
@@ -1074,12 +1057,13 @@ export default function DealDetail() {
           organization: organization?.name || null,
           assignedUser: assignedUserName,
           assignedUserId: assignedUserId || undefined,
+          phone: activityPhone,
           date: todayStr,
           dueDate: todayStr,
         });
       }
     } else {
-      console.warn(`[createQualifiedStageActivities] Person ${deal.personId} has no phone number, skipping activity creation`);
+      console.warn(`[createQualifiedStageActivities] Deal ${deal.id} has no phone number, skipping activity creation`);
     }
   };
 
