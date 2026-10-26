@@ -1640,8 +1640,7 @@ const Deals = () => {
     // Check if activities already exist to avoid duplicates
     let existingActivities: Activity[] = [];
     try {
-      const existingActivitiesResponse = await activitiesApi.list({ page: 0, size: 1000 });
-      existingActivities = (existingActivitiesResponse.content || []).filter((a: Activity) => a.dealId === deal.id);
+      existingActivities = await activitiesApi.listByDeal(deal.id);
       const hasMakeFirstCall = existingActivities.some((a: Activity) => a.subject === 'Make first call' && a.dealId === deal.id);
       const hasSendQuotes = existingActivities.some((a: Activity) => a.subject === 'Send Quotes' && a.dealId === deal.id);
       
@@ -1732,11 +1731,7 @@ const Deals = () => {
     if (!isQualified) return false;
 
     try {
-      // Get all activities - we'll filter by dealId in the response
-      const activitiesResponse = await activitiesApi.list({ page: 0, size: 1000 });
-      const allActivities = activitiesResponse.content || [];
-      // Filter activities for this deal
-      const dealActivities = allActivities.filter(activity => activity.dealId === deal.id);
+      const dealActivities = await activitiesApi.listByDeal(deal.id);
 
       // Check for the two required activities
       const requiredActivities = ['Make first call', 'Send Quotes'];
