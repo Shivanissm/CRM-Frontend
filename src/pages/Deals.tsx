@@ -353,6 +353,8 @@ const Deals = () => {
   const [filteredPersons, setFilteredPersons] = useState<Person[]>([]);
   const personInputRef = useRef<HTMLInputElement>(null);
   const personSuggestionsRef = useRef<HTMLDivElement>(null);
+  const personSearchTimerRef = useRef<number | null>(null);
+  const personSearchSeqRef = useRef(0);
   const [isAddPersonModalOpen, setIsAddPersonModalOpen] = useState(false);
   const [newPersonName, setNewPersonName] = useState<string>('');
   const [pendingDoneActivity, setPendingDoneActivity] = useState<Activity | null>(null);
@@ -3112,6 +3114,47 @@ const Deals = () => {
     navigate(location.pathname, { replace: true, state: {} });
   };
 
+  const queuePersonSearch = (nameQuery: string, phoneQueryRaw: string, instaQuery: string) => {
+    if (personSearchTimerRef.current) {
+      window.clearTimeout(personSearchTimerRef.current);
+    }
+    const name = nameQuery.trim();
+    const phone = phoneQueryRaw.trim();
+    const insta = instaQuery.trim().replace(/^@/, '');
+    if (!name && !phone && !insta) {
+      personSearchSeqRef.current += 1;
+      setFilteredPersons([]);
+      setShowPersonSuggestions(false);
+      return;
+    }
+    setShowPersonSuggestions(true);
+    personSearchTimerRef.current = window.setTimeout(() => {
+      const seq = ++personSearchSeqRef.current;
+      const q = name || phone.replace(/\s+/g, '') || insta;
+      void personsApi.list({ q, page: 0, size: 50, sort: 'name,asc' }).then((page) => {
+        if (seq !== personSearchSeqRef.current) return;
+        const nameKey = name.toLowerCase();
+        const phoneKey = phone.toLowerCase().replace(/\s+/g, '');
+        const instaKey = insta.toLowerCase();
+        const matches = (page.content ?? []).filter((person) => {
+          const personName = person.name?.toLowerCase() ?? '';
+          const personPhone = (person.phone ?? '').toLowerCase().replace(/\s+/g, '');
+          const personInstagram = (person.instagramId ?? '').toLowerCase().replace(/^@/, '');
+          const personEmail = person.email?.toLowerCase() ?? '';
+          if (nameKey && !personName.includes(nameKey) && !personEmail.includes(nameKey)) return false;
+          if (phoneKey && !personPhone.includes(phoneKey)) return false;
+          if (instaKey && !personInstagram.includes(instaKey)) return false;
+          return true;
+        });
+        setFilteredPersons(matches);
+        setShowPersonSuggestions(true);
+      }).catch((err) => {
+        if (seq !== personSearchSeqRef.current) return;
+        console.error('Failed to search persons', err);
+      });
+    }, 250);
+  };
+
   const handleInputChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = event.target;
     setFormData((prev) => {
@@ -3170,57 +3213,20 @@ const Deals = () => {
         }
       }
       
-      // If any of the person-identifying fields are being changed, filter persons for autocomplete
-      // We support searching by name, phone, instagramId, or email using three separate inputs:
-      //  - personName
-      //  - personPhone
-      //  - personInstagramId
+      // Typing a different name, phone, or Instagram id clears a previously picked person.
       if (name === 'personName' || name === 'personPhone' || name === 'personInstagramId') {
-        const nameQuery = (name === 'personName' ? value : newData.personName || '').toLowerCase().trim();
-        const phoneQueryRaw = (name === 'personPhone' ? value : newData.personPhone || '');
-        const phoneQuery = phoneQueryRaw.toLowerCase().replace(/\s+/g, '');
-        const instaQuery = (name === 'personInstagramId' ? value : newData.personInstagramId || '').toLowerCase().trim();
-
-        // If all three fields are empty, clear suggestions
-        if (!nameQuery && !phoneQuery && !instaQuery) {
-          setFilteredPersons([]);
-          setShowPersonSuggestions(false);
-        } else {
-          const filtered = persons.filter(p => {
-            const personName = p.name?.toLowerCase() ?? '';
-            const personPhoneRaw = p.phone ?? '';
-            const personPhone = personPhoneRaw.toLowerCase().replace(/\s+/g, '');
-            const personInstagram = p.instagramId?.toLowerCase() ?? '';
-            const personEmail = p.email?.toLowerCase() ?? '';
-
-            // For each non-empty query, require a match; empty queries are ignored
-            if (nameQuery && !personName.includes(nameQuery)) return false;
-            if (phoneQuery && !(personPhone.includes(phoneQuery) || personPhoneRaw.toLowerCase().includes(phoneQueryRaw.toLowerCase()))) return false;
-            if (instaQuery && !personInstagram.includes(instaQuery)) return false;
-
-            // Also allow matching by email when only name is provided to keep existing behavior
-            if (!nameQuery && !phoneQuery && instaQuery) {
-              // already checked insta above, nothing extra
-              return true;
-            }
-
-            if (nameQuery && !phoneQuery && !instaQuery) {
-              // name-only search should consider email like before
-              const nameMatches = personName.includes(nameQuery);
-              const emailMatches = personEmail.includes(nameQuery);
-              return nameMatches || emailMatches;
-            }
-
-            return true;
-          });
-
-          setFilteredPersons(filtered);
-          setShowPersonSuggestions(true); // Always show suggestions to allow "Create new person" option
-        }
+        newData.personId = '';
       }
       
       return newData;
     });
+
+    if (name === 'personName' || name === 'personPhone' || name === 'personInstagramId') {
+      const nameQuery = name === 'personName' ? value : formData.personName;
+      const phoneQuery = name === 'personPhone' ? value : formData.personPhone;
+      const instaQuery = name === 'personInstagramId' ? value : formData.personInstagramId;
+      queuePersonSearch(nameQuery, phoneQuery, instaQuery);
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -3253,12 +3259,19 @@ const Deals = () => {
     let personHasPhone = false;
     if (formData.personName.trim()) {
       const searchName = formData.personName.toLowerCase().trim();
-      console.log(`Looking for person with name: "${formData.personName}" (normalized: "${searchName}")`);
-      console.log(`Available persons (${persons.length}):`, persons.map(p => ({ id: p.id, name: p.name, phone: p.phone })));
-      
-      const foundPerson = persons.find(
-        (p) => p.name.toLowerCase().trim() === searchName
-      );
+      const selectedId = Number(formData.personId);
+      let foundPerson = Number.isFinite(selectedId) && selectedId > 0
+        ? filteredPersons.find((p) => p.id === selectedId) || persons.find((p) => p.id === selectedId)
+        : persons.find((p) => p.name.toLowerCase().trim() === searchName);
+
+      if (!foundPerson) {
+        try {
+          const page = await personsApi.list({ q: formData.personName.trim(), page: 0, size: 50, sort: 'name,asc' });
+          foundPerson = (page.content ?? []).find((p) => p.name.toLowerCase().trim() === searchName);
+        } catch (err) {
+          console.error('Failed to look up person before creating a deal', err);
+        }
+      }
       
       if (foundPerson) {
         personId = foundPerson.id;
@@ -5436,7 +5449,7 @@ const Deals = () => {
                             enteredInstagram.length > 0;
 
                           // Consider we have an "exact" person if all non-empty fields match
-                          const hasExactMatch = persons.some((p) => {
+                          const hasExactMatch = filteredPersons.some((p) => {
                             if (enteredName && p.name.trim().toLowerCase() !== enteredName.toLowerCase()) return false;
                             if (enteredPhone && (p.phone || '').trim() !== enteredPhone) return false;
                             if (enteredInstagram && (p.instagramId || '').trim().toLowerCase() !== enteredInstagram.toLowerCase()) return false;
