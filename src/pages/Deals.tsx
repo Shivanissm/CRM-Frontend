@@ -259,11 +259,9 @@ const Deals = () => {
   const sortDropdownRef = useRef<HTMLDivElement>(null);
   const [isDateRangeModalOpen, setIsDateRangeModalOpen] = useState(false);
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>(() => {
-    // Default to "Last 7 days"
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const startDate = new Date(today);
-    startDate.setDate(startDate.getDate() - 7);
+    const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
     const endDate = new Date(today);
     endDate.setHours(23, 59, 59, 999);
     return {
@@ -271,7 +269,7 @@ const Deals = () => {
       end: formatDateYYYYMMDD(endDate),
     };
   });
-  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('Last 7 days');
+  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('This month');
   const [isDateRangeDropdownOpen, setIsDateRangeDropdownOpen] = useState(false);
   const dateRangeDropdownRef = useRef<HTMLDivElement>(null);
 
