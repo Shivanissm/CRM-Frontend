@@ -104,8 +104,6 @@ const labelsApi = {
 import type { PipelineRequest, PipelineUpdateRequest } from '../types/pipeline';
 import { usersApi } from '../services/users';
 import type { User } from '../types/user';
-import { teamsApi } from '../services/teams';
-import type { Team } from '../types/team';
 
 // Helper function to format date as YYYY-MM-DD
 const formatDateYYYYMMDD = (date: Date): string => {
@@ -205,7 +203,6 @@ const Deals = () => {
   const [persons, setPersons] = useState<Person[]>([]);
   const [managers, setManagers] = useState<PersonOwner[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [showErrorToast, setShowErrorToast] = useState(false);
@@ -1471,12 +1468,6 @@ const Deals = () => {
         console.error('Failed to load users', err);
       }
 
-      try {
-        const teamsData = await teamsApi.list();
-        setTeams(teamsData);
-      } catch (err) {
-        console.error('Failed to load teams', err);
-      }
     };
 
     fetchReferenceData();
@@ -1485,234 +1476,6 @@ const Deals = () => {
   }, []);
 
   // Function to get team manager from pipeline
-  const getTeamManagerFromPipeline = useCallback((pipeline: Pipeline): number | null => {
-    if (!pipeline.teamId) return null;
-    
-    // Find the team in the teams list
-    const team = teams.find(t => t.id === pipeline.teamId);
-    if (!team || !team.manager) return null;
-    
-    return team.manager.id;
-  }, [teams]);
-
-  // Function to create activities when deal is moved to Qualified stage
-  const createQualifiedStageActivities = useCallback(async (deal: Deal) => {
-    console.log(`[createQualifiedStageActivities] Called for deal ${deal.id}`);
-    
-    if (!deal.pipelineId) {
-      console.warn(`[createQualifiedStageActivities] Deal ${deal.id} has no pipelineId, skipping activity creation`);
-      return;
-    }
-
-    const pipeline = pipelines.find(p => p.id === deal.pipelineId);
-    if (!pipeline) {
-      console.warn(`[createQualifiedStageActivities] Pipeline ${deal.pipelineId} not found for deal ${deal.id}, skipping activity creation`);
-      return;
-    }
-
-    // Get user for activity assignment (with fallbacks)
-    let assignedUserName = 'Unassigned';
-    let assignedUserId: number | null = null;
-    
-    // Helper function to get user display name
-    const getUserDisplayName = (user: User) => {
-      const first = (user.firstName || '').trim();
-      const last = (user.lastName || '').trim();
-      const fullName = [first, last].filter(Boolean).join(' ');
-      return fullName || user.email || `User ${user.id}`;
-    };
-    
-    // Helper function to fetch user by ID if not in local array
-    const getUserById = async (userId: number): Promise<User | null> => {
-      // First try local users array (filtered to SALES/PRESALES)
-      let user = users.find(u => u.id === userId);
-      if (user) {
-        return user;
-      }
-      
-      // If not found, fetch all users and try again
-      try {
-        console.log(`[createQualifiedStageActivities] User ${userId} not in local array, fetching all users...`);
-        const allUsers = await usersApi.list();
-        user = allUsers.find(u => u.id === userId);
-        if (user) {
-          console.log(`[createQualifiedStageActivities] Found user ${userId} in API: ${user.firstName} ${user.lastName}`);
-          return user;
-        }
-      } catch (err) {
-        console.error(`[createQualifiedStageActivities] Failed to fetch user ${userId}:`, err);
-      }
-      
-      return null;
-    };
-    
-    // PRIMARY: Try to get team manager from pipeline's team
-    const teamManagerId = getTeamManagerFromPipeline(pipeline);
-    if (teamManagerId) {
-      const teamManager = await getUserById(teamManagerId);
-      if (teamManager) {
-        assignedUserName = getUserDisplayName(teamManager);
-        assignedUserId = teamManager.id;
-        console.log(`[createQualifiedStageActivities] Assigned user for activities (team manager): ${assignedUserName} (ID: ${assignedUserId})`);
-      } else {
-        console.warn(`[createQualifiedStageActivities] Team manager user ${teamManagerId} not found`);
-      }
-    } else {
-      console.warn(`[createQualifiedStageActivities] No team manager found for pipeline ${pipeline.id}`);
-    }
-    
-    // FALLBACK 1: Try to use deal owner if team manager not found
-    if (!assignedUserId && deal.ownerId) {
-      const dealOwner = await getUserById(deal.ownerId);
-      if (dealOwner) {
-        assignedUserName = getUserDisplayName(dealOwner);
-        assignedUserId = dealOwner.id;
-        console.log(`[createQualifiedStageActivities] Assigned user for activities (deal owner fallback): ${assignedUserName} (ID: ${assignedUserId})`);
-      } else {
-        console.warn(`[createQualifiedStageActivities] Deal owner user ${deal.ownerId} not found`);
-      }
-    }
-    
-    // FALLBACK 2: Try to use organization owner if deal owner not found
-    if (!assignedUserId && deal.organizationId) {
-      const organization = organizations.find(o => o.id === deal.organizationId);
-      if (organization && organization.owner && organization.owner.id) {
-        const orgOwner = await getUserById(organization.owner.id);
-        if (orgOwner) {
-          assignedUserName = getUserDisplayName(orgOwner);
-          assignedUserId = orgOwner.id;
-          console.log(`[createQualifiedStageActivities] Assigned user for activities (organization owner fallback): ${assignedUserName} (ID: ${assignedUserId})`);
-        } else {
-          console.warn(`[createQualifiedStageActivities] Organization owner user ${organization.owner.id} not found`);
-        }
-      }
-    }
-    
-    // If still no user assigned, log error
-    if (!assignedUserId) {
-      console.error(`[createQualifiedStageActivities] CRITICAL: Cannot assign activities for deal ${deal.id} - no team manager, deal owner, or organization owner found. Pipeline: ${pipeline.id}, Team: ${pipeline.teamId}, Deal Owner: ${deal.ownerId}, Organization: ${deal.organizationId}`);
-    }
-
-
-    // Get today's date in DD/MM/YYYY format (matching ActivitiesList filter format)
-    const today = new Date();
-    const day = String(today.getDate()).padStart(2, '0');
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const year = today.getFullYear();
-    const todayStr = `${day}/${month}/${year}`;
-
-    // Get person details for the activities
-    // Try to find person in local array first
-    let person = persons.find(p => p.id === deal.personId);
-    
-    // If person not found or missing phone, try to fetch all persons in a single call
-    if ((!person || !person.phone) && deal.personId) {
-      console.log(`[createQualifiedStageActivities] Person not found in local array or missing phone, fetching from API...`);
-      try {
-        // Fetch all persons in a single call instead of individual call
-        const personsPage = await personsApi.list({ page: 0, size: 1000, sort: 'name,asc' });
-        const allPersons = personsPage.content || [];
-        person = allPersons.find(p => p.id === deal.personId);
-        if (person) {
-          console.log(`[createQualifiedStageActivities] Found person in API response:`, { id: person.id, name: person.name, phone: person.phone });
-          // Update local persons state for future use
-          setPersons(prev => {
-            const existing = prev.find(p => p.id === person!.id);
-            if (!existing) {
-              return [...prev, person!];
-            }
-            return prev.map(p => p.id === person!.id ? person! : p);
-          });
-        } else {
-          console.warn(`[createQualifiedStageActivities] Person ${deal.personId} not found in API response`);
-        }
-      } catch (err) {
-        console.warn(`[createQualifiedStageActivities] Failed to fetch persons from API:`, err);
-        // Continue with person from local array or null
-      }
-    }
-    
-    const organization = organizations.find(o => o.id === deal.organizationId);
-
-    console.log(`[createQualifiedStageActivities] Person for deal ${deal.id}:`, person ? { id: person.id, name: person.name, phone: person.phone } : 'not found');
-    console.log(`[createQualifiedStageActivities] Organization for deal ${deal.id}:`, organization ? { id: organization.id, name: organization.name } : 'not found');
-
-    // Check if activities already exist to avoid duplicates
-    let existingActivities: Activity[] = [];
-    try {
-      existingActivities = await activitiesApi.listByDeal(deal.id);
-      const hasMakeFirstCall = existingActivities.some((a: Activity) => a.subject === 'Make first call' && a.dealId === deal.id);
-      const hasSendQuotes = existingActivities.some((a: Activity) => a.subject === 'Send Quotes' && a.dealId === deal.id);
-      
-      if (hasMakeFirstCall && hasSendQuotes) {
-        console.log(`[createQualifiedStageActivities] Activities already exist for deal ${deal.id}, skipping creation`);
-        return;
-      }
-      
-      console.log(`[createQualifiedStageActivities] Existing activities check: Make first call=${hasMakeFirstCall}, Send Quotes=${hasSendQuotes}`);
-    } catch (checkErr) {
-      console.warn(`[createQualifiedStageActivities] Failed to check existing activities, proceeding with creation:`, checkErr);
-    }
-
-    try {
-      // Create "Make first call" activity
-      if (!existingActivities.some((a: Activity) => a.subject === 'Make first call' && a.dealId === deal.id)) {
-        console.log(`[createQualifiedStageActivities] Creating "Make first call" activity for deal ${deal.id}`);
-        const callActivity = await activitiesApi.create({
-        subject: 'Make first call',
-        type: 'CALL',
-        category: 'CALL',
-        priority: 'MEDIUM',
-        assignedUser: assignedUserName,
-        assignedUserId: assignedUserId || undefined,
-        date: todayStr,
-        dueDate: todayStr,
-        personId: deal.personId || null,
-        dealId: deal.id,
-        organizationId: deal.organizationId || null,
-        organization: organization?.name || null,
-        phone: person?.phone || null,
-        instagramId: person?.instagramId || null,
-      });
-        console.log(`[createQualifiedStageActivities] ✓ Created "Make first call" activity:`, callActivity);
-      } else {
-        console.log(`[createQualifiedStageActivities] "Make first call" activity already exists for deal ${deal.id}, skipping`);
-      }
-
-      // Create "Send Quotes" activity
-      if (!existingActivities.some((a: Activity) => a.subject === 'Send Quotes' && a.dealId === deal.id)) {
-        console.log(`[createQualifiedStageActivities] Creating "Send Quotes" activity for deal ${deal.id}`);
-        const quoteActivity = await activitiesApi.create({
-        subject: 'Send Quotes',
-        type: 'ACTIVITY',
-        category: 'ACTIVITY',
-        priority: 'MEDIUM',
-        assignedUser: assignedUserName,
-        assignedUserId: assignedUserId || undefined,
-        date: todayStr,
-        dueDate: todayStr,
-        personId: deal.personId || null,
-        dealId: deal.id,
-        organizationId: deal.organizationId || null,
-        organization: organization?.name || null,
-        phone: person?.phone || null,
-        instagramId: person?.instagramId || null,
-      });
-        console.log(`[createQualifiedStageActivities] ✓ Created "Send Quotes" activity:`, quoteActivity);
-      } else {
-        console.log(`[createQualifiedStageActivities] "Send Quotes" activity already exists for deal ${deal.id}, skipping`);
-      }
-
-      console.log(`[createQualifiedStageActivities] ✓✓✓ Successfully processed activities for deal ${deal.id} in Qualified stage`);
-      // Reload activities to update the warning icon
-      await loadActivities();
-    } catch (err: any) {
-      console.error(`[createQualifiedStageActivities] ❌ Failed to create activities for deal ${deal.id}:`, err);
-      console.error('[createQualifiedStageActivities] Error response:', err?.response?.data);
-      console.error('[createQualifiedStageActivities] Error message:', err?.message);
-    }
-  }, [pipelines, teams, persons, organizations, users, getTeamManagerFromPipeline, loadActivities]);
-
   // Function to check if a deal has incomplete required activities
   const checkIncompleteActivities = useCallback(async (deal: Deal): Promise<boolean> => {
     if (!deal.pipelineId || !deal.stageId) return false;
@@ -1829,19 +1592,17 @@ const Deals = () => {
         }
       }
 
-      // Process each person that has a phone number
+      // Move Lead In deals once a phone exists on the person or on the deal
       for (const [personId, person] of personMap.entries()) {
-        // Only process persons that have a phone number
-        if (!person.phone || person.phone.trim().length === 0) {
-          console.log(`[checkAndMoveDeals] Person ${personId} (${person.name}) has no phone, skipping`);
-          continue;
-        }
-
-        // Find all deals for this person that are in "Lead In" stage
         const personDeals = deals.filter(deal => deal.personId === personId);
         console.log(`[checkAndMoveDeals] Person ${personId} (${person.name}) has ${personDeals.length} deals`);
         
         for (const deal of personDeals) {
+          const personPhone = (person.phone || '').trim();
+          const dealPhone = (deal.phoneNumber || '').trim();
+          if (!personPhone && !dealPhone) {
+            continue;
+          }
           if (!deal.pipelineId || !deal.stageId) continue;
 
           const pipeline = pipelines.find(p => p.id === deal.pipelineId);
@@ -1866,24 +1627,8 @@ const Deals = () => {
               try {
                 // Move deal to "Qualified" stage
                 console.log(`[checkAndMoveDeals] Moving deal ${deal.id} from Lead In to Qualified stage`);
-                const updatedDeal = await dealsApi.moveToStage(deal.id, { stageId: qualifiedStage.id });
+                await dealsApi.moveToStage(deal.id, { stageId: qualifiedStage.id });
                 needsReload = true;
-                
-                console.log(`[checkAndMoveDeals] Deal ${deal.id} moved to Qualified stage, creating activities...`);
-                // Create activities for the deal in Qualified stage
-                // Only create activities from frontend if deal was NOT created by bot
-                if (updatedDeal.createdBy !== 'BOT') {
-                  try {
-                    await createQualifiedStageActivities(updatedDeal);
-                    console.log(`[checkAndMoveDeals] Activities creation completed for deal ${deal.id}`);
-                  } catch (activityErr: any) {
-                    console.error(`[checkAndMoveDeals] Failed to create activities for deal ${deal.id}:`, activityErr);
-                    console.error('[checkAndMoveDeals] Activity error details:', activityErr?.response?.data || activityErr?.message);
-                    // Don't throw - we still want the deal to be moved even if activities fail
-                  }
-                } else {
-                  console.log(`[checkAndMoveDeals] Deal ${deal.id} was created by BOT, skipping frontend activity creation`);
-                }
               } catch (err: any) {
                 console.error(`[checkAndMoveDeals] Failed to move deal ${deal.id} to Qualified stage:`, err);
                 console.error('[checkAndMoveDeals] Error details:', err?.response?.data || err?.message);
@@ -1896,11 +1641,12 @@ const Deals = () => {
       // Reload deals only if we made changes
       if (needsReload) {
         await loadDeals();
+        await loadActivities();
       }
     } finally {
       processingMovesRef.current = false;
     }
-  }, [deals, persons, pipelines, loading, loadDeals, createQualifiedStageActivities]);
+  }, [deals, persons, pipelines, loading, loadDeals, loadActivities]);
 
   // Monitor deals and persons for changes and trigger deal movement
   // Since we fetch person data from API in checkAndMoveDeals, we can trigger on deals changes too
@@ -1908,7 +1654,7 @@ const Deals = () => {
     if (!deals.length || !pipelines.length || loading) return;
     
     // Create a hash of deal IDs and stage IDs to detect changes
-    const dealsHash = deals.map(d => `${d.id}:${d.stageId || ''}:${d.personId || ''}`).join('|');
+    const dealsHash = deals.map(d => `${d.id}:${d.stageId || ''}:${d.personId || ''}:${d.phoneNumber || ''}`).join('|');
     
     // Also check persons hash if persons array is available
     const personsHash = persons.length > 0 
@@ -3478,22 +3224,7 @@ const Deals = () => {
       };
       const createdDeal = await dealsApi.create(createPayload);
       await loadDeals(createdDeal.id);
-      
-      // Check if deal was created in Qualified stage and create activities
-      // Only create activities from frontend if deal was NOT created by bot
-      if (createdDeal.pipelineId && createdDeal.stageId && createdDeal.createdBy !== 'BOT') {
-        const pipeline = pipelines.find(p => p.id === createdDeal.pipelineId);
-        if (pipeline) {
-          const currentStage = pipeline.stages.find(s => s.id === createdDeal.stageId);
-          if (currentStage) {
-            const stageName = currentStage.name.toLowerCase().trim();
-            const isQualified = stageName === 'qualified';
-            if (isQualified) {
-              await createQualifiedStageActivities(createdDeal);
-            }
-          }
-        }
-      }
+      await loadActivities();
       
       setIsModalOpen(false);
       setFormData(initialFormState);
@@ -3777,40 +3508,10 @@ const Deals = () => {
 
     setActionInFlight({ dealId, type: 'stage' });
     try {
-      // Store the original stage before moving to check if we're moving back to Qualified
-      const originalStage = pipeline?.stages.find(s => s.id === deal.stageId);
-      const qualifiedStage = pipeline?.stages.find(s => {
-        const sName = s.name.toLowerCase().trim();
-        return sName === 'qualified';
-      });
-      
       const updatedDeal = await dealsApi.moveToStage(dealId, { stageId });
       setDeals((prev) => prev.map((deal) => (deal.id === dealId ? updatedDeal : deal)));
       setSelectedDeal((prev) => (prev && prev.id === dealId ? updatedDeal : prev));
-      
-      // Check if deal was moved to Qualified stage and create activities
-      // Only create activities if:
-      // 1. The deal was NOT previously in a stage after Qualified (i.e., not moving back)
-      // 2. This means: original stage order should be <= qualified stage order (or original stage is null/undefined)
-      if (updatedDeal.pipelineId && updatedDeal.stageId) {
-        const pipeline = pipelines.find(p => p.id === updatedDeal.pipelineId);
-        if (pipeline) {
-          const currentStage = pipeline.stages.find(s => s.id === updatedDeal.stageId);
-          if (currentStage) {
-            const stageName = currentStage.name.toLowerCase().trim();
-            const isQualified = stageName === 'qualified';
-            if (isQualified && qualifiedStage) {
-              // Only create activities if we're NOT moving back from a later stage
-              // If originalStage exists and its order is greater than qualified stage order, skip activity creation
-              // Also only create activities from frontend if deal was NOT created by bot
-              const isMovingBackToQualified = originalStage && originalStage.order > qualifiedStage.order;
-              if (!isMovingBackToQualified && updatedDeal.createdBy !== 'BOT') {
-                await createQualifiedStageActivities(updatedDeal);
-              }
-            }
-          }
-        }
-      }
+      await loadActivities();
     } catch (err: any) {
       const message = err?.response?.data?.message || err?.message || 'Failed to update stage.';
       setError(message);
