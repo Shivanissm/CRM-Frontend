@@ -258,7 +258,8 @@ const Deals = () => {
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() - 30);
     const endDate = new Date(today);
     endDate.setHours(23, 59, 59, 999);
     return {
@@ -266,7 +267,7 @@ const Deals = () => {
       end: formatDateYYYYMMDD(endDate),
     };
   });
-  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('This month');
+  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('Last 30 days');
   const [isDateRangeDropdownOpen, setIsDateRangeDropdownOpen] = useState(false);
   const dateRangeDropdownRef = useRef<HTMLDivElement>(null);
 
