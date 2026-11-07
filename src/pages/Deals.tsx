@@ -25,6 +25,7 @@ import axios from 'axios';
 import { getStoredToken } from '../utils/authToken';
 import { withApiBase } from '../config/api';
 import { getDisplayStageName } from '../utils/stageNames';
+import { formatIndiaDate, formatIndiaDateTime, parseIndiaDateTime } from '../utils/indiaTime';
 import { shouldPromptNewActivityAfterDone } from '../utils/dealActivities';
 
 // ==================== Label Types & Constants ====================
@@ -2004,36 +2005,11 @@ const Deals = () => {
   }, []);
 
   const formatDate = useCallback((dateString?: string | null) => {
-    if (!dateString) {
-      return '—';
-    }
-    const date = new Date(dateString);
-    if (Number.isNaN(date.getTime())) {
-      return dateString;
-    }
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    return formatIndiaDate(dateString);
   }, []);
 
   const formatDateTime = useCallback((dateString?: string | null) => {
-    if (!dateString) {
-      return '—';
-    }
-    const date = new Date(dateString);
-    if (Number.isNaN(date.getTime())) {
-      return dateString;
-    }
-    return date.toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
+    return formatIndiaDateTime(dateString);
   }, []);
 
   const organizationsById = useMemo(() => {
@@ -2047,6 +2023,13 @@ const Deals = () => {
     persons.forEach((person) => map.set(person.id, person));
     return map;
   }, [persons]);
+
+  const personLabel = useCallback((deal: Deal): string | null => {
+    const savedName = (deal.personName || '').trim();
+    if (savedName) return savedName;
+    if (!deal.personId) return null;
+    return personsById.get(deal.personId)?.name || null;
+  }, [personsById]);
 
   const pipelinesById = useMemo(() => {
     const map = new Map<number, Pipeline>();
@@ -2469,11 +2452,10 @@ const Deals = () => {
       // Filter by date range
       let dateMatch = true;
       if (dateRange.start && dateRange.end) {
-        const startDate = new Date(dateRange.start);
-        const endDate = new Date(dateRange.end);
-        endDate.setHours(23, 59, 59, 999); // Include the entire end date
-        const dealDate = new Date(deal.createdAt);
-        dateMatch = dealDate >= startDate && dealDate <= endDate;
+        const startDate = parseIndiaDateTime(`${dateRange.start}T00:00:00`);
+        const endDate = parseIndiaDateTime(`${dateRange.end}T23:59:59`);
+        const dealDate = parseIndiaDateTime(deal.createdAt);
+        dateMatch = !!startDate && !!endDate && !!dealDate && dealDate >= startDate && dealDate <= endDate;
       }
       
       const query = searchQuery.trim().toLowerCase();
@@ -4260,7 +4242,7 @@ const Deals = () => {
                         ) : (
                           stageDeals.map((deal) => {
                             const personName = deal.personId
-                              ? personsById.get(deal.personId)?.name ?? `Person ${deal.personId}`
+                              ? personLabel(deal)
                               : null;
                             const organizationName = deal.organizationId
                               ? organizationsById.get(deal.organizationId)?.name ?? `Organization ${deal.organizationId}`
@@ -4468,7 +4450,7 @@ const Deals = () => {
                         >
                           {unassignedDeals.map((deal) => {
                             const personName = deal.personId
-                              ? personsById.get(deal.personId)?.name ?? `Person ${deal.personId}`
+                              ? personLabel(deal)
                               : null;
                             const organizationName = deal.organizationId
                               ? organizationsById.get(deal.organizationId)?.name ?? `Organization ${deal.organizationId}`
@@ -4707,7 +4689,7 @@ const Deals = () => {
                       : null;
                     const isCalendarSynced = Boolean(deal.googleCalendarEventId);
                     const personName = deal.personId
-                      ? personsById.get(deal.personId)?.name ?? `Person ${deal.personId}`
+                      ? personLabel(deal)
                       : '—';
                     const categoryLabel =
                       deal.categoryId != null
@@ -4848,7 +4830,7 @@ const Deals = () => {
                   <span className="deal-detail-label">Client:</span>
                   <span className="deal-detail-value">
                     {selectedDeal.personId
-                      ? personsById.get(selectedDeal.personId)?.name ?? `Person ${selectedDeal.personId}`
+                      ? personLabel(selectedDeal)
                       : '—'}
                   </span>
                 </div>
