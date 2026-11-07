@@ -258,8 +258,7 @@ const Deals = () => {
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const startDate = new Date(today);
-    startDate.setDate(startDate.getDate() - 30);
+    const startDate = new Date(today.getFullYear(), today.getMonth(), 1);
     const endDate = new Date(today);
     endDate.setHours(23, 59, 59, 999);
     return {
@@ -267,7 +266,7 @@ const Deals = () => {
       end: formatDateYYYYMMDD(endDate),
     };
   });
-  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('Last 30 days');
+  const [selectedDateRangeOption, setSelectedDateRangeOption] = useState<string>('This month');
   const [isDateRangeDropdownOpen, setIsDateRangeDropdownOpen] = useState(false);
   const dateRangeDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -1524,122 +1523,38 @@ const Deals = () => {
     let needsReload = false;
 
     try {
-      // Get unique person IDs from deals
-      const personIds = new Set<number>();
-      deals.forEach(deal => {
-        if (deal.personId) {
-          personIds.add(deal.personId);
-        }
-      });
+      // Use people already loaded with the page. Do not request the person list from here:
+      // a partial page never contains every person, and asking again retriggers this check.
+      const personById = new Map(persons.map((person) => [person.id, person]));
 
-      // Use local persons data first, only fetch from API if we're missing person data
-      const personMap = new Map<number, Person>();
-      if (personIds.size > 0) {
-        // First, try to use local persons data
-        for (const personId of personIds) {
-          const localPerson = persons.find(p => p.id === personId);
-          if (localPerson) {
-            personMap.set(personId, localPerson);
-          }
-        }
-        
-        // Only fetch from API if we're missing any persons
-        const missingPersonIds = Array.from(personIds).filter(id => !personMap.has(id));
-        if (missingPersonIds.length > 0) {
+      for (const deal of deals) {
+        const person = deal.personId ? personById.get(deal.personId) : undefined;
+        const personPhone = (person?.phone || '').trim();
+        const dealPhone = (deal.phoneNumber || '').trim();
+        if (!personPhone && !dealPhone) continue;
+        if (!deal.pipelineId || !deal.stageId) continue;
+
+        const pipeline = pipelines.find(p => p.id === deal.pipelineId);
+        if (!pipeline) continue;
+
+        const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
+        if (!currentStage) continue;
+
+        const stageName = currentStage.name.toLowerCase().trim();
+        const isLeadIn = stageName === 'lead in' || stageName === 'leadin' || stageName === 'lead-in';
+        if (!isLeadIn) continue;
+
+        const qualifiedStage = pipeline.stages.find(s => s.name.toLowerCase().trim() === 'qualified');
+        if (qualifiedStage && qualifiedStage.id !== deal.stageId) {
           try {
-            console.log(`[checkAndMoveDeals] Missing ${missingPersonIds.length} persons in local data, fetching from API...`);
-            // Fetch all persons in a single API call
-            const personsPage = await personsApi.list({ page: 0, size: 1000, sort: 'name,asc' });
-            const allPersons = personsPage.content || [];
-            
-            // Add missing persons to the map
-            allPersons.forEach(person => {
-              if (missingPersonIds.includes(person.id)) {
-                personMap.set(person.id, person);
-                console.log(`[checkAndMoveDeals] Found person ${person.id}:`, { name: person.name, phone: person.phone });
-              }
-            });
-            
-            // Update local persons state with newly fetched persons
-            setPersons(prev => {
-              const updated = [...prev];
-              allPersons.forEach(person => {
-                if (missingPersonIds.includes(person.id)) {
-                  const existingIndex = updated.findIndex(p => p.id === person.id);
-                  if (existingIndex >= 0) {
-                    updated[existingIndex] = person;
-                  } else {
-                    updated.push(person);
-                  }
-                }
-              });
-              return updated;
-            });
-          } catch (err) {
-            console.warn(`[checkAndMoveDeals] Failed to fetch persons from API, using local data:`, err);
-            // Fall back to local person data for missing persons
-            for (const personId of missingPersonIds) {
-              if (!personMap.has(personId)) {
-                const localPerson = persons.find(p => p.id === personId);
-                if (localPerson) {
-                  personMap.set(personId, localPerson);
-                }
-              }
-            }
-          }
-        } else {
-          // All persons found in local data, no API call needed
-          console.log(`[checkAndMoveDeals] All ${personIds.size} persons found in local data, skipping API call`);
-        }
-      }
-
-      // Move Lead In deals once a phone exists on the person or on the deal
-      for (const [personId, person] of personMap.entries()) {
-        const personDeals = deals.filter(deal => deal.personId === personId);
-        console.log(`[checkAndMoveDeals] Person ${personId} (${person.name}) has ${personDeals.length} deals`);
-        
-        for (const deal of personDeals) {
-          const personPhone = (person.phone || '').trim();
-          const dealPhone = (deal.phoneNumber || '').trim();
-          if (!personPhone && !dealPhone) {
-            continue;
-          }
-          if (!deal.pipelineId || !deal.stageId) continue;
-
-          const pipeline = pipelines.find(p => p.id === deal.pipelineId);
-          if (!pipeline) continue;
-
-          // Find the current stage
-          const currentStage = pipeline.stages.find(s => s.id === deal.stageId);
-          if (!currentStage) continue;
-
-          // Check if deal is in "Lead In" stage
-          const stageName = currentStage.name.toLowerCase().trim();
-          const isLeadIn = stageName === 'lead in' || stageName === 'leadin' || stageName === 'lead-in';
-          
-          if (isLeadIn) {
-            // Find "Qualified" stage in the same pipeline
-            const qualifiedStage = pipeline.stages.find(s => {
-              const sName = s.name.toLowerCase().trim();
-              return sName === 'qualified';
-            });
-
-            if (qualifiedStage && qualifiedStage.id !== deal.stageId) {
-              try {
-                // Move deal to "Qualified" stage
-                console.log(`[checkAndMoveDeals] Moving deal ${deal.id} from Lead In to Qualified stage`);
-                await dealsApi.moveToStage(deal.id, { stageId: qualifiedStage.id });
-                needsReload = true;
-              } catch (err: any) {
-                console.error(`[checkAndMoveDeals] Failed to move deal ${deal.id} to Qualified stage:`, err);
-                console.error('[checkAndMoveDeals] Error details:', err?.response?.data || err?.message);
-              }
-            }
+            await dealsApi.moveToStage(deal.id, { stageId: qualifiedStage.id });
+            needsReload = true;
+          } catch (err: any) {
+            console.error(`[checkAndMoveDeals] Failed to move deal ${deal.id} to Qualified stage:`, err);
           }
         }
       }
 
-      // Reload deals only if we made changes
       if (needsReload) {
         await loadDeals();
         await loadActivities();
@@ -1649,8 +1564,10 @@ const Deals = () => {
     }
   }, [deals, persons, pipelines, loading, loadDeals, loadActivities]);
 
-  // Monitor deals and persons for changes and trigger deal movement
-  // Since we fetch person data from API in checkAndMoveDeals, we can trigger on deals changes too
+  const checkAndMoveDealsRef = useRef(checkAndMoveDeals);
+  checkAndMoveDealsRef.current = checkAndMoveDeals;
+
+  // Move a Lead In deal when its phone changes. This does not call the person list.
   useEffect(() => {
     if (!deals.length || !pipelines.length || loading) return;
     
@@ -1669,30 +1586,22 @@ const Deals = () => {
 
     // Debounce the check with a shorter delay for faster response
     const timeoutId = setTimeout(() => {
-      console.log('[useEffect] Triggering checkAndMoveDeals due to deals/persons change');
-      void checkAndMoveDeals();
-    }, 500); // Increased to 500ms to allow for API calls to complete
+      void checkAndMoveDealsRef.current();
+    }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [persons, deals, pipelines, loading, checkAndMoveDeals]);
+  }, [persons, deals, pipelines, loading]);
 
-  // Periodically check for deal movements (in case person was updated in another tab/page)
-  // This ensures we catch updates even if the persons array hasn't changed locally
+  // Catch a phone added in another tab. The callback identity must not restart this timer.
   useEffect(() => {
     if (!deals.length || !pipelines.length || loading) return;
-    
-    // Check immediately when deals/pipelines are loaded
-    console.log('[Periodic check] Initial checkAndMoveDeals on deals/pipelines load');
-    void checkAndMoveDeals();
-    
-    // Then check every 30 seconds if there are deals that might need to be moved (reduced frequency)
+
     const intervalId = setInterval(() => {
-      console.log('[Periodic check] Running periodic checkAndMoveDeals');
-      void checkAndMoveDeals();
-    }, 30000); // Check every 30 seconds instead of 5 seconds
+      void checkAndMoveDealsRef.current();
+    }, 30000);
 
     return () => clearInterval(intervalId);
-  }, [deals.length, pipelines.length, loading, checkAndMoveDeals]);
+  }, [deals.length, pipelines.length, loading]);
 
   // Refresh persons when window becomes active (in case person was updated in another tab/page)
   useEffect(() => {
@@ -1720,7 +1629,7 @@ const Deals = () => {
         
         // Wait a bit for state to update, then check and move deals immediately
         setTimeout(() => {
-          void checkAndMoveDeals();
+          void checkAndMoveDealsRef.current();
         }, 200);
       } catch (err) {
         console.error('Failed to refresh persons after update:', err);
@@ -1743,7 +1652,7 @@ const Deals = () => {
       window.removeEventListener('personUpdated', handlePersonUpdated);
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [checkAndMoveDeals]);
+  }, []);
 
   // Reload deals when sort changes (skip until the first load finishes)
   useEffect(() => {
@@ -6120,7 +6029,6 @@ const Deals = () => {
             }
           }}
           mode="create"
-          person={newPersonName ? { name: newPersonName, id: 0, organizationId: null, ownerId: null, createdAt: '', updatedAt: '' } as Person : null}
         />
       )}
 
