@@ -32,7 +32,8 @@ jobs:
       - name: Build frontend
         run: npm run build
         env:
-          NODE_OPTIONS: --max-old-space-size=2048
+          # Stay under the self-hosted runner's RAM. A 2GB heap was SIGKILLed (exit 137) during chunk rendering.
+          NODE_OPTIONS: --max-old-space-size=1536
 
       - name: Deploy to Nginx
         run: |

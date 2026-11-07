@@ -11,8 +11,10 @@ export default defineConfig({
   build: {
     outDir: outDir,
     assetsDir: 'assets',
+    reportCompressedSize: false,
     // Ensure proper MIME types for module scripts
     rollupOptions: {
+      maxParallelFileOps: 2,
       output: {
         // Ensure proper file extensions
         entryFileNames: 'assets/[name].[hash].js',
