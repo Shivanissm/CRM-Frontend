@@ -21,6 +21,7 @@ import Loader from '../components/Loader';
 import MarkAsLostModal from '../components/MarkAsLostModal';
 import DealValueModal from '../components/DealValueModal';
 import { getAllEventDates, normalizeEventDatesForRequest } from '../utils/dealDates';
+import { formatIndiaDate, formatIndiaDateTime, parseIndiaDateTime } from '../utils/indiaTime';
 import { shouldPromptNewActivityAfterDone } from '../utils/dealActivities';
 import './DealDetail.css';
 import { getDisplayStageName } from '../utils/stageNames';
@@ -371,24 +372,11 @@ export default function DealDetail() {
   };
 
   const formatDateForDisplay = (dateStr: string): string => {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return dateStr;
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return formatIndiaDate(dateStr, '');
   };
 
   const formatDateTimeForDisplay = (dateStr: string | null | undefined): string => {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return dateStr;
-    return date.toLocaleString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
+    return formatIndiaDateTime(dateStr, '');
   };
 
   const formatCurrency = (value: number | null | undefined): string => {
@@ -402,7 +390,7 @@ export default function DealDetail() {
 
   // Calculate deal age in days
   const calculateDealAge = (createdAt: string): number => {
-    const created = new Date(createdAt);
+    const created = parseIndiaDateTime(createdAt) ?? new Date(createdAt);
     const now = new Date();
     const diffTime = now.getTime() - created.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -419,7 +407,7 @@ export default function DealDetail() {
   // Calculate inactive days (when deal stays in any stage more than one day)
   // This means if the deal hasn't been updated in more than 1 day, it's inactive
   const calculateInactiveDays = (updatedAt: string | null | undefined, createdAt: string): number => {
-    const lastUpdate = updatedAt ? new Date(updatedAt) : new Date(createdAt);
+    const lastUpdate = parseIndiaDateTime(updatedAt) ?? parseIndiaDateTime(createdAt) ?? new Date(createdAt);
     const now = new Date();
     const diffTime = now.getTime() - lastUpdate.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -2209,13 +2197,7 @@ export default function DealDetail() {
                   <div className="deal-field-row">
                     <span className="deal-field-label">Created At</span>
                     <span className="deal-field-text">
-                      {new Date(deal.createdAt).toLocaleString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
+                      {formatIndiaDateTime(deal.createdAt, '')}
                     </span>
                   </div>
                 )}
