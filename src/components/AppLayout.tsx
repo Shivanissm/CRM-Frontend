@@ -1,21 +1,19 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
-import {
-  Home,
-  Users,
-  Briefcase,
-  ListTodo,
-  Building2,
-  UserCircle,
-  Target,
-  UsersRound,
-  LogOut,
-  Menu,
-  X,
-  ChevronRight,
-  type LucideIcon,
-} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import Home from 'lucide-react/dist/esm/icons/house';
+import Users from 'lucide-react/dist/esm/icons/users';
+import Briefcase from 'lucide-react/dist/esm/icons/briefcase';
+import ListTodo from 'lucide-react/dist/esm/icons/list-todo';
+import Building2 from 'lucide-react/dist/esm/icons/building-2';
+import UserCircle from 'lucide-react/dist/esm/icons/circle-user';
+import Target from 'lucide-react/dist/esm/icons/target';
+import UsersRound from 'lucide-react/dist/esm/icons/users-round';
+import LogOut from 'lucide-react/dist/esm/icons/log-out';
+import Menu from 'lucide-react/dist/esm/icons/menu';
+import X from 'lucide-react/dist/esm/icons/x';
+import ChevronRight from 'lucide-react/dist/esm/icons/chevron-right';
 import { clearAuthSession, getStoredUser } from '../utils/authToken';
 import './AppLayout.css';
 import { resolveRoleDashboardRoute } from '../utils/roleRoutes';
