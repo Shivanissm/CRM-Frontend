@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Person, PersonOwner, PersonRequest, FilterMeta, PersonCategory } from '../types/person';
 import { personsApi } from '../services/api';
@@ -67,6 +67,7 @@ export default function AddPersonModal({
   const [categories, setCategories] = useState<PersonCategory[]>([]);
   const [sources, setSources] = useState<Array<{ code: string; label: string }>>([]);
   const [subSources, setSubSources] = useState<Array<{ code: string; label: string }>>([]);
+  const formSessionRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -125,10 +126,16 @@ export default function AddPersonModal({
 
   useEffect(() => {
     if (!isOpen) {
+      formSessionRef.current = null;
       setShowSuccessConfirmation(false);
       setCreatedPersonName('');
       return;
     }
+
+    // Fill the form once per open. Parent re-renders must not wipe what the user already typed.
+    const sessionKey = `${mode}:${person?.id ?? 'new'}:${initialName ?? ''}`;
+    if (formSessionRef.current === sessionKey) return;
+    formSessionRef.current = sessionKey;
 
     setForm({
       name: person?.name || initialName || '',
@@ -145,7 +152,7 @@ export default function AddPersonModal({
     });
     setError(null);
     setSaving(false);
-  }, [isOpen, person, initialName]);
+  }, [isOpen, mode, person, initialName]);
 
   // Auto-select owner when organization is selected
   useEffect(() => {
