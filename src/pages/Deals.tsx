@@ -2113,11 +2113,8 @@ const Deals = () => {
       
       if (categoryMatches) {
         matchedDealsCount++;
-        if (deal.personId) {
-          const person = persons.find(p => p.id === deal.personId);
-          if (person?.ownerId) {
-            managerIds.add(person.ownerId);
-          }
+        if (deal.ownerId) {
+          managerIds.add(deal.ownerId);
         }
       }
     });
@@ -2133,7 +2130,7 @@ const Deals = () => {
     });
     
     return managers.filter(manager => managerIds.has(manager.id));
-  }, [managers, deals, persons, filterCategory, categoryLabelById, pipelines]);
+  }, [managers, deals, filterCategory, categoryLabelById, pipelines]);
 
   // Get custom pipeline order from localStorage
   const getOrderedPipelines = useCallback((pipelineList: Pipeline[]): Pipeline[] => {
@@ -2211,12 +2208,8 @@ const Deals = () => {
             }
           }
           
-          // Check if deal matches manager filter
-          const managerMatch = (() => {
-            if (!deal.personId) return false;
-            const person = persons.find(p => p.id === deal.personId);
-            return person?.ownerId === filterManager;
-          })();
+          // Match the deal owner, same as the backend manager filter.
+          const managerMatch = deal.ownerId === filterManager;
           
           if (categoryMatch && managerMatch) {
             pipelineIds.add(deal.pipelineId);
@@ -2227,7 +2220,7 @@ const Deals = () => {
     }
     
     return result;
-  }, [pipelines, deals, persons, filterCategory, filterManager, categoryLabelById, pipelineSearchQuery, getOrderedPipelines]);
+  }, [pipelines, deals, filterCategory, filterManager, categoryLabelById, pipelineSearchQuery, getOrderedPipelines]);
 
   // Reset manager filter if selected manager is not in filtered list when category changes
   // Only validate after data is loaded (managers array has items)
@@ -2442,12 +2435,8 @@ const Deals = () => {
         }
       }
       
-      // Filter by manager: check if the deal's person has the selected manager (ownerId)
-      const managerMatch = filterManager === null || (() => {
-        if (!deal.personId) return false;
-        const person = persons.find(p => p.id === deal.personId);
-        return person?.ownerId === filterManager;
-      })();
+      // Match the deal owner, same as the backend manager filter.
+      const managerMatch = filterManager === null || deal.ownerId === filterManager;
       
       // Filter by date range
       let dateMatch = true;
@@ -2489,7 +2478,7 @@ const Deals = () => {
     }
     
     return result;
-  }, [deals, filterStatus, filterOrganization, filterCategory, filterManager, searchQuery, persons, dateRange, categoryLabelById, pipelines]);
+  }, [deals, filterStatus, filterOrganization, filterCategory, filterManager, searchQuery, dateRange, categoryLabelById, pipelines]);
 
 
   // Get selected pipeline
