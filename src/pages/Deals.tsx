@@ -5017,29 +5017,20 @@ const Deals = () => {
                         )}
                           </>
                         )}
-                        {/* Show "Create new person" option if the entered person details don't exactly match an existing person */}
+                        {/* Always show "Create new person" when any contact field has text */}
                         {(() => {
                           const enteredName = formData.personName.trim();
                           const enteredPhone = formData.personPhone.trim();
                           const enteredInstagram = formData.personInstagramId.trim();
-
                           const hasAnyEntered =
                             enteredName.length > 0 ||
                             enteredPhone.length > 0 ||
                             enteredInstagram.length > 0;
 
-                          // Consider we have an "exact" person if all non-empty fields match
-                          const hasExactMatch = filteredPersons.some((p) => {
-                            if (enteredName && p.name.trim().toLowerCase() !== enteredName.toLowerCase()) return false;
-                            if (enteredPhone && (p.phone || '').trim() !== enteredPhone) return false;
-                            if (enteredInstagram && (p.instagramId || '').trim().toLowerCase() !== enteredInstagram.toLowerCase()) return false;
-                            return hasAnyEntered;
-                          });
+                          if (!hasAnyEntered) return null;
 
-                          // Show "Create new person" if something is entered and there's no exact match
-                          if (hasAnyEntered && !hasExactMatch) {
-                            const displayLabel = enteredName || enteredPhone || enteredInstagram;
-                            return (
+                          const displayLabel = enteredName || enteredPhone || enteredInstagram;
+                          return (
                               <div
                                 className="form-person-suggestion-item"
                                 style={{
@@ -5061,9 +5052,7 @@ const Deals = () => {
                                   ? `+ Create new person: "${displayLabel}"`
                                   : '+ Create new person'}
                               </div>
-                            );
-                          }
-                          return null;
+                          );
                         })()}
                       </div>
                     )}
