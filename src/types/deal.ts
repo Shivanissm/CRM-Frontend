@@ -44,6 +44,7 @@ export interface Deal {
   isDiverted?: boolean | null;
   referencedDealId?: number | null;
   referencedPipelineId?: number | null;
+  sharedPipelineNames?: string[] | null;
   lostReason?: string | null;
   ownerId?: number | null;
   ownerDisplayName?: string | null;

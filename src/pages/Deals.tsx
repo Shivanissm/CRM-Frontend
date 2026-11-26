@@ -28,6 +28,28 @@ import { getDisplayStageName } from '../utils/stageNames';
 import { formatIndiaDate, formatIndiaDateTime, parseIndiaDateTime } from '../utils/indiaTime';
 import { shouldPromptNewActivityAfterDone } from '../utils/dealActivities';
 
+function SharedPipelinesLabel({ names }: { names?: string[] | null }) {
+  const [open, setOpen] = useState(false);
+  if (!names || names.length === 0) {
+    return null;
+  }
+  if (names.length === 1) {
+    return <div className="kanban-card-pipelines">{names[0]}</div>;
+  }
+  return (
+    <button
+      type="button"
+      className="kanban-card-pipelines is-expandable"
+      onClick={(event) => {
+        event.stopPropagation();
+        setOpen((current) => !current);
+      }}
+    >
+      {open ? names.join(', ') : `${names[0]} +${names.length - 1}`}
+    </button>
+  );
+}
+
 // ==================== Label Types & Constants ====================
 
 interface DealLabel {
@@ -4269,7 +4291,7 @@ const Deals = () => {
                                 }}
                                 onClick={(e) => {
                                   // Don't navigate if clicking on the action button or dropdown
-                                  if ((e.target as HTMLElement).closest('.kanban-card-action-btn, .kanban-card-dropdown')) {
+                                  if ((e.target as HTMLElement).closest('.kanban-card-action-btn, .kanban-card-dropdown, .kanban-card-pipelines')) {
                                     return;
                                   }
                                   navigate(`/deals/${deal.id}`);
@@ -4313,6 +4335,7 @@ const Deals = () => {
                                         </span>
                                       )}
                                     </div>
+                                    <SharedPipelinesLabel names={deal.sharedPipelineNames} />
                                     {deal.createdAt && (
                                       <div className="kanban-card-date">
                                         {formatDateTime(deal.createdAt)}
@@ -4476,7 +4499,7 @@ const Deals = () => {
                                 }}
                                 onClick={(e) => {
                                   // Don't navigate if clicking on the action button or dropdown
-                                  if ((e.target as HTMLElement).closest('.kanban-card-action-btn, .kanban-card-dropdown')) {
+                                  if ((e.target as HTMLElement).closest('.kanban-card-action-btn, .kanban-card-dropdown, .kanban-card-pipelines')) {
                                     return;
                                   }
                                   navigate(`/deals/${deal.id}`);
@@ -4520,6 +4543,7 @@ const Deals = () => {
                                         </span>
                                       )}
                                     </div>
+                                    <SharedPipelinesLabel names={deal.sharedPipelineNames} />
                                     {deal.createdAt && (
                                       <div className="kanban-card-date">
                                         {formatDateTime(deal.createdAt)}
