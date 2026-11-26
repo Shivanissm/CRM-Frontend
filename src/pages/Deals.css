@@ -1197,6 +1197,29 @@
   white-space: normal;
 }
 
+.kanban-card-pipelines {
+  display: block;
+  width: 100%;
+  margin: 2px 0 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #dc2626;
+  cursor: default;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.kanban-card-pipelines.is-expandable {
+  cursor: pointer;
+}
+
 .kanban-card-date {
   font-size: 12px;
   color: #65777D;
